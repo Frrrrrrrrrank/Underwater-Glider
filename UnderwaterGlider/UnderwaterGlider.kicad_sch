@@ -1,0 +1,98 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "ebf08534-3857-4769-8242-a003b5f404c4")
+	(paper "A3")
+	(lib_symbols)
+	(sheet
+		(at 29.845 29.845)
+		(size 31.75 18.415)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "65991be7-7379-47e8-8b43-774c199b2369")
+		(property "Sheetname" "MainControl"
+			(at 29.845 29.1334 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "MainControl.kicad_sch"
+			(at 29.845 48.8446 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 29.845 57.785)
+		(size 34.925 20.32)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "913f1fe9-5824-4f82-a86f-5df1dd29c21c")
+		(property "Sheetname" "Power"
+			(at 29.845 57.0734 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "Power.kicad_sch"
+			(at 29.845 78.6896 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)
