@@ -1,4 +1,4 @@
-25147351557594700
+25049782184598298
 0_RM2023
 AMASS_MR30PW-M_1x03_P3.50mm_Vertical
 Connector XT30 Horizontal PCB Male, https://www.tme.eu/en/Document/5e47640ba39fa492dbd4c0f4c8ae7b93/MR30PW%20SPEC.pdf
@@ -441,20 +441,6 @@ RC Connector XT30
 3
 3
 0_RM2024
-AMASS_XT30PW-F_1x02_P2.50mm_Horizontal
-Connector XT30 Horizontal PCB Female, https://www.tme.eu/en/Document/ce4077e36b79046da520ca73227e15de/XT30PW%20SPEC.pdf
-RC Connector XT30
-0
-4
-2
-0_RM2024
-AMASS_XT30PW-M_1x02_P2.50mm_Horizontal
-Connector XT30 Horizontal PCB Male, https://www.tme.eu/en/Document/ce4077e36b79046da520ca73227e15de/XT30PW%20SPEC.pdf
-RC Connector XT30
-0
-4
-2
-0_RM2024
 AMASS_XT30U-F_1x02_P5.0mm_Vertical
 Connector XT30 Vertical Cable Female, https://www.tme.eu/en/Document/3cbfa5cfa544d79584972dd5234a409e/XT30U%20SPEC.pdf
 RC Connector XT30
@@ -483,33 +469,12 @@ AMASS_XT60PW-F
 4
 4
 0_RM2024
-AMASS_XT60PW-F_1x02_P7.20mm
-Connector XT60 Horizontal PCB Female, https://www.tme.eu/en/Document/9b8d0c5eb7094295f3d3112c214d3ade/XT60PW%20SPEC.pdf
-RC Connector XT60
-0
-4
-2
-0_RM2024
 AMASS_XT60PW-M
 
 
 0
 4
 4
-0_RM2024
-BTB_DF40C-100DP-0.4V
-
-
-0
-100
-100
-0_RM2024
-BTB_DF40_24DP_0.4
-
-
-0
-24
-24
 0_RM2024
 BxxxxS-1W
 
@@ -518,13 +483,6 @@ BxxxxS-1W
 4
 4
 0_RM2024
-CONN-SMD_100P-P0.40_DF40C-100DP-0.4V-51
-
-
-0
-104
-104
-0_RM2024
 CableTie_4.0
 
 
@@ -532,19 +490,33 @@ CableTie_4.0
 1
 1
 0_RM2024
-DFN-8-1EP_3x3mm_P0.65mm_EP1.5x2.25mm
-DFN, 8 Pin (https://www.diodes.com/assets/Package-Files/U-DFN3030-8-Type-E.pdf), generated with kicad-footprint-generator ipc_noLead_generator.py
-DFN NoLead
-0
-13
-5
-0_RM2024
 GH_1x02
 
 
 0
 4
 3
+0_RM2024
+GX8-4P
+
+
+0
+4
+4
+0_RM2024
+GX12-6P
+
+
+0
+6
+6
+0_RM2024
+GX20-6P
+
+
+0
+6
+6
 0_RM2024
 IC_BNO080
 
@@ -587,13 +559,6 @@ JUMPER_3_SMALL
 0
 3
 3
-0_RM2024
-L_coupled
-http://katalog.we-online.de/en/pbs/WE-SL2?sid=5fbec16187#vs_t1:c1_ct:1
-Wuerth WE-SL2
-0
-4
-4
 0_RM2024
 M12-A_8
 
@@ -707,20 +672,6 @@ Pad_D4
 1
 1
 0_RM2024
-PinSocket_2x05_P2.54mm_edge
-surface-mounted straight socket strip, 2x05, 2.54mm pitch, double cols (from Kicad 4.0.7), script generated
-Surface mounted socket strip SMD 2x05 2.54mm double row
-0
-10
-10
-0_RM2024
-QFN-48-1EP_7x7mm_P0.5mm_EP5.6x5.6mm
-QFN, 48 Pin (http://www.st.com/resource/en/datasheet/stm32f042k6.pdf#page=94), generated with kicad-footprint-generator ipc_noLead_generator.py
-QFN NoLead
-0
-65
-49
-0_RM2024
 QFN40P400X400X80-33N-D
 SC8802
 Integrated Circuit
@@ -742,19 +693,19 @@ Resistor
 2
 2
 0_RM2024
+RGY0020B
+RGY0020B
+Integrated Circuit
+0
+21
+21
+0_RM2024
 R_Shunt_69_Inner
 
 
 0
 4
 4
-0_RM2024
-Relay_DPDT_Omron_G5V-2
-http://omronfs.omron.com/en_US/ecb/products/pdf/en-g5v2.pdf
-Omron G5V-2 Relay DPDT
-0
-8
-8
 0_RM2024
 Relay_SPDT_Automative_5P
 
@@ -763,33 +714,19 @@ Relay_SPDT_Automative_5P
 5
 5
 0_RM2024
-SIQ-02FV
-
-
-0
-8
-5
-0_RM2024
-SMD_100P-P0.40_DF40C-100DP-0.4V-51
-
-
-0
-104
-104
-0_RM2024
-SMD_Inductor_6pin
-
-
-0
-6
-6
-0_RM2024
 SOIC8E_EXPOSED_PAD
 
 
 0
 14
 9
+0_RM2024
+SOT-89-5_Alternative
+SOT-89-5, http://www.e-devices.ricoh.co.jp/en/products/product_power/pkg/sot-89-5.pdf
+SOT-89-5
+0
+6
+5
 0_RM2024
 SOT95P275X110-6N
 
@@ -812,12 +749,26 @@ Shunt_2512
 4
 4
 0_RM2024
+TFT_0.96inch_13P_0.8mm
+
+
+0
+13
+13
+0_RM2024
 TRIM_3362P-1
 
 
 0
 3
 3
+0_RM2024
+Transformer-SMD8
+
+
+0
+8
+8
 0_RM2024
 USB_A_Vertical
 
@@ -826,12 +777,12 @@ USB_A_Vertical
 6
 5
 0_RM2024
-WS2812B_2020
-
-
+USB_C_Receptacle_HRO_TYPE-C-31-M-12_NO_HOLE
+USB Type-C receptacle for USB 2.0 and PD, http://www.krhro.com/uploads/soft/180320/1-1P320120243.pdf
+usb usb-c 2.0 pd
 0
-4
-4
+20
+17
 0_RM2024
 XDCR_BMI270
 
@@ -847,13 +798,6 @@ XDCR_LIS3MDLTR
 12
 12
 0_RM2024
-XKT-HL03
-
-
-0
-4
-4
-0_RM2024
 conn_2x02_2.54
 
 
@@ -868,13 +812,6 @@ conn_2x03_2.54
 6
 6
 0_RM2024
-https___github.com_hkustenterprize_
-
-
-0
-565
-0
-0_RM2024
 pfc_0.8mm_12p
 
 
@@ -888,13 +825,6 @@ pfc_0.65mm_16
 0
 16
 16
-0_RM2024
-pressure_sensor
-
-
-0
-6
-6
 0_RM2024_HandSolder
 HTSSOP-28-1EP_4.4x9.7mm_P0.65mm_EP3.4x9.5mm_Mask2.4x6.17mm_ThermalVias_HandSolder
 HTSSOP28: plastic thin shrink small outline package; 28 leads; body width 4.4 mm; thermal pad
@@ -902,13 +832,6 @@ TSSOP HTSSOP 0.65 thermal pad
 0
 55
 29
-0_RM2024_HandSolder
-Soldering nut_M3
-Mounting Hardware, inside through hole M3, height 6, Wuerth electronics 9774060360 (https://katalog.we-online.de/em/datasheet/9774060360.pdf), generated with kicad-footprint-generator
-Mounting M3 9774060360
-0
-1
-1
 0_RM2024_HandSolder
 TDSON-8-1_HandSolder
 Power MOSFET package, TDSON-8-1, 5.15x5.9mm (https://www.infineon.com/cms/en/product/packages/PG-TDSON/PG-TDSON-8-1/)
@@ -88570,524 +88493,6 @@ Potentiometer vertical vishay
 0
 3
 3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-BUZ-TH_BD12.0-P7.60-D0.6-FD
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Button_Switch_SMD{colon}SW_SPST_TL3342
-
-
-0
-4
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Buzzer_Beeper{colon}Buzzer_12x9.5RM7.6
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-C0201
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-C0603
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-C1206
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CAP-SMD_L3.2-W1.6-RD-C7171
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CASE-B_3528
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CASE-D_7343
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CONN-SMD_1.25-5PWT
-
-
-0
-7
-7
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CONN-SMD_2P-P1.25-HC-1.25-2PWT
-
-
-0
-4
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CONN-SMD_2P-P2.00_XUNPU_WAFER-PH2.0-2PWB
-
-
-0
-4
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CONN-SMD_4P-P2.00_XUNPU_WAFER-PH2.0-4PWB
-
-
-0
-6
-6
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CONN-SMD_HC-1.25-3PWT
-
-
-0
-5
-5
-ProPrj_XTray-PCB - v3.0_2025-06-02
-CONN-TH_DC-005-2.5A-2.0
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Capacitor_SMD{colon}C_0603_1608Metric
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Capacitor_SMD{colon}C_1206_3216Metric
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Capacitor_Tantalum_SMD{colon}CP_EIA-3216-18_Kemet-A_Pad1.58x1.35mm_HandSolder
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Capacitor_Tantalum_SMD{colon}CP_EIA-3528-21_Kemet-B
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Capacitor_Tantalum_SMD{colon}CP_EIA-3528-21_Kemet-B_Pad1.50x2.35mm_HandSolder
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_JST{colon}JST_GH_SM03B-GHS-TB_1x03-1MP_P1.25mm_Horizontal
-
-
-0
-5
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_JST{colon}JST_PH_S2B-PH-SM4-TB_1x02-1MP_P2.00mm_Horizontal
-
-
-0
-4
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_JST{colon}JST_PH_S4B-PH-K_1x04_P2.00mm_Horizontal
-
-
-0
-4
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_Molex{colon}Molex_PicoBlade_53261-0271_1x02-1MP_P1.25mm_Horizontal
-
-
-0
-4
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_Molex{colon}Molex_PicoBlade_53261-0371_1x03-1MP_P1.25mm_Horizontal
-
-
-0
-5
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_Molex{colon}Molex_PicoBlade_53261-0471_1x04-1MP_P1.25mm_Horizontal
-
-
-0
-6
-5
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_Molex{colon}Molex_PicoBlade_53261-0571_1x05-1MP_P1.25mm_Horizontal
-
-
-0
-7
-6
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Connector_PinHeader_2.54mm{colon}PinHeader_1x06_P2.54mm_Horizontal
-
-
-0
-6
-6
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Converter_FPDK12SR8004PS_
-
-
-0
-8
-8
-ProPrj_XTray-PCB - v3.0_2025-06-02
-DC-IN-TH_DC-005-5A-2.5
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-DC-IN-TH_DC-005-A200
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-DO-214AC_L4.3-W2.7-LS5.0-RD
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Diode_SMD{colon}D_SMA
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-F1206
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Fuse{colon}Fuse_1206_3216Metric
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-HDR-TH_2P-P2.54-V-M
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-J_SD_Card-micro_socket_A
-
-
-0
-15
-10
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Jumper{colon}SolderJumper-2_P1.3mm_Open_TrianglePad1.0x1.5mm
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-LED0603-RD_1
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-LED0805-R-RD
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-LED_SMD{colon}LED_0603_1608Metric
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-MICRO-USB-SMD_MICROXNJ
-
-
-0
-9
-9
-ProPrj_XTray-PCB - v3.0_2025-06-02
-MountingHole{colon}MountingHole_3.2mm_M3_Pad_TopBottom
-
-
-0
-3
-1
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Package_SO{colon}SOIC-16_3.9x9.9mm_P1.27mm
-
-
-0
-16
-16
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Package_SO{colon}SOP-16_3.9x9.9mm_P1.27mm
-
-
-0
-16
-16
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Package_TO_SOT_SMD{colon}SOT-23
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Package_TO_SOT_SMD{colon}SOT-23-3
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Package_TO_SOT_SMD{colon}SOT-23-5
-
-
-0
-5
-5
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Package_TO_SOT_SMD{colon}SOT-223-3_TabPin2
-
-
-0
-4
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-R0603
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-R1206
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-RF_Module{colon}ESP32-WROOM-32U
-
-
-0
-60
-39
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Res_1_8W
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Resistor_SMD{colon}R_0603_1608Metric
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SENSOR-SMD_L3.0-W3.0-P1.00-BR
-
-
-0
-6
-6
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SMA_L4.3-W2.5-LS5.0-RD
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOD-123FL_L2.7-W1.8-LS3.8-RD
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOD-123FL_L2.8-W1.8-LS3.7-RD-1
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOD-123_L2.8-W1.8-LS3.7-RD
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOD-323_L1.7-W1.3-LS2.5-FD
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOIC-8_L5.0-W4.0-P1.27-LS6.0-BL
-
-
-0
-8
-8
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOP-16_L10.0-W3.9-P1.27-LS6.0-BL
-
-
-0
-16
-16
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOT-23-3_L2.9-W1.3-P1.90-LS2.4-BR
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOT-23-3_L2.9-W1.6-P1.90-LS2.8-BR
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOT-23-5_L3.0-W1.7-P0.95-LS2.8-BR
-
-
-0
-5
-5
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SOT-223-3_L6.5-W3.4-P2.30-LS7.0-BR
-
-
-0
-4
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SW-SMD_L3.9-W3.0-P4.45
-
-
-0
-2
-2
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SW-SMD_MST22D18G2
-
-
-0
-6
-6
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SW-SMD_SHOUHAN_MST-22D18G23J_C2875122
-
-
-0
-3
-3
-ProPrj_XTray-PCB - v3.0_2025-06-02
-SW-TH_4P-L6.0-W6.0-P4.50-LS6.3
-
-
-0
-4
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-Sensor{colon}Aosong_DHT11_5.5x12.0_P2.54mm
-
-
-0
-4
-4
-ProPrj_XTray-PCB - v3.0_2025-06-02
-TF-SMD_TF-PUSH
-
-
-0
-13
-10
-ProPrj_XTray-PCB - v3.0_2025-06-02
-WIFI-SMD_ESP32-WROOM-32UE
-
-
-0
-47
-39
-ProPrj_XTray-PCB - v3.0_2025-06-02
-XTray_Footprints{colon}J_SD_Card-micro_socket_A
-
-
-0
-15
-10
 RF
 Skyworks_SKY13575_639LF
 http://www.skyworksinc.com/uploads/documents/SKY13575_639LF_203270D.pdf
@@ -90368,14 +89773,14 @@ Connector XT30 Horizontal PCB Female, https://www.tme.eu/en/Document/ce4077e36b7
 RC Connector XT30
 0
 4
-2
+3
 RM25
 AMASS_XT30PW-M_Horizontal
 Connector XT30 Horizontal PCB Male, https://www.tme.eu/en/Document/ce4077e36b79046da520ca73227e15de/XT30PW%20SPEC.pdf
 RC Connector XT30
 0
 4
-2
+3
 RM25
 AMASS_XT30U-F_Vertical
 Connector XT30 Vertical Cable Female, https://www.tme.eu/en/Document/3cbfa5cfa544d79584972dd5234a409e/XT30U%20SPEC.pdf
@@ -90391,12 +89796,61 @@ RC Connector XT30
 2
 2
 RM25
+AMASS_XT60PW-F
+Connector XT60 Horizontal PCB Female, https://www.tme.eu/en/Document/9b8d0c5eb7094295f3d3112c214d3ade/XT60PW%20SPEC.pdf
+RC Connector XT60
+0
+4
+3
+RM25
+AMASS_XT60PW-M
+Connector XT60 Horizontal PCB Female, https://www.tme.eu/en/Document/9b8d0c5eb7094295f3d3112c214d3ade/XT60PW%20SPEC.pdf
+RC Connector XT60
+0
+4
+3
+RM25
 Aero_Plug_M8
 Shielded M8 socket 4 ways connector panel, straight and rear mount (https://www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Customer+Drawing%7FT404103010X000%7FA%7Fpdf%7FEnglish%7FENG_CD_T404103010X000_A.pdf%7FT4041037041-000)
 four-pin M8
 0
 4
 4
+RM25
+BC-12-6P
+
+
+0
+6
+6
+RM25
+BC-21-6P
+
+
+0
+8
+7
+RM25
+BladeConnector_P2.0mm_6Pin_F_THT
+
+
+0
+6
+6
+RM25
+BladeConnector_P2.0mm_6Pin_M_SMT
+
+
+0
+6
+6
+RM25
+BladeConnector_P2.0mm_6Pin_M_THT
+
+
+0
+6
+6
 RM25
 Button_PTS810
 C&K Components, PTS 810 Series, Microminiature SMT Top Actuated, http://www.ckswitches.com/media/1476/pts810.pdf
@@ -90419,12 +89873,40 @@ Buzzer_5020
 3
 3
 RM25
+CC6905QC
+
+
+0
+10
+10
+RM25
+C_D8.0mm_P3.50mm
+CP, Radial series, Radial, pin pitch=3.50mm, , diameter=8mm, Electrolytic Capacitor
+CP Radial series Radial pin pitch 3.50mm  diameter 8mm Electrolytic Capacitor
+0
+2
+2
+RM25
 C_D12.5mm_H25.0mm_P5.00mm_Hor
 C, Radial series, Radial, pin pitch=5.00mm, diameter=12.5mm, height=25mm, Non-Polar Electrolytic Capacitor
 C Radial series Radial pin pitch 5.00mm diameter 12.5mm height 25mm Non-Polar Electrolytic Capacitor
 0
 2
 2
+RM25
+Connector_Matrice4D_New_Battery
+Matrice4D Battery Connector Footprint
+
+0
+9
+9
+RM25
+Crystal_SMD_2016
+SMD Crystal SERIES SMD2016/4 http://www.q-crystal.com/upload/5/2015552223166229.pdf, 2.0x1.6mm^2 package
+SMD SMT crystal
+0
+4
+4
 RM25
 Crystal_YXC_3225
 crystal Epson Toyocom FA-238 series https://support.epson.biz/td/api/doc_check.php?dl=brief_fa-238v_en.pdf, 3.2x2.5mm^2 package
@@ -90447,6 +89929,13 @@ SOD-323
 2
 2
 RM25
+G2406S
+YDS 30F-51NL SO, 24 Pin (https://datasheet.lcsc.com/lcsc/1811051610_Shanghai-YDS-Tech-30F-51NL_C123168.pdf), generated with kicad-footprint-generator ipc_gullwing_generator.py
+YDS SO Transformer_SMD
+0
+24
+24
+RM25
 ICM-42688P
 
 
@@ -90464,6 +89953,27 @@ RM25
 ITR9608
 Fork-type photointerrupter (https://everlighteurope.com/index.php?controller=attachment&id_attachment=5389)
 Photointerrupter infrared LED
+0
+4
+4
+RM25
+L_90125_3P
+
+
+0
+2
+2
+RM25
+L_PQ2615_10uH
+
+
+0
+2
+2
+RM25
+L_SRF0703
+
+
 0
 4
 4
@@ -90489,12 +89999,40 @@ VSON 0.65
 9
 5
 RM25
+PDFN-8L(5x6)-2N
+https://www.infineon.com/cms/en/product/packages/PG-TDSON/PG-TDSON-8-4/
+PG-TDSON-8-4 PDFN-8L(5x6)-2N DFN 2N
+0
+8
+6
+RM25
+PMW3901
+
+
+0
+29
+29
+RM25
+PQ2014_10uH
+
+
+0
+2
+2
+RM25
 PQ2918
 PQ2617BHA-6R8K-1
 Inductor
 0
 3
 3
+RM25
+PinSocket_2x02_P2.00mm
+Through hole straight socket strip, 2x02, 2.00mm pitch, double cols (from Kicad 4.0.7), script generated
+Through hole socket strip THT 2x02 2.00mm double row
+0
+4
+4
 RM25
 PowerPAK_SiC46x
 
@@ -90503,6 +90041,13 @@ PowerPAK_SiC46x
 32
 30
 RM25
+QFN-17_MPM3515_MNP
+
+MPM3515GQV-Z 
+0
+17
+17
+RM25
 QFN-32_SC8102
 QFN, 32 Pin (http://ww1.microchip.com/downloads/en/DeviceDoc/8008S.pdf#page=20), generated with kicad-footprint-generator ipc_noLead_generator.py
 QFN NoLead
@@ -90510,12 +90055,40 @@ QFN NoLead
 35
 32
 RM25
+QFN-64_STSPIN32G4
+QFN, 64 Pin (https://www.ftdichip.com/Support/Documents/DataSheets/ICs/DS_FT2232H.pdf#page=57), generated with kicad-footprint-generator ipc_noLead_generator.py
+QFN NoLead
+0
+74
+65
+RM25
 QFN-88_10x10_RTL8367N
 
 
 0
 89
 89
+RM25
+R_1225
+Resistor SMD 2512 (6332 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator
+resistor
+0
+2
+2
+RM25
+STM32G031G6_QFN-28_4x4mm_P0.5mm
+QFN, 28 Pin (http://www.st.com/resource/en/datasheet/stm32f031k6.pdf#page=90), generated with kicad-footprint-generator ipc_noLead_generator.py
+QFN NoLead
+0
+36
+28
+RM25
+ST_VL53L1x
+VL53L1x distance sensor
+VL53L1CXV0FY1 VL53L1x
+0
+13
+12
 RM25
 SuperCap_D18.0mm_P7.50mm
 CP, Radial series, Radial, pin pitch=7.50mm, , diameter=18mm, Electrolytic Capacitor
@@ -90565,6 +90138,20 @@ WSON NoLead
 0
 13
 9
+RM25
+WSON10_DPR_TEX
+
+TPS54561DPRR 
+0
+11
+11
+RM25
+XGZP101SB1
+
+
+0
+6
+6
 Relay_SMD
 Relay_2P2T_10x6mm_TE_IMxxG
 Signal Relay, 10x6mm, 2 Form C, Gull Wings, https://www.te.com/commerce/DocumentDelivery/DDEController?Action=showdoc&DocId=Data+Sheet%7F108-98001%7FZ.1%7Fpdf%7FEnglish%7FENG_DS_108-98001_Z.1.pdf
@@ -100386,6 +99973,13 @@ igbt diode module
 0
 25
 25
+UnderwaterGlider
+TF-SMD_TF-PUSH
+
+
+0
+13
+10
 Valve
 Valve_ECC-83-1
 Valve ECC-83-1 round pins

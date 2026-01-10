@@ -23625,7 +23625,7 @@
 				)
 			)
 		)
-		(property "Footprint" "RM24:PQFN50P300X250X97-14N"
+		(property "Footprint" "0_RM2024:PQFN50P300X250X97-14N"
 			(at 322.58 138.43 0)
 			(effects
 				(font
@@ -34144,7 +34144,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "UnderwaterGlider:TF-SMD_TF-PUSH"
 			(at 391.16 21.59 0)
 			(effects
 				(font
