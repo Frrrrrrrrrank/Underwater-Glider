@@ -130,6 +130,131 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "+5V_3"
+			(power)
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(property "Reference" "#PWR"
+				(at 0 -3.81 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Value" "+5V"
+				(at 0 3.556 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "Description" "Power symbol creates a global label with name \"+5V\""
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(property "ki_keywords" "global power"
+				(at 0 0 0)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(hide yes)
+				)
+			)
+			(symbol "+5V_3_0_1"
+				(polyline
+					(pts
+						(xy -0.762 1.27) (xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 2.54) (xy 0.762 1.27)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 0) (xy 0 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "+5V_3_1_1"
+				(pin power_in line
+					(at 0 0 90)
+					(length 0)
+					(name "~"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "0_RM2024:RY8411"
 			(exclude_from_sim no)
 			(in_bom yes)
@@ -5524,6 +5649,12 @@
 		(uuid "396f62cb-f4f9-40da-8590-1f54626ec251")
 	)
 	(junction
+		(at 189.23 80.01)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "3c6f9520-74b9-4fd3-9ea2-31d2a062de9b")
+	)
+	(junction
 		(at 314.96 100.33)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -5588,12 +5719,6 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "506441df-19ec-461f-bd0b-9ba9762e5628")
-	)
-	(junction
-		(at 119.38 162.56)
-		(diameter 0)
-		(color 0 0 0 0)
-		(uuid "510916dd-8d44-4fe2-b357-78c839ec3530")
 	)
 	(junction
 		(at 107.95 80.01)
@@ -6188,6 +6313,12 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "f489fb92-781e-4a37-882a-a98ceb8f013f")
+	)
+	(junction
+		(at 119.38 162.56)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "f5cf76c5-93ef-4b27-b9b3-0476d070d268")
 	)
 	(junction
 		(at 104.14 195.58)
@@ -7403,16 +7534,6 @@
 	)
 	(wire
 		(pts
-			(xy 168.91 195.58) (xy 162.56 195.58)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "42d1c4b6-f551-416c-9781-8a7ef70f06d8")
-	)
-	(wire
-		(pts
 			(xy 257.81 95.25) (xy 257.81 113.03)
 		)
 		(stroke
@@ -7460,6 +7581,16 @@
 			(type default)
 		)
 		(uuid "44b1b082-6bca-4af2-9430-98c8f484d3bc")
+	)
+	(wire
+		(pts
+			(xy 162.56 195.58) (xy 168.91 195.58)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "45f3db7a-9988-46a5-acd1-64aaf829291d")
 	)
 	(wire
 		(pts
@@ -8370,6 +8501,16 @@
 			(type default)
 		)
 		(uuid "89eaeef8-db04-45e8-81af-ba07ba52e592")
+	)
+	(wire
+		(pts
+			(xy 346.71 160.02) (xy 350.52 160.02)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "8b052737-af08-4475-8874-b8ef8c9a3b2b")
 	)
 	(wire
 		(pts
@@ -9423,6 +9564,16 @@
 	)
 	(wire
 		(pts
+			(xy 346.71 162.56) (xy 350.52 162.56)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "c6f64941-df13-4be9-87c7-43891113f56b")
+	)
+	(wire
+		(pts
 			(xy 172.72 31.75) (xy 172.72 30.48)
 		)
 		(stroke
@@ -10410,28 +10561,6 @@
 			(justify right bottom)
 		)
 		(uuid "f72c0769-4e40-44fb-9f38-51fec7f79047")
-	)
-	(global_label "VOUT"
-		(shape input)
-		(at 189.23 80.01 0)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "ec9d6689-3285-4fdc-80f1-ac07e9865049")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 196.9324 80.01 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left)
-				(hide yes)
-			)
-		)
 	)
 	(hierarchical_label "SATCom_5v_FB"
 		(shape input)
@@ -13547,73 +13676,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:L")
-		(at 116.84 195.58 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "264c99ff-8cf8-406a-9043-17ee4a6cbc2c")
-		(property "Reference" "L5"
-			(at 116.84 192.278 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "7.2u"
-			(at 116.84 194.056 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Inductor_SMD:L_Changjiang_FXL1770"
-			(at 116.84 195.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 116.84 195.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Inductor"
-			(at 116.84 195.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "29630047-b216-453c-83f3-aa909a6a095d")
-		)
-		(pin "2"
-			(uuid "addf1710-ce41-4b48-ada9-c4d70de3f47b")
-		)
-		(instances
-			(project "UnderwaterGlider"
-				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
-					(reference "L5")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "power:+3.3V")
 		(at 161.29 55.88 0)
 		(unit 1)
@@ -14226,6 +14288,72 @@
 			(project ""
 				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
 					(reference "#PWR049")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_name "+5V_3")
+		(lib_id "power:+5V")
+		(at 190.5 194.31 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "2de45e5a-a31a-4624-aa84-13c43f12e8d4")
+		(property "Reference" "#PWR0198"
+			(at 190.5 198.12 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+7.4v_Servo"
+			(at 183.388 193.548 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 190.5 194.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 194.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+5V\""
+			(at 190.5 194.31 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "cdf5afb6-7be1-4474-96ca-3114cc4d9510")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "#PWR0198")
 					(unit 1)
 				)
 			)
@@ -16567,73 +16695,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:L")
-		(at 116.84 227.33 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "4dd2487a-1978-4f2f-b2da-a26adf7a275b")
-		(property "Reference" "L8"
-			(at 116.84 224.028 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "7.2u"
-			(at 116.84 225.806 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Inductor_SMD:L_Changjiang_FXL1770"
-			(at 116.84 227.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 116.84 227.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Inductor"
-			(at 116.84 227.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "0a274daf-f174-4992-bb45-0621b27f8e04")
-		)
-		(pin "2"
-			(uuid "c1bcfe32-ecbe-49c1-8869-33385b43da5e")
-		)
-		(instances
-			(project "UnderwaterGlider"
-				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
-					(reference "L8")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Regulator_Linear:LDK130-12_SOT23_SOT353")
 		(at 91.44 104.14 0)
 		(unit 1)
@@ -17109,6 +17170,76 @@
 		)
 	)
 	(symbol
+		(lib_id "Connector_Generic:Conn_01x02")
+		(at 355.6 162.56 0)
+		(mirror x)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "53a12d26-047e-4bf1-881c-42fccf0c23f4")
+		(property "Reference" "J21"
+			(at 358.14 162.5601 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Conn_01x02"
+			(at 358.14 160.0201 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Connector_AMASS:AMASS_XT30PW-F_1x02_P2.50mm_Horizontal"
+			(at 355.6 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 355.6 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+			(at 355.6 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "4bb6a567-df2f-4009-ab5a-590a4ae5d04b")
+		)
+		(pin "2"
+			(uuid "2e7bca4b-8ff4-440a-9f5d-4631966e392c")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "J21")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_name "LED_1")
 		(lib_id "Device:LED")
 		(at 290.83 243.84 90)
@@ -17252,73 +17383,6 @@
 			(project "UnderwaterGlider"
 				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
 					(reference "C94")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_name "+5V_1")
-		(lib_id "power:+5V")
-		(at 290.83 232.41 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "56f172f2-3fe6-41a4-87b7-d9cfe05b92ff")
-		(property "Reference" "#PWR0263"
-			(at 290.83 236.22 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "7.4v_Servo"
-			(at 290.83 227.33 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 290.83 232.41 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 290.83 232.41 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 290.83 232.41 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "d34b682b-0405-4ed3-9b2c-b86d4d764e50")
-		)
-		(instances
-			(project "UnderwaterGlider"
-				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
-					(reference "#PWR0263")
 					(unit 1)
 				)
 			)
@@ -17995,73 +18059,6 @@
 			(project "UnderwaterGlider"
 				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
 					(reference "#PWR0204")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:L")
-		(at 123.19 162.56 90)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "6232ee4e-81bc-48f1-ae8f-e20033a343bf")
-		(property "Reference" "L4"
-			(at 123.19 159.258 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "7.2u"
-			(at 123.19 161.036 90)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Inductor_SMD:L_Changjiang_FXL1770"
-			(at 123.19 162.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" "~"
-			(at 123.19 162.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Inductor"
-			(at 123.19 162.56 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "34147460-8dd8-46b1-a85c-e4f7ae693a24")
-		)
-		(pin "2"
-			(uuid "8dc1a82e-7852-46ab-8c7b-b8d3095bcf4b")
-		)
-		(instances
-			(project "UnderwaterGlider"
-				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
-					(reference "L4")
 					(unit 1)
 				)
 			)
@@ -19170,6 +19167,73 @@
 			(project "UnderwaterGlider"
 				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
 					(reference "#PWR0190")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:L")
+		(at 123.19 162.56 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "73fe7328-e5c2-4afc-b2e4-459c74749076")
+		(property "Reference" "L4"
+			(at 123.19 159.258 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "7.2u"
+			(at 123.19 161.036 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Inductor_SMD:L_Sunlord_MWSA0603S"
+			(at 123.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 123.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 123.19 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "8ba1e5f9-7fe7-478b-bd9a-42b4519544fe")
+		)
+		(pin "2"
+			(uuid "e5b432d1-991e-4666-a344-11fb293b8225")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "L4")
 					(unit 1)
 				)
 			)
@@ -22985,6 +23049,73 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:L")
+		(at 116.84 195.58 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "970a4383-31eb-4bb5-8bdf-4ba4ae3060bc")
+		(property "Reference" "L5"
+			(at 116.84 192.278 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "7.2u"
+			(at 116.84 194.056 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Inductor_SMD:L_Sunlord_MWSA0603S"
+			(at 116.84 195.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 116.84 195.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 116.84 195.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "c221c066-b263-4dbc-9a60-b6eea03eb473")
+		)
+		(pin "2"
+			(uuid "6d6616db-b48a-4de5-a466-c1f0391bbff1")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "L5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:C")
 		(at 133.35 200.66 0)
 		(unit 1)
@@ -24130,6 +24261,72 @@
 		)
 	)
 	(symbol
+		(lib_name "+5V_3")
+		(lib_id "power:+5V")
+		(at 168.91 195.58 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "a62fa158-7c28-47e0-9350-d9c9bc17039a")
+		(property "Reference" "#PWR0286"
+			(at 168.91 199.39 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+7.4v_Servo"
+			(at 161.798 194.818 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 168.91 195.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 168.91 195.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+5V\""
+			(at 168.91 195.58 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "35e9b53e-725f-45c4-af9f-f49876b258d7")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "#PWR0286")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:R")
 		(at 294.64 207.01 0)
 		(unit 1)
@@ -25212,6 +25409,72 @@
 		)
 	)
 	(symbol
+		(lib_id "power:GND")
+		(at 346.71 162.56 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "b1eecfe1-4e5b-4432-8227-1fb21b8c337a")
+		(property "Reference" "#PWR0284"
+			(at 346.71 168.91 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "GND"
+			(at 346.71 167.64 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 346.71 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 346.71 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 346.71 162.56 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "73bb3720-7364-4452-ac0e-85a982ed66dc")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "#PWR0284")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+3.3V")
 		(at 309.88 203.2 0)
 		(unit 1)
@@ -25301,7 +25564,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Inductor_SMD:L_Changjiang_FXL1770"
+		(property "Footprint" "Inductor_SMD:L_Sunlord_MWSA0603S"
 			(at 148.59 30.48 0)
 			(effects
 				(font
@@ -26708,6 +26971,72 @@
 		)
 	)
 	(symbol
+		(lib_id "power:+24V")
+		(at 346.71 160.02 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "c3653636-cb7a-499b-af42-6e4556b558a8")
+		(property "Reference" "#PWR0283"
+			(at 346.71 163.83 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+24V"
+			(at 346.71 154.94 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 346.71 160.02 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 346.71 160.02 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+24V\""
+			(at 346.71 160.02 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "6025a0db-b599-4351-858d-f19a70666bce")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "#PWR0283")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:+5V")
 		(at 205.74 30.48 0)
 		(unit 1)
@@ -27262,73 +27591,6 @@
 			(project "UnderwaterGlider"
 				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
 					(reference "#PWR0161")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_name "+5V_1")
-		(lib_id "power:+5V")
-		(at 168.91 195.58 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "ca1f35e0-48ee-45c2-98cd-c78be8d8d323")
-		(property "Reference" "#PWR0198"
-			(at 168.91 199.39 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "7.4v_Servo"
-			(at 168.91 190.5 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 168.91 195.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 168.91 195.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 168.91 195.58 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "2fe7048b-c2be-4c27-93d8-07fb76a8d42f")
-		)
-		(instances
-			(project "UnderwaterGlider"
-				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
-					(reference "#PWR0198")
 					(unit 1)
 				)
 			)
@@ -30296,6 +30558,72 @@
 		)
 	)
 	(symbol
+		(lib_id "power:+24V")
+		(at 189.23 80.01 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "f1f48d59-4e30-4f9d-b059-ea43d1e6b1be")
+		(property "Reference" "#PWR0285"
+			(at 189.23 83.82 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+24V"
+			(at 189.23 74.93 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 189.23 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 189.23 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+24V\""
+			(at 189.23 80.01 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "a067ef04-6fc6-4559-b664-6d4007f2dd2b")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "#PWR0285")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "power:GND")
 		(at 304.8 77.47 0)
 		(unit 1)
@@ -30769,73 +31097,6 @@
 		)
 	)
 	(symbol
-		(lib_name "+5V_1")
-		(lib_id "power:+5V")
-		(at 190.5 194.31 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "f575bb0f-c67d-4f4e-90eb-6cea1a8e2c53")
-		(property "Reference" "#PWR0241"
-			(at 190.5 198.12 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Value" "7.4v_Servo"
-			(at 190.5 189.23 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 190.5 194.31 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Datasheet" ""
-			(at 190.5 194.31 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"+5V\""
-			(at 190.5 194.31 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(hide yes)
-			)
-		)
-		(pin "1"
-			(uuid "74060cb7-7f83-4c65-a58f-c4658239d91d")
-		)
-		(instances
-			(project "UnderwaterGlider"
-				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
-					(reference "#PWR0241")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "power:GND")
 		(at 294.64 218.44 0)
 		(unit 1)
@@ -31243,6 +31504,72 @@
 		)
 	)
 	(symbol
+		(lib_name "+5V_3")
+		(lib_id "power:+5V")
+		(at 290.83 232.41 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "f9b6e278-61a7-4ab7-9c92-46c0e95f7ad7")
+		(property "Reference" "#PWR0241"
+			(at 290.83 236.22 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "+7.4v_Servo"
+			(at 283.718 231.648 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 290.83 232.41 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 290.83 232.41 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+5V\""
+			(at 290.83 232.41 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "7e7c47c9-8c75-4aa6-a718-9ae65ed5fb06")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "#PWR0241")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:C_Small")
 		(at 38.1 194.31 0)
 		(unit 1)
@@ -31566,6 +31893,73 @@
 			(project "UnderwaterGlider"
 				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
 					(reference "R37")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:L")
+		(at 116.84 227.33 90)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(uuid "fe89ac20-fcf4-4ed7-919c-54dc2c6d66a8")
+		(property "Reference" "L8"
+			(at 116.84 224.028 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "7.2u"
+			(at 116.84 225.806 90)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Inductor_SMD:L_Sunlord_MWSA0603S"
+			(at 116.84 227.33 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 116.84 227.33 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Inductor"
+			(at 116.84 227.33 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "29ab8efe-242e-4eec-8940-b6b150b97483")
+		)
+		(pin "2"
+			(uuid "f8991d87-5adc-4308-aa9e-5ca03340ae1f")
+		)
+		(instances
+			(project "UnderwaterGlider"
+				(path "/ebf08534-3857-4769-8242-a003b5f404c4/913f1fe9-5824-4f82-a86f-5df1dd29c21c"
+					(reference "L8")
 					(unit 1)
 				)
 			)
