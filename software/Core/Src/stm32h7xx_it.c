@@ -59,6 +59,9 @@
 /* External variables --------------------------------------------------------*/
 extern UART_HandleTypeDef huart7;
 /* USER CODE BEGIN EV */
+extern volatile uint32_t g_dbg_systick_count;
+extern volatile uint32_t g_dbg_fault_code;
+extern volatile uint32_t g_dbg_fault_count;
 
 /* USER CODE END EV */
 
@@ -86,11 +89,13 @@ void NMI_Handler(void)
 void HardFault_Handler(void)
 {
   /* USER CODE BEGIN HardFault_IRQn 0 */
+  g_dbg_fault_code = 1U;
 
   /* USER CODE END HardFault_IRQn 0 */
   while (1)
   {
     /* USER CODE BEGIN W1_HardFault_IRQn 0 */
+    g_dbg_fault_count++;
     /* USER CODE END W1_HardFault_IRQn 0 */
   }
 }
@@ -101,11 +106,13 @@ void HardFault_Handler(void)
 void MemManage_Handler(void)
 {
   /* USER CODE BEGIN MemoryManagement_IRQn 0 */
+  g_dbg_fault_code = 2U;
 
   /* USER CODE END MemoryManagement_IRQn 0 */
   while (1)
   {
     /* USER CODE BEGIN W1_MemoryManagement_IRQn 0 */
+    g_dbg_fault_count++;
     /* USER CODE END W1_MemoryManagement_IRQn 0 */
   }
 }
@@ -116,11 +123,13 @@ void MemManage_Handler(void)
 void BusFault_Handler(void)
 {
   /* USER CODE BEGIN BusFault_IRQn 0 */
+  g_dbg_fault_code = 3U;
 
   /* USER CODE END BusFault_IRQn 0 */
   while (1)
   {
     /* USER CODE BEGIN W1_BusFault_IRQn 0 */
+    g_dbg_fault_count++;
     /* USER CODE END W1_BusFault_IRQn 0 */
   }
 }
@@ -131,11 +140,13 @@ void BusFault_Handler(void)
 void UsageFault_Handler(void)
 {
   /* USER CODE BEGIN UsageFault_IRQn 0 */
+  g_dbg_fault_code = 4U;
 
   /* USER CODE END UsageFault_IRQn 0 */
   while (1)
   {
     /* USER CODE BEGIN W1_UsageFault_IRQn 0 */
+    g_dbg_fault_count++;
     /* USER CODE END W1_UsageFault_IRQn 0 */
   }
 }
@@ -159,6 +170,7 @@ void DebugMon_Handler(void)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
+  g_dbg_systick_count++;
 
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();

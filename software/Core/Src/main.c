@@ -22,6 +22,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "glider_core.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /* USER CODE END Includes */
 
@@ -83,6 +86,23 @@ const osThreadAttr_t uartTxTask_attributes = {
   .priority = (osPriority_t) osPriorityBelowNormal7,
 };
 /* USER CODE BEGIN PV */
+volatile uint32_t g_dbg_alive_counter = 0U;
+volatile uint32_t g_dbg_rtos_tick = 0U;
+volatile uint32_t g_dbg_rx_line_count = 0U;
+volatile uint32_t g_dbg_rx_overflow_count = 0U;
+volatile uint32_t g_dbg_default_task_tick = 0U;
+volatile uint32_t g_dbg_boot_stage = 0U;
+volatile uint32_t g_dbg_systick_count = 0U;
+volatile uint32_t g_dbg_fault_code = 0U;
+volatile uint32_t g_dbg_fault_count = 0U;
+volatile uint32_t g_dbg_assert_count = 0U;
+volatile uint32_t g_dbg_assert_line = 0U;
+volatile uint32_t g_dbg_rtos_hook_code = 0U;
+volatile uint32_t g_dbg_tx_attempt_count = 0U;
+volatile uint32_t g_dbg_tx_ok_count = 0U;
+volatile uint32_t g_dbg_tx_fail_count = 0U;
+volatile uint32_t g_dbg_tx_last_status = 0U;
+volatile uint32_t g_dbg_tx_last_uart_error = 0U;
 
 /* USER CODE END PV */
 
@@ -125,6 +145,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  g_dbg_boot_stage = 1U;
 
   /* USER CODE END 1 */
 
@@ -137,37 +158,62 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  g_dbg_boot_stage = 2U;
 
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
+  /* Keep SysTick at the lowest priority so FreeRTOS ISR API usage stays valid. */
+  HAL_NVIC_SetPriority(SysTick_IRQn, 15U, 0U);
+
   /* USER CODE BEGIN SysInit */
+  g_dbg_boot_stage = 3U;
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+  g_dbg_boot_stage = 31U;
   MX_GPIO_Init();
+  g_dbg_boot_stage = 32U;
   MX_FDCAN1_Init();
-  MX_SDMMC1_MMC_Init();
+  g_dbg_boot_stage = 33U;
+  /* SDMMC is not needed for current UART7 bring-up; skip to avoid boot stop. */
+  /* MX_SDMMC1_MMC_Init(); */
+  g_dbg_boot_stage = 34U;
   MX_UART4_Init();
+  g_dbg_boot_stage = 35U;
   MX_USART1_UART_Init();
+  g_dbg_boot_stage = 36U;
   MX_USART2_UART_Init();
+  g_dbg_boot_stage = 37U;
   MX_USART3_UART_Init();
+  g_dbg_boot_stage = 38U;
   MX_UART5_Init();
+  g_dbg_boot_stage = 39U;
   MX_UART7_Init();
+  g_dbg_boot_stage = 40U;
   MX_UART8_Init();
+  g_dbg_boot_stage = 41U;
   MX_ADC1_Init();
+  g_dbg_boot_stage = 42U;
   MX_SPI1_Init();
+  g_dbg_boot_stage = 43U;
   MX_TIM1_Init();
+  g_dbg_boot_stage = 44U;
   MX_TIM2_Init();
+  g_dbg_boot_stage = 45U;
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
+  g_dbg_boot_stage = 46U;
+  GliderCore_Init(&huart7);
+  g_dbg_boot_stage = 4U;
 
   /* USER CODE END 2 */
 
   /* Init scheduler */
+  g_dbg_boot_stage = 5U;
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -198,13 +244,16 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  g_dbg_boot_stage = 6U;
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
+  g_dbg_boot_stage = 7U;
   /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
+  g_dbg_boot_stage = 8U;
   osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
@@ -1037,6 +1086,38 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void vAssertCalled(const char *file, int line)
+{
+  (void)file;
+  g_dbg_assert_count++;
+  g_dbg_assert_line = (uint32_t)line;
+  g_dbg_rtos_hook_code = 1U;
+  taskDISABLE_INTERRUPTS();
+  for (;;)
+  {
+  }
+}
+
+void vApplicationMallocFailedHook(void)
+{
+  g_dbg_rtos_hook_code = 2U;
+  taskDISABLE_INTERRUPTS();
+  for (;;)
+  {
+  }
+}
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+  (void)xTask;
+  (void)pcTaskName;
+  g_dbg_rtos_hook_code = 3U;
+  taskDISABLE_INTERRUPTS();
+  for (;;)
+  {
+  }
+}
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -1049,10 +1130,23 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+  (void)argument;
+  g_dbg_boot_stage = 100U;
+
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    g_dbg_alive_counter++;
+    g_dbg_rtos_tick = osKernelGetTickCount();
+    g_dbg_rx_line_count = GliderCore_GetRxLineCount();
+    g_dbg_rx_overflow_count = GliderCore_GetRxOverflowCount();
+    g_dbg_tx_attempt_count = GliderCore_GetTxAttemptCount();
+    g_dbg_tx_ok_count = GliderCore_GetTxOkCount();
+    g_dbg_tx_fail_count = GliderCore_GetTxFailCount();
+    g_dbg_tx_last_status = GliderCore_GetLastTxHalStatus();
+    g_dbg_tx_last_uart_error = GliderCore_GetLastUartErrorCode();
+    g_dbg_default_task_tick = g_dbg_rtos_tick;
+    osDelay(100);
   }
   /* USER CODE END 5 */
 }
@@ -1067,11 +1161,8 @@ void StartDefaultTask(void *argument)
 void StartUartRxTask(void *argument)
 {
   /* USER CODE BEGIN StartUartRxTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+  (void)argument;
+  GliderCore_RunRxTask();
   /* USER CODE END StartUartRxTask */
 }
 
@@ -1085,11 +1176,8 @@ void StartUartRxTask(void *argument)
 void StartUartTxTask(void *argument)
 {
   /* USER CODE BEGIN StartUartTxTask */
-  /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+  (void)argument;
+  GliderCore_RunTxTask();
   /* USER CODE END StartUartTxTask */
 }
 
@@ -1130,9 +1218,11 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  g_dbg_rtos_hook_code = 4U;
   __disable_irq();
   while (1)
   {
+    g_dbg_fault_count++;
   }
   /* USER CODE END Error_Handler_Debug */
 }

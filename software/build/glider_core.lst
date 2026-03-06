@@ -1,0 +1,1548 @@
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 1
+
+
+   1              		.cpu cortex-m7
+   2              		.arch armv7e-m
+   3              		.fpu fpv5-d16
+   4              		.eabi_attribute 28, 1
+   5              		.eabi_attribute 20, 1
+   6              		.eabi_attribute 21, 1
+   7              		.eabi_attribute 23, 3
+   8              		.eabi_attribute 24, 1
+   9              		.eabi_attribute 25, 1
+  10              		.eabi_attribute 26, 1
+  11              		.eabi_attribute 30, 1
+  12              		.eabi_attribute 34, 1
+  13              		.eabi_attribute 18, 4
+  14              		.file	"glider_core.c"
+  15              		.text
+  16              	.Ltext0:
+  17              		.cfi_sections	.debug_frame
+  18              		.file 1 "Glider-Core/glider_core.c"
+  19              		.section	.text.ring_pop,"ax",%progbits
+  20              		.align	1
+  21              		.syntax unified
+  22              		.thumb
+  23              		.thumb_func
+  25              	ring_pop:
+  26              	.LVL0:
+  27              	.LFB339:
+   1:Glider-Core/glider_core.c **** #include "glider_core.h"
+   2:Glider-Core/glider_core.c **** 
+   3:Glider-Core/glider_core.c **** #include "cmsis_os.h"
+   4:Glider-Core/glider_core.c **** #include "glider_rdss_codec.h"
+   5:Glider-Core/glider_core.c **** 
+   6:Glider-Core/glider_core.c **** #include <string.h>
+   7:Glider-Core/glider_core.c **** 
+   8:Glider-Core/glider_core.c **** #define GLIDER_RX_RING_SIZE 512U
+   9:Glider-Core/glider_core.c **** #define GLIDER_RX_LINE_SIZE 192U
+  10:Glider-Core/glider_core.c **** 
+  11:Glider-Core/glider_core.c **** static UART_HandleTypeDef *s_uart = NULL;
+  12:Glider-Core/glider_core.c **** static volatile uint8_t s_rx_ring[GLIDER_RX_RING_SIZE];
+  13:Glider-Core/glider_core.c **** static volatile uint16_t s_rx_head = 0;
+  14:Glider-Core/glider_core.c **** static volatile uint16_t s_rx_tail = 0;
+  15:Glider-Core/glider_core.c **** static volatile uint8_t s_rx_byte = 0;
+  16:Glider-Core/glider_core.c **** 
+  17:Glider-Core/glider_core.c **** static volatile uint32_t s_rx_overflow_count = 0;
+  18:Glider-Core/glider_core.c **** static volatile uint32_t s_rx_line_count = 0;
+  19:Glider-Core/glider_core.c **** static volatile uint32_t s_tx_attempt_count = 0;
+  20:Glider-Core/glider_core.c **** static volatile uint32_t s_tx_ok_count = 0;
+  21:Glider-Core/glider_core.c **** static volatile uint32_t s_tx_fail_count = 0;
+  22:Glider-Core/glider_core.c **** static volatile uint32_t s_tx_last_hal_status = 0;
+  23:Glider-Core/glider_core.c **** static volatile uint32_t s_tx_last_uart_error = 0;
+  24:Glider-Core/glider_core.c **** 
+  25:Glider-Core/glider_core.c **** static char s_line_buffer[GLIDER_RX_LINE_SIZE];
+  26:Glider-Core/glider_core.c **** static size_t s_line_len = 0;
+  27:Glider-Core/glider_core.c **** 
+  28:Glider-Core/glider_core.c **** static const char *s_boot_test_cmds[] = {
+  29:Glider-Core/glider_core.c ****   "AT\r\n",
+  30:Glider-Core/glider_core.c ****   "ATI\r\n",
+  31:Glider-Core/glider_core.c ****   "AT+CSQ\r\n"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 2
+
+
+  32:Glider-Core/glider_core.c **** };
+  33:Glider-Core/glider_core.c **** 
+  34:Glider-Core/glider_core.c **** static bool ring_pop(uint8_t *out)
+  35:Glider-Core/glider_core.c **** {
+  28              		.loc 1 35 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		@ link register save eliminated.
+  36:Glider-Core/glider_core.c ****   uint16_t tail = 0;
+  33              		.loc 1 36 3 view .LVU1
+  37:Glider-Core/glider_core.c **** 
+  38:Glider-Core/glider_core.c ****   if (out == NULL)
+  34              		.loc 1 38 3 view .LVU2
+  35              		.loc 1 38 6 is_stmt 0 view .LVU3
+  36 0000 0146     		mov	r1, r0
+  37 0002 98B1     		cbz	r0, .L3
+  39:Glider-Core/glider_core.c ****   {
+  40:Glider-Core/glider_core.c ****     return false;
+  41:Glider-Core/glider_core.c ****   }
+  42:Glider-Core/glider_core.c **** 
+  43:Glider-Core/glider_core.c ****   if (s_rx_tail == s_rx_head)
+  38              		.loc 1 43 3 is_stmt 1 view .LVU4
+  39              		.loc 1 43 17 is_stmt 0 view .LVU5
+  40 0004 0B4B     		ldr	r3, .L5
+  41 0006 1A88     		ldrh	r2, [r3]
+  42 0008 92B2     		uxth	r2, r2
+  43 000a 0B4B     		ldr	r3, .L5+4
+  44 000c 1B88     		ldrh	r3, [r3]
+  45 000e 9BB2     		uxth	r3, r3
+  46              		.loc 1 43 6 view .LVU6
+  47 0010 9A42     		cmp	r2, r3
+  48 0012 0DD0     		beq	.L4
+  44:Glider-Core/glider_core.c ****   {
+  45:Glider-Core/glider_core.c ****     return false;
+  46:Glider-Core/glider_core.c ****   }
+  47:Glider-Core/glider_core.c **** 
+  48:Glider-Core/glider_core.c ****   tail = s_rx_tail;
+  49              		.loc 1 48 3 is_stmt 1 view .LVU7
+  50              		.loc 1 48 8 is_stmt 0 view .LVU8
+  51 0014 074A     		ldr	r2, .L5
+  52 0016 1388     		ldrh	r3, [r2]
+  53 0018 9BB2     		uxth	r3, r3
+  54              	.LVL1:
+  49:Glider-Core/glider_core.c ****   *out = s_rx_ring[tail];
+  55              		.loc 1 49 3 is_stmt 1 view .LVU9
+  56              		.loc 1 49 19 is_stmt 0 view .LVU10
+  57 001a 0848     		ldr	r0, .L5+8
+  58              	.LVL2:
+  59              		.loc 1 49 19 view .LVU11
+  60 001c C05C     		ldrb	r0, [r0, r3]	@ zero_extendqisi2
+  61              		.loc 1 49 8 view .LVU12
+  62 001e 0870     		strb	r0, [r1]
+  50:Glider-Core/glider_core.c ****   s_rx_tail = (uint16_t)((tail + 1U) % GLIDER_RX_RING_SIZE);
+  63              		.loc 1 50 3 is_stmt 1 view .LVU13
+  64              		.loc 1 50 15 is_stmt 0 view .LVU14
+  65 0020 0133     		adds	r3, r3, #1
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 3
+
+
+  66              	.LVL3:
+  67              		.loc 1 50 15 view .LVU15
+  68 0022 C3F30803 		ubfx	r3, r3, #0, #9
+  69              	.LVL4:
+  70              		.loc 1 50 13 view .LVU16
+  71 0026 1380     		strh	r3, [r2]	@ movhi
+  51:Glider-Core/glider_core.c ****   return true;
+  72              		.loc 1 51 3 is_stmt 1 view .LVU17
+  73              		.loc 1 51 10 is_stmt 0 view .LVU18
+  74 0028 0120     		movs	r0, #1
+  75 002a 7047     		bx	lr
+  76              	.LVL5:
+  77              	.L3:
+  40:Glider-Core/glider_core.c ****   }
+  78              		.loc 1 40 12 view .LVU19
+  79 002c 0020     		movs	r0, #0
+  80              	.LVL6:
+  40:Glider-Core/glider_core.c ****   }
+  81              		.loc 1 40 12 view .LVU20
+  82 002e 7047     		bx	lr
+  83              	.LVL7:
+  84              	.L4:
+  45:Glider-Core/glider_core.c ****   }
+  85              		.loc 1 45 12 view .LVU21
+  86 0030 0020     		movs	r0, #0
+  87              	.LVL8:
+  52:Glider-Core/glider_core.c **** }
+  88              		.loc 1 52 1 view .LVU22
+  89 0032 7047     		bx	lr
+  90              	.L6:
+  91              		.align	2
+  92              	.L5:
+  93 0034 00000000 		.word	s_rx_tail
+  94 0038 00000000 		.word	s_rx_head
+  95 003c 00000000 		.word	s_rx_ring
+  96              		.cfi_endproc
+  97              	.LFE339:
+  99              		.section	.text.ring_push,"ax",%progbits
+ 100              		.align	1
+ 101              		.syntax unified
+ 102              		.thumb
+ 103              		.thumb_func
+ 105              	ring_push:
+ 106              	.LVL9:
+ 107              	.LFB340:
+  53:Glider-Core/glider_core.c **** 
+  54:Glider-Core/glider_core.c **** static void ring_push(const uint8_t data)
+  55:Glider-Core/glider_core.c **** {
+ 108              		.loc 1 55 1 is_stmt 1 view -0
+ 109              		.cfi_startproc
+ 110              		@ args = 0, pretend = 0, frame = 0
+ 111              		@ frame_needed = 0, uses_anonymous_args = 0
+ 112              		@ link register save eliminated.
+  56:Glider-Core/glider_core.c ****   uint16_t next = (uint16_t)((s_rx_head + 1U) % GLIDER_RX_RING_SIZE);
+ 113              		.loc 1 56 3 view .LVU24
+ 114              		.loc 1 56 19 is_stmt 0 view .LVU25
+ 115 0000 0C4B     		ldr	r3, .L14
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 4
+
+
+ 116 0002 1B88     		ldrh	r3, [r3]
+ 117 0004 9BB2     		uxth	r3, r3
+ 118 0006 0133     		adds	r3, r3, #1
+ 119              		.loc 1 56 12 view .LVU26
+ 120 0008 C3F30803 		ubfx	r3, r3, #0, #9
+ 121              	.LVL10:
+  57:Glider-Core/glider_core.c **** 
+  58:Glider-Core/glider_core.c ****   if (next == s_rx_tail)
+ 122              		.loc 1 58 3 is_stmt 1 view .LVU27
+ 123              		.loc 1 58 12 is_stmt 0 view .LVU28
+ 124 000c 0A4A     		ldr	r2, .L14+4
+ 125 000e 1288     		ldrh	r2, [r2]
+ 126 0010 92B2     		uxth	r2, r2
+ 127              		.loc 1 58 6 view .LVU29
+ 128 0012 9A42     		cmp	r2, r3
+ 129 0014 09D0     		beq	.L13
+  55:Glider-Core/glider_core.c ****   uint16_t next = (uint16_t)((s_rx_head + 1U) % GLIDER_RX_RING_SIZE);
+ 130              		.loc 1 55 1 view .LVU30
+ 131 0016 10B4     		push	{r4}
+ 132              	.LCFI0:
+ 133              		.cfi_def_cfa_offset 4
+ 134              		.cfi_offset 4, -4
+  59:Glider-Core/glider_core.c ****   {
+  60:Glider-Core/glider_core.c ****     s_rx_overflow_count++;
+  61:Glider-Core/glider_core.c ****     return;
+  62:Glider-Core/glider_core.c ****   }
+  63:Glider-Core/glider_core.c **** 
+  64:Glider-Core/glider_core.c ****   s_rx_ring[s_rx_head] = data;
+ 135              		.loc 1 64 3 is_stmt 1 view .LVU31
+ 136              		.loc 1 64 12 is_stmt 0 view .LVU32
+ 137 0018 0649     		ldr	r1, .L14
+ 138 001a 0A88     		ldrh	r2, [r1]
+ 139 001c 92B2     		uxth	r2, r2
+ 140              		.loc 1 64 24 view .LVU33
+ 141 001e 074C     		ldr	r4, .L14+8
+ 142 0020 A054     		strb	r0, [r4, r2]
+  65:Glider-Core/glider_core.c ****   s_rx_head = next;
+ 143              		.loc 1 65 3 is_stmt 1 view .LVU34
+ 144              		.loc 1 65 13 is_stmt 0 view .LVU35
+ 145 0022 0B80     		strh	r3, [r1]	@ movhi
+  66:Glider-Core/glider_core.c **** }
+ 146              		.loc 1 66 1 view .LVU36
+ 147 0024 5DF8044B 		ldr	r4, [sp], #4
+ 148              	.LCFI1:
+ 149              		.cfi_restore 4
+ 150              		.cfi_def_cfa_offset 0
+ 151 0028 7047     		bx	lr
+ 152              	.L13:
+  60:Glider-Core/glider_core.c ****     return;
+ 153              		.loc 1 60 5 is_stmt 1 view .LVU37
+  60:Glider-Core/glider_core.c ****     return;
+ 154              		.loc 1 60 24 is_stmt 0 view .LVU38
+ 155 002a 054A     		ldr	r2, .L14+12
+ 156 002c 1368     		ldr	r3, [r2]
+ 157              	.LVL11:
+  60:Glider-Core/glider_core.c ****     return;
+ 158              		.loc 1 60 24 view .LVU39
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 5
+
+
+ 159 002e 0133     		adds	r3, r3, #1
+ 160 0030 1360     		str	r3, [r2]
+  61:Glider-Core/glider_core.c ****   }
+ 161              		.loc 1 61 5 is_stmt 1 view .LVU40
+ 162 0032 7047     		bx	lr
+ 163              	.L15:
+ 164              		.align	2
+ 165              	.L14:
+ 166 0034 00000000 		.word	s_rx_head
+ 167 0038 00000000 		.word	s_rx_tail
+ 168 003c 00000000 		.word	s_rx_ring
+ 169 0040 00000000 		.word	s_rx_overflow_count
+ 170              		.cfi_endproc
+ 171              	.LFE340:
+ 173              		.section	.text.GliderCore_Init,"ax",%progbits
+ 174              		.align	1
+ 175              		.global	GliderCore_Init
+ 176              		.syntax unified
+ 177              		.thumb
+ 178              		.thumb_func
+ 180              	GliderCore_Init:
+ 181              	.LVL12:
+ 182              	.LFB343:
+  67:Glider-Core/glider_core.c **** 
+  68:Glider-Core/glider_core.c **** static void process_line(const char *line)
+  69:Glider-Core/glider_core.c **** {
+  70:Glider-Core/glider_core.c ****   GliderRdssDecodedFrame frame;
+  71:Glider-Core/glider_core.c **** 
+  72:Glider-Core/glider_core.c ****   if (!GliderRdssCodec_TryDecodeLine(line, &frame))
+  73:Glider-Core/glider_core.c ****   {
+  74:Glider-Core/glider_core.c ****     return;
+  75:Glider-Core/glider_core.c ****   }
+  76:Glider-Core/glider_core.c **** 
+  77:Glider-Core/glider_core.c ****   s_rx_line_count++;
+  78:Glider-Core/glider_core.c **** 
+  79:Glider-Core/glider_core.c ****   if (frame.type == GLIDER_RDSS_FRAME_HEX_BINARY)
+  80:Glider-Core/glider_core.c ****   {
+  81:Glider-Core/glider_core.c ****     GliderCore_OnBinaryFrame(frame.payload, frame.payload_len);
+  82:Glider-Core/glider_core.c ****     return;
+  83:Glider-Core/glider_core.c ****   }
+  84:Glider-Core/glider_core.c **** 
+  85:Glider-Core/glider_core.c ****   GliderCore_OnTextFrame(frame.text);
+  86:Glider-Core/glider_core.c **** }
+  87:Glider-Core/glider_core.c **** 
+  88:Glider-Core/glider_core.c **** static void process_rx_byte(const uint8_t byte)
+  89:Glider-Core/glider_core.c **** {
+  90:Glider-Core/glider_core.c ****   if (byte == '\r')
+  91:Glider-Core/glider_core.c ****   {
+  92:Glider-Core/glider_core.c ****     return;
+  93:Glider-Core/glider_core.c ****   }
+  94:Glider-Core/glider_core.c **** 
+  95:Glider-Core/glider_core.c ****   if (byte == '\n')
+  96:Glider-Core/glider_core.c ****   {
+  97:Glider-Core/glider_core.c ****     if (s_line_len > 0)
+  98:Glider-Core/glider_core.c ****     {
+  99:Glider-Core/glider_core.c ****       s_line_buffer[s_line_len] = '\0';
+ 100:Glider-Core/glider_core.c ****       process_line(s_line_buffer);
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 6
+
+
+ 101:Glider-Core/glider_core.c ****       s_line_len = 0;
+ 102:Glider-Core/glider_core.c ****     }
+ 103:Glider-Core/glider_core.c ****     return;
+ 104:Glider-Core/glider_core.c ****   }
+ 105:Glider-Core/glider_core.c **** 
+ 106:Glider-Core/glider_core.c ****   if (s_line_len >= (GLIDER_RX_LINE_SIZE - 1U))
+ 107:Glider-Core/glider_core.c ****   {
+ 108:Glider-Core/glider_core.c ****     s_line_len = 0;
+ 109:Glider-Core/glider_core.c ****   }
+ 110:Glider-Core/glider_core.c **** 
+ 111:Glider-Core/glider_core.c ****   s_line_buffer[s_line_len++] = (char)byte;
+ 112:Glider-Core/glider_core.c **** }
+ 113:Glider-Core/glider_core.c **** 
+ 114:Glider-Core/glider_core.c **** void GliderCore_Init(UART_HandleTypeDef *uart_handle)
+ 115:Glider-Core/glider_core.c **** {
+ 183              		.loc 1 115 1 view -0
+ 184              		.cfi_startproc
+ 185              		@ args = 0, pretend = 0, frame = 0
+ 186              		@ frame_needed = 0, uses_anonymous_args = 0
+ 187              		.loc 1 115 1 is_stmt 0 view .LVU42
+ 188 0000 08B5     		push	{r3, lr}
+ 189              	.LCFI2:
+ 190              		.cfi_def_cfa_offset 8
+ 191              		.cfi_offset 3, -8
+ 192              		.cfi_offset 14, -4
+ 116:Glider-Core/glider_core.c ****   s_uart = uart_handle;
+ 193              		.loc 1 116 3 is_stmt 1 view .LVU43
+ 194              		.loc 1 116 10 is_stmt 0 view .LVU44
+ 195 0002 0E4B     		ldr	r3, .L19
+ 196 0004 1860     		str	r0, [r3]
+ 117:Glider-Core/glider_core.c ****   s_rx_head = 0;
+ 197              		.loc 1 117 3 is_stmt 1 view .LVU45
+ 198              		.loc 1 117 13 is_stmt 0 view .LVU46
+ 199 0006 0023     		movs	r3, #0
+ 200 0008 0D4A     		ldr	r2, .L19+4
+ 201 000a 1380     		strh	r3, [r2]	@ movhi
+ 118:Glider-Core/glider_core.c ****   s_rx_tail = 0;
+ 202              		.loc 1 118 3 is_stmt 1 view .LVU47
+ 203              		.loc 1 118 13 is_stmt 0 view .LVU48
+ 204 000c 0D4A     		ldr	r2, .L19+8
+ 205 000e 1380     		strh	r3, [r2]	@ movhi
+ 119:Glider-Core/glider_core.c ****   s_line_len = 0;
+ 206              		.loc 1 119 3 is_stmt 1 view .LVU49
+ 207              		.loc 1 119 14 is_stmt 0 view .LVU50
+ 208 0010 0D4A     		ldr	r2, .L19+12
+ 209 0012 1360     		str	r3, [r2]
+ 120:Glider-Core/glider_core.c ****   s_rx_overflow_count = 0;
+ 210              		.loc 1 120 3 is_stmt 1 view .LVU51
+ 211              		.loc 1 120 23 is_stmt 0 view .LVU52
+ 212 0014 0D4A     		ldr	r2, .L19+16
+ 213 0016 1360     		str	r3, [r2]
+ 121:Glider-Core/glider_core.c ****   s_rx_line_count = 0;
+ 214              		.loc 1 121 3 is_stmt 1 view .LVU53
+ 215              		.loc 1 121 19 is_stmt 0 view .LVU54
+ 216 0018 0D4A     		ldr	r2, .L19+20
+ 217 001a 1360     		str	r3, [r2]
+ 122:Glider-Core/glider_core.c ****   s_tx_attempt_count = 0;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 7
+
+
+ 218              		.loc 1 122 3 is_stmt 1 view .LVU55
+ 219              		.loc 1 122 22 is_stmt 0 view .LVU56
+ 220 001c 0D4A     		ldr	r2, .L19+24
+ 221 001e 1360     		str	r3, [r2]
+ 123:Glider-Core/glider_core.c ****   s_tx_ok_count = 0;
+ 222              		.loc 1 123 3 is_stmt 1 view .LVU57
+ 223              		.loc 1 123 17 is_stmt 0 view .LVU58
+ 224 0020 0D4A     		ldr	r2, .L19+28
+ 225 0022 1360     		str	r3, [r2]
+ 124:Glider-Core/glider_core.c ****   s_tx_fail_count = 0;
+ 226              		.loc 1 124 3 is_stmt 1 view .LVU59
+ 227              		.loc 1 124 19 is_stmt 0 view .LVU60
+ 228 0024 0D4A     		ldr	r2, .L19+32
+ 229 0026 1360     		str	r3, [r2]
+ 125:Glider-Core/glider_core.c ****   s_tx_last_hal_status = 0;
+ 230              		.loc 1 125 3 is_stmt 1 view .LVU61
+ 231              		.loc 1 125 24 is_stmt 0 view .LVU62
+ 232 0028 0D4A     		ldr	r2, .L19+36
+ 233 002a 1360     		str	r3, [r2]
+ 126:Glider-Core/glider_core.c ****   s_tx_last_uart_error = 0;
+ 234              		.loc 1 126 3 is_stmt 1 view .LVU63
+ 235              		.loc 1 126 24 is_stmt 0 view .LVU64
+ 236 002c 0D4A     		ldr	r2, .L19+40
+ 237 002e 1360     		str	r3, [r2]
+ 127:Glider-Core/glider_core.c **** 
+ 128:Glider-Core/glider_core.c ****   if (s_uart != NULL)
+ 238              		.loc 1 128 3 is_stmt 1 view .LVU65
+ 239              		.loc 1 128 6 is_stmt 0 view .LVU66
+ 240 0030 18B1     		cbz	r0, .L16
+ 129:Glider-Core/glider_core.c ****   {
+ 130:Glider-Core/glider_core.c ****     (void)HAL_UART_Receive_IT(s_uart, (uint8_t *)&s_rx_byte, 1U);
+ 241              		.loc 1 130 5 is_stmt 1 view .LVU67
+ 242              		.loc 1 130 11 is_stmt 0 view .LVU68
+ 243 0032 0122     		movs	r2, #1
+ 244 0034 0C49     		ldr	r1, .L19+44
+ 245 0036 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 246              	.LVL13:
+ 247              	.L16:
+ 131:Glider-Core/glider_core.c ****   }
+ 132:Glider-Core/glider_core.c **** }
+ 248              		.loc 1 132 1 view .LVU69
+ 249 003a 08BD     		pop	{r3, pc}
+ 250              	.L20:
+ 251              		.align	2
+ 252              	.L19:
+ 253 003c 00000000 		.word	s_uart
+ 254 0040 00000000 		.word	s_rx_head
+ 255 0044 00000000 		.word	s_rx_tail
+ 256 0048 00000000 		.word	s_line_len
+ 257 004c 00000000 		.word	s_rx_overflow_count
+ 258 0050 00000000 		.word	s_rx_line_count
+ 259 0054 00000000 		.word	s_tx_attempt_count
+ 260 0058 00000000 		.word	s_tx_ok_count
+ 261 005c 00000000 		.word	s_tx_fail_count
+ 262 0060 00000000 		.word	s_tx_last_hal_status
+ 263 0064 00000000 		.word	s_tx_last_uart_error
+ 264 0068 00000000 		.word	s_rx_byte
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 8
+
+
+ 265              		.cfi_endproc
+ 266              	.LFE343:
+ 268              		.section	.text.GliderCore_SendText,"ax",%progbits
+ 269              		.align	1
+ 270              		.global	GliderCore_SendText
+ 271              		.syntax unified
+ 272              		.thumb
+ 273              		.thumb_func
+ 275              	GliderCore_SendText:
+ 276              	.LVL14:
+ 277              	.LFB346:
+ 133:Glider-Core/glider_core.c **** 
+ 134:Glider-Core/glider_core.c **** void GliderCore_RunRxTask(void)
+ 135:Glider-Core/glider_core.c **** {
+ 136:Glider-Core/glider_core.c ****   uint8_t byte = 0;
+ 137:Glider-Core/glider_core.c **** 
+ 138:Glider-Core/glider_core.c ****   for (;;)
+ 139:Glider-Core/glider_core.c ****   {
+ 140:Glider-Core/glider_core.c ****     while (ring_pop(&byte))
+ 141:Glider-Core/glider_core.c ****     {
+ 142:Glider-Core/glider_core.c ****       process_rx_byte(byte);
+ 143:Glider-Core/glider_core.c ****     }
+ 144:Glider-Core/glider_core.c **** 
+ 145:Glider-Core/glider_core.c ****     osDelay(2U);
+ 146:Glider-Core/glider_core.c ****   }
+ 147:Glider-Core/glider_core.c **** }
+ 148:Glider-Core/glider_core.c **** 
+ 149:Glider-Core/glider_core.c **** void GliderCore_RunTxTask(void)
+ 150:Glider-Core/glider_core.c **** {
+ 151:Glider-Core/glider_core.c ****   size_t idx = 0;
+ 152:Glider-Core/glider_core.c **** 
+ 153:Glider-Core/glider_core.c ****   for (idx = 0; idx < (sizeof(s_boot_test_cmds) / sizeof(s_boot_test_cmds[0])); idx++)
+ 154:Glider-Core/glider_core.c ****   {
+ 155:Glider-Core/glider_core.c ****     (void)GliderCore_SendText(s_boot_test_cmds[idx]);
+ 156:Glider-Core/glider_core.c ****     osDelay(500U);
+ 157:Glider-Core/glider_core.c ****   }
+ 158:Glider-Core/glider_core.c **** 
+ 159:Glider-Core/glider_core.c ****   for (;;)
+ 160:Glider-Core/glider_core.c ****   {
+ 161:Glider-Core/glider_core.c ****     (void)GliderCore_SendText("AT+TESTRD\r\n");
+ 162:Glider-Core/glider_core.c ****     osDelay(5000U);
+ 163:Glider-Core/glider_core.c ****   }
+ 164:Glider-Core/glider_core.c **** }
+ 165:Glider-Core/glider_core.c **** 
+ 166:Glider-Core/glider_core.c **** HAL_StatusTypeDef GliderCore_SendText(const char *text)
+ 167:Glider-Core/glider_core.c **** {
+ 278              		.loc 1 167 1 is_stmt 1 view -0
+ 279              		.cfi_startproc
+ 280              		@ args = 0, pretend = 0, frame = 0
+ 281              		@ frame_needed = 0, uses_anonymous_args = 0
+ 282              		.loc 1 167 1 is_stmt 0 view .LVU71
+ 283 0000 38B5     		push	{r3, r4, r5, lr}
+ 284              	.LCFI3:
+ 285              		.cfi_def_cfa_offset 16
+ 286              		.cfi_offset 3, -16
+ 287              		.cfi_offset 4, -12
+ 288              		.cfi_offset 5, -8
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 9
+
+
+ 289              		.cfi_offset 14, -4
+ 168:Glider-Core/glider_core.c ****   size_t len = 0;
+ 290              		.loc 1 168 3 is_stmt 1 view .LVU72
+ 291              	.LVL15:
+ 169:Glider-Core/glider_core.c ****   HAL_StatusTypeDef ret = HAL_ERROR;
+ 292              		.loc 1 169 3 view .LVU73
+ 170:Glider-Core/glider_core.c **** 
+ 171:Glider-Core/glider_core.c ****   if (s_uart == NULL || text == NULL)
+ 293              		.loc 1 171 3 view .LVU74
+ 294              		.loc 1 171 14 is_stmt 0 view .LVU75
+ 295 0002 174B     		ldr	r3, .L29
+ 296 0004 1D68     		ldr	r5, [r3]
+ 297              		.loc 1 171 6 view .LVU76
+ 298 0006 35B1     		cbz	r5, .L22
+ 299 0008 0446     		mov	r4, r0
+ 300              		.loc 1 171 22 discriminator 1 view .LVU77
+ 301 000a 20B1     		cbz	r0, .L22
+ 172:Glider-Core/glider_core.c ****   {
+ 173:Glider-Core/glider_core.c ****     s_tx_fail_count++;
+ 174:Glider-Core/glider_core.c ****     s_tx_last_hal_status = (uint32_t)HAL_ERROR;
+ 175:Glider-Core/glider_core.c ****     return HAL_ERROR;
+ 176:Glider-Core/glider_core.c ****   }
+ 177:Glider-Core/glider_core.c **** 
+ 178:Glider-Core/glider_core.c ****   len = strlen(text);
+ 302              		.loc 1 178 3 is_stmt 1 view .LVU78
+ 303              		.loc 1 178 9 is_stmt 0 view .LVU79
+ 304 000c FFF7FEFF 		bl	strlen
+ 305              	.LVL16:
+ 179:Glider-Core/glider_core.c ****   if (len == 0U)
+ 306              		.loc 1 179 3 is_stmt 1 view .LVU80
+ 307              		.loc 1 179 6 is_stmt 0 view .LVU81
+ 308 0010 48B9     		cbnz	r0, .L28
+ 180:Glider-Core/glider_core.c ****   {
+ 181:Glider-Core/glider_core.c ****     return HAL_OK;
+ 309              		.loc 1 181 12 view .LVU82
+ 310 0012 0020     		movs	r0, #0
+ 311              	.LVL17:
+ 312              	.L24:
+ 182:Glider-Core/glider_core.c ****   }
+ 183:Glider-Core/glider_core.c **** 
+ 184:Glider-Core/glider_core.c ****   s_tx_attempt_count++;
+ 185:Glider-Core/glider_core.c ****   ret = HAL_UART_Transmit(s_uart, (uint8_t *)text, (uint16_t)len, 200U);
+ 186:Glider-Core/glider_core.c ****   s_tx_last_hal_status = (uint32_t)ret;
+ 187:Glider-Core/glider_core.c ****   s_tx_last_uart_error = (uint32_t)s_uart->ErrorCode;
+ 188:Glider-Core/glider_core.c **** 
+ 189:Glider-Core/glider_core.c ****   if (ret == HAL_OK)
+ 190:Glider-Core/glider_core.c ****   {
+ 191:Glider-Core/glider_core.c ****     s_tx_ok_count++;
+ 192:Glider-Core/glider_core.c ****   }
+ 193:Glider-Core/glider_core.c ****   else
+ 194:Glider-Core/glider_core.c ****   {
+ 195:Glider-Core/glider_core.c ****     s_tx_fail_count++;
+ 196:Glider-Core/glider_core.c ****   }
+ 197:Glider-Core/glider_core.c **** 
+ 198:Glider-Core/glider_core.c ****   return ret;
+ 199:Glider-Core/glider_core.c **** }
+ 313              		.loc 1 199 1 view .LVU83
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 10
+
+
+ 314 0014 38BD     		pop	{r3, r4, r5, pc}
+ 315              	.LVL18:
+ 316              	.L22:
+ 173:Glider-Core/glider_core.c ****     s_tx_last_hal_status = (uint32_t)HAL_ERROR;
+ 317              		.loc 1 173 5 is_stmt 1 view .LVU84
+ 173:Glider-Core/glider_core.c ****     s_tx_last_hal_status = (uint32_t)HAL_ERROR;
+ 318              		.loc 1 173 20 is_stmt 0 view .LVU85
+ 319 0016 134A     		ldr	r2, .L29+4
+ 320 0018 1368     		ldr	r3, [r2]
+ 321 001a 0133     		adds	r3, r3, #1
+ 322 001c 1360     		str	r3, [r2]
+ 174:Glider-Core/glider_core.c ****     return HAL_ERROR;
+ 323              		.loc 1 174 5 is_stmt 1 view .LVU86
+ 174:Glider-Core/glider_core.c ****     return HAL_ERROR;
+ 324              		.loc 1 174 26 is_stmt 0 view .LVU87
+ 325 001e 0120     		movs	r0, #1
+ 326              	.LVL19:
+ 174:Glider-Core/glider_core.c ****     return HAL_ERROR;
+ 327              		.loc 1 174 26 view .LVU88
+ 328 0020 114B     		ldr	r3, .L29+8
+ 329 0022 1860     		str	r0, [r3]
+ 175:Glider-Core/glider_core.c ****   }
+ 330              		.loc 1 175 5 is_stmt 1 view .LVU89
+ 175:Glider-Core/glider_core.c ****   }
+ 331              		.loc 1 175 12 is_stmt 0 view .LVU90
+ 332 0024 F6E7     		b	.L24
+ 333              	.LVL20:
+ 334              	.L28:
+ 184:Glider-Core/glider_core.c ****   ret = HAL_UART_Transmit(s_uart, (uint8_t *)text, (uint16_t)len, 200U);
+ 335              		.loc 1 184 3 is_stmt 1 view .LVU91
+ 184:Glider-Core/glider_core.c ****   ret = HAL_UART_Transmit(s_uart, (uint8_t *)text, (uint16_t)len, 200U);
+ 336              		.loc 1 184 21 is_stmt 0 view .LVU92
+ 337 0026 1149     		ldr	r1, .L29+12
+ 338 0028 0B68     		ldr	r3, [r1]
+ 339 002a 0133     		adds	r3, r3, #1
+ 340 002c 0B60     		str	r3, [r1]
+ 185:Glider-Core/glider_core.c ****   s_tx_last_hal_status = (uint32_t)ret;
+ 341              		.loc 1 185 3 is_stmt 1 view .LVU93
+ 185:Glider-Core/glider_core.c ****   s_tx_last_hal_status = (uint32_t)ret;
+ 342              		.loc 1 185 9 is_stmt 0 view .LVU94
+ 343 002e C823     		movs	r3, #200
+ 344 0030 82B2     		uxth	r2, r0
+ 345 0032 2146     		mov	r1, r4
+ 346 0034 2846     		mov	r0, r5
+ 347              	.LVL21:
+ 185:Glider-Core/glider_core.c ****   s_tx_last_hal_status = (uint32_t)ret;
+ 348              		.loc 1 185 9 view .LVU95
+ 349 0036 FFF7FEFF 		bl	HAL_UART_Transmit
+ 350              	.LVL22:
+ 186:Glider-Core/glider_core.c ****   s_tx_last_uart_error = (uint32_t)s_uart->ErrorCode;
+ 351              		.loc 1 186 3 is_stmt 1 view .LVU96
+ 186:Glider-Core/glider_core.c ****   s_tx_last_uart_error = (uint32_t)s_uart->ErrorCode;
+ 352              		.loc 1 186 24 is_stmt 0 view .LVU97
+ 353 003a 0B4B     		ldr	r3, .L29+8
+ 354 003c 1860     		str	r0, [r3]
+ 187:Glider-Core/glider_core.c **** 
+ 355              		.loc 1 187 3 is_stmt 1 view .LVU98
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 11
+
+
+ 187:Glider-Core/glider_core.c **** 
+ 356              		.loc 1 187 42 is_stmt 0 view .LVU99
+ 357 003e 084B     		ldr	r3, .L29
+ 358 0040 1B68     		ldr	r3, [r3]
+ 359 0042 D3F89020 		ldr	r2, [r3, #144]
+ 187:Glider-Core/glider_core.c **** 
+ 360              		.loc 1 187 24 view .LVU100
+ 361 0046 0A4B     		ldr	r3, .L29+16
+ 362 0048 1A60     		str	r2, [r3]
+ 189:Glider-Core/glider_core.c ****   {
+ 363              		.loc 1 189 3 is_stmt 1 view .LVU101
+ 189:Glider-Core/glider_core.c ****   {
+ 364              		.loc 1 189 6 is_stmt 0 view .LVU102
+ 365 004a 20B9     		cbnz	r0, .L25
+ 191:Glider-Core/glider_core.c ****   }
+ 366              		.loc 1 191 5 is_stmt 1 view .LVU103
+ 191:Glider-Core/glider_core.c ****   }
+ 367              		.loc 1 191 18 is_stmt 0 view .LVU104
+ 368 004c 094A     		ldr	r2, .L29+20
+ 369 004e 1368     		ldr	r3, [r2]
+ 370 0050 0133     		adds	r3, r3, #1
+ 371 0052 1360     		str	r3, [r2]
+ 372 0054 DEE7     		b	.L24
+ 373              	.L25:
+ 195:Glider-Core/glider_core.c ****   }
+ 374              		.loc 1 195 5 is_stmt 1 view .LVU105
+ 195:Glider-Core/glider_core.c ****   }
+ 375              		.loc 1 195 20 is_stmt 0 view .LVU106
+ 376 0056 034A     		ldr	r2, .L29+4
+ 377 0058 1368     		ldr	r3, [r2]
+ 378 005a 0133     		adds	r3, r3, #1
+ 379 005c 1360     		str	r3, [r2]
+ 380 005e D9E7     		b	.L24
+ 381              	.L30:
+ 382              		.align	2
+ 383              	.L29:
+ 384 0060 00000000 		.word	s_uart
+ 385 0064 00000000 		.word	s_tx_fail_count
+ 386 0068 00000000 		.word	s_tx_last_hal_status
+ 387 006c 00000000 		.word	s_tx_attempt_count
+ 388 0070 00000000 		.word	s_tx_last_uart_error
+ 389 0074 00000000 		.word	s_tx_ok_count
+ 390              		.cfi_endproc
+ 391              	.LFE346:
+ 393              		.section	.rodata.GliderCore_RunTxTask.str1.4,"aMS",%progbits,1
+ 394              		.align	2
+ 395              	.LC0:
+ 396 0000 41542B54 		.ascii	"AT+TESTRD\015\012\000"
+ 396      45535452 
+ 396      440D0A00 
+ 397              		.section	.text.GliderCore_RunTxTask,"ax",%progbits
+ 398              		.align	1
+ 399              		.global	GliderCore_RunTxTask
+ 400              		.syntax unified
+ 401              		.thumb
+ 402              		.thumb_func
+ 404              	GliderCore_RunTxTask:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 12
+
+
+ 405              	.LFB345:
+ 150:Glider-Core/glider_core.c ****   size_t idx = 0;
+ 406              		.loc 1 150 1 is_stmt 1 view -0
+ 407              		.cfi_startproc
+ 408              		@ args = 0, pretend = 0, frame = 0
+ 409              		@ frame_needed = 0, uses_anonymous_args = 0
+ 410 0000 10B5     		push	{r4, lr}
+ 411              	.LCFI4:
+ 412              		.cfi_def_cfa_offset 8
+ 413              		.cfi_offset 4, -8
+ 414              		.cfi_offset 14, -4
+ 151:Glider-Core/glider_core.c **** 
+ 415              		.loc 1 151 3 view .LVU108
+ 416              	.LVL23:
+ 153:Glider-Core/glider_core.c ****   {
+ 417              		.loc 1 153 3 view .LVU109
+ 153:Glider-Core/glider_core.c ****   {
+ 418              		.loc 1 153 12 is_stmt 0 view .LVU110
+ 419 0002 0024     		movs	r4, #0
+ 153:Glider-Core/glider_core.c ****   {
+ 420              		.loc 1 153 3 view .LVU111
+ 421 0004 09E0     		b	.L32
+ 422              	.LVL24:
+ 423              	.L33:
+ 155:Glider-Core/glider_core.c ****     osDelay(500U);
+ 424              		.loc 1 155 5 is_stmt 1 discriminator 3 view .LVU112
+ 155:Glider-Core/glider_core.c ****     osDelay(500U);
+ 425              		.loc 1 155 11 is_stmt 0 discriminator 3 view .LVU113
+ 426 0006 0A4B     		ldr	r3, .L36
+ 427 0008 53F82400 		ldr	r0, [r3, r4, lsl #2]
+ 428 000c FFF7FEFF 		bl	GliderCore_SendText
+ 429              	.LVL25:
+ 156:Glider-Core/glider_core.c ****   }
+ 430              		.loc 1 156 5 is_stmt 1 discriminator 3 view .LVU114
+ 431 0010 4FF4FA70 		mov	r0, #500
+ 432 0014 FFF7FEFF 		bl	osDelay
+ 433              	.LVL26:
+ 153:Glider-Core/glider_core.c ****   {
+ 434              		.loc 1 153 84 discriminator 3 view .LVU115
+ 435 0018 0134     		adds	r4, r4, #1
+ 436              	.LVL27:
+ 437              	.L32:
+ 153:Glider-Core/glider_core.c ****   {
+ 438              		.loc 1 153 21 discriminator 1 view .LVU116
+ 439 001a 022C     		cmp	r4, #2
+ 440 001c F3D9     		bls	.L33
+ 441              	.L34:
+ 159:Glider-Core/glider_core.c ****   {
+ 442              		.loc 1 159 3 discriminator 1 view .LVU117
+ 161:Glider-Core/glider_core.c ****     osDelay(5000U);
+ 443              		.loc 1 161 5 discriminator 1 view .LVU118
+ 161:Glider-Core/glider_core.c ****     osDelay(5000U);
+ 444              		.loc 1 161 11 is_stmt 0 discriminator 1 view .LVU119
+ 445 001e 0548     		ldr	r0, .L36+4
+ 446 0020 FFF7FEFF 		bl	GliderCore_SendText
+ 447              	.LVL28:
+ 162:Glider-Core/glider_core.c ****   }
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 13
+
+
+ 448              		.loc 1 162 5 is_stmt 1 discriminator 1 view .LVU120
+ 449 0024 41F28830 		movw	r0, #5000
+ 450 0028 FFF7FEFF 		bl	osDelay
+ 451              	.LVL29:
+ 159:Glider-Core/glider_core.c ****   {
+ 452              		.loc 1 159 3 discriminator 1 view .LVU121
+ 453 002c F7E7     		b	.L34
+ 454              	.L37:
+ 455 002e 00BF     		.align	2
+ 456              	.L36:
+ 457 0030 00000000 		.word	s_boot_test_cmds
+ 458 0034 00000000 		.word	.LC0
+ 459              		.cfi_endproc
+ 460              	.LFE345:
+ 462              		.section	.text.GliderCore_GetRxLineCount,"ax",%progbits
+ 463              		.align	1
+ 464              		.global	GliderCore_GetRxLineCount
+ 465              		.syntax unified
+ 466              		.thumb
+ 467              		.thumb_func
+ 469              	GliderCore_GetRxLineCount:
+ 470              	.LFB347:
+ 200:Glider-Core/glider_core.c **** 
+ 201:Glider-Core/glider_core.c **** uint32_t GliderCore_GetRxLineCount(void)
+ 202:Glider-Core/glider_core.c **** {
+ 471              		.loc 1 202 1 view -0
+ 472              		.cfi_startproc
+ 473              		@ args = 0, pretend = 0, frame = 0
+ 474              		@ frame_needed = 0, uses_anonymous_args = 0
+ 475              		@ link register save eliminated.
+ 203:Glider-Core/glider_core.c ****   return s_rx_line_count;
+ 476              		.loc 1 203 3 view .LVU123
+ 477              		.loc 1 203 10 is_stmt 0 view .LVU124
+ 478 0000 014B     		ldr	r3, .L39
+ 479 0002 1868     		ldr	r0, [r3]
+ 204:Glider-Core/glider_core.c **** }
+ 480              		.loc 1 204 1 view .LVU125
+ 481 0004 7047     		bx	lr
+ 482              	.L40:
+ 483 0006 00BF     		.align	2
+ 484              	.L39:
+ 485 0008 00000000 		.word	s_rx_line_count
+ 486              		.cfi_endproc
+ 487              	.LFE347:
+ 489              		.section	.text.GliderCore_GetRxOverflowCount,"ax",%progbits
+ 490              		.align	1
+ 491              		.global	GliderCore_GetRxOverflowCount
+ 492              		.syntax unified
+ 493              		.thumb
+ 494              		.thumb_func
+ 496              	GliderCore_GetRxOverflowCount:
+ 497              	.LFB348:
+ 205:Glider-Core/glider_core.c **** 
+ 206:Glider-Core/glider_core.c **** uint32_t GliderCore_GetRxOverflowCount(void)
+ 207:Glider-Core/glider_core.c **** {
+ 498              		.loc 1 207 1 is_stmt 1 view -0
+ 499              		.cfi_startproc
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 14
+
+
+ 500              		@ args = 0, pretend = 0, frame = 0
+ 501              		@ frame_needed = 0, uses_anonymous_args = 0
+ 502              		@ link register save eliminated.
+ 208:Glider-Core/glider_core.c ****   return s_rx_overflow_count;
+ 503              		.loc 1 208 3 view .LVU127
+ 504              		.loc 1 208 10 is_stmt 0 view .LVU128
+ 505 0000 014B     		ldr	r3, .L42
+ 506 0002 1868     		ldr	r0, [r3]
+ 209:Glider-Core/glider_core.c **** }
+ 507              		.loc 1 209 1 view .LVU129
+ 508 0004 7047     		bx	lr
+ 509              	.L43:
+ 510 0006 00BF     		.align	2
+ 511              	.L42:
+ 512 0008 00000000 		.word	s_rx_overflow_count
+ 513              		.cfi_endproc
+ 514              	.LFE348:
+ 516              		.section	.text.GliderCore_GetTxAttemptCount,"ax",%progbits
+ 517              		.align	1
+ 518              		.global	GliderCore_GetTxAttemptCount
+ 519              		.syntax unified
+ 520              		.thumb
+ 521              		.thumb_func
+ 523              	GliderCore_GetTxAttemptCount:
+ 524              	.LFB349:
+ 210:Glider-Core/glider_core.c **** 
+ 211:Glider-Core/glider_core.c **** uint32_t GliderCore_GetTxAttemptCount(void)
+ 212:Glider-Core/glider_core.c **** {
+ 525              		.loc 1 212 1 is_stmt 1 view -0
+ 526              		.cfi_startproc
+ 527              		@ args = 0, pretend = 0, frame = 0
+ 528              		@ frame_needed = 0, uses_anonymous_args = 0
+ 529              		@ link register save eliminated.
+ 213:Glider-Core/glider_core.c ****   return s_tx_attempt_count;
+ 530              		.loc 1 213 3 view .LVU131
+ 531              		.loc 1 213 10 is_stmt 0 view .LVU132
+ 532 0000 014B     		ldr	r3, .L45
+ 533 0002 1868     		ldr	r0, [r3]
+ 214:Glider-Core/glider_core.c **** }
+ 534              		.loc 1 214 1 view .LVU133
+ 535 0004 7047     		bx	lr
+ 536              	.L46:
+ 537 0006 00BF     		.align	2
+ 538              	.L45:
+ 539 0008 00000000 		.word	s_tx_attempt_count
+ 540              		.cfi_endproc
+ 541              	.LFE349:
+ 543              		.section	.text.GliderCore_GetTxOkCount,"ax",%progbits
+ 544              		.align	1
+ 545              		.global	GliderCore_GetTxOkCount
+ 546              		.syntax unified
+ 547              		.thumb
+ 548              		.thumb_func
+ 550              	GliderCore_GetTxOkCount:
+ 551              	.LFB350:
+ 215:Glider-Core/glider_core.c **** 
+ 216:Glider-Core/glider_core.c **** uint32_t GliderCore_GetTxOkCount(void)
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 15
+
+
+ 217:Glider-Core/glider_core.c **** {
+ 552              		.loc 1 217 1 is_stmt 1 view -0
+ 553              		.cfi_startproc
+ 554              		@ args = 0, pretend = 0, frame = 0
+ 555              		@ frame_needed = 0, uses_anonymous_args = 0
+ 556              		@ link register save eliminated.
+ 218:Glider-Core/glider_core.c ****   return s_tx_ok_count;
+ 557              		.loc 1 218 3 view .LVU135
+ 558              		.loc 1 218 10 is_stmt 0 view .LVU136
+ 559 0000 014B     		ldr	r3, .L48
+ 560 0002 1868     		ldr	r0, [r3]
+ 219:Glider-Core/glider_core.c **** }
+ 561              		.loc 1 219 1 view .LVU137
+ 562 0004 7047     		bx	lr
+ 563              	.L49:
+ 564 0006 00BF     		.align	2
+ 565              	.L48:
+ 566 0008 00000000 		.word	s_tx_ok_count
+ 567              		.cfi_endproc
+ 568              	.LFE350:
+ 570              		.section	.text.GliderCore_GetTxFailCount,"ax",%progbits
+ 571              		.align	1
+ 572              		.global	GliderCore_GetTxFailCount
+ 573              		.syntax unified
+ 574              		.thumb
+ 575              		.thumb_func
+ 577              	GliderCore_GetTxFailCount:
+ 578              	.LFB351:
+ 220:Glider-Core/glider_core.c **** 
+ 221:Glider-Core/glider_core.c **** uint32_t GliderCore_GetTxFailCount(void)
+ 222:Glider-Core/glider_core.c **** {
+ 579              		.loc 1 222 1 is_stmt 1 view -0
+ 580              		.cfi_startproc
+ 581              		@ args = 0, pretend = 0, frame = 0
+ 582              		@ frame_needed = 0, uses_anonymous_args = 0
+ 583              		@ link register save eliminated.
+ 223:Glider-Core/glider_core.c ****   return s_tx_fail_count;
+ 584              		.loc 1 223 3 view .LVU139
+ 585              		.loc 1 223 10 is_stmt 0 view .LVU140
+ 586 0000 014B     		ldr	r3, .L51
+ 587 0002 1868     		ldr	r0, [r3]
+ 224:Glider-Core/glider_core.c **** }
+ 588              		.loc 1 224 1 view .LVU141
+ 589 0004 7047     		bx	lr
+ 590              	.L52:
+ 591 0006 00BF     		.align	2
+ 592              	.L51:
+ 593 0008 00000000 		.word	s_tx_fail_count
+ 594              		.cfi_endproc
+ 595              	.LFE351:
+ 597              		.section	.text.GliderCore_GetLastTxHalStatus,"ax",%progbits
+ 598              		.align	1
+ 599              		.global	GliderCore_GetLastTxHalStatus
+ 600              		.syntax unified
+ 601              		.thumb
+ 602              		.thumb_func
+ 604              	GliderCore_GetLastTxHalStatus:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 16
+
+
+ 605              	.LFB352:
+ 225:Glider-Core/glider_core.c **** 
+ 226:Glider-Core/glider_core.c **** uint32_t GliderCore_GetLastTxHalStatus(void)
+ 227:Glider-Core/glider_core.c **** {
+ 606              		.loc 1 227 1 is_stmt 1 view -0
+ 607              		.cfi_startproc
+ 608              		@ args = 0, pretend = 0, frame = 0
+ 609              		@ frame_needed = 0, uses_anonymous_args = 0
+ 610              		@ link register save eliminated.
+ 228:Glider-Core/glider_core.c ****   return s_tx_last_hal_status;
+ 611              		.loc 1 228 3 view .LVU143
+ 612              		.loc 1 228 10 is_stmt 0 view .LVU144
+ 613 0000 014B     		ldr	r3, .L54
+ 614 0002 1868     		ldr	r0, [r3]
+ 229:Glider-Core/glider_core.c **** }
+ 615              		.loc 1 229 1 view .LVU145
+ 616 0004 7047     		bx	lr
+ 617              	.L55:
+ 618 0006 00BF     		.align	2
+ 619              	.L54:
+ 620 0008 00000000 		.word	s_tx_last_hal_status
+ 621              		.cfi_endproc
+ 622              	.LFE352:
+ 624              		.section	.text.GliderCore_GetLastUartErrorCode,"ax",%progbits
+ 625              		.align	1
+ 626              		.global	GliderCore_GetLastUartErrorCode
+ 627              		.syntax unified
+ 628              		.thumb
+ 629              		.thumb_func
+ 631              	GliderCore_GetLastUartErrorCode:
+ 632              	.LFB353:
+ 230:Glider-Core/glider_core.c **** 
+ 231:Glider-Core/glider_core.c **** uint32_t GliderCore_GetLastUartErrorCode(void)
+ 232:Glider-Core/glider_core.c **** {
+ 633              		.loc 1 232 1 is_stmt 1 view -0
+ 634              		.cfi_startproc
+ 635              		@ args = 0, pretend = 0, frame = 0
+ 636              		@ frame_needed = 0, uses_anonymous_args = 0
+ 637              		@ link register save eliminated.
+ 233:Glider-Core/glider_core.c ****   return s_tx_last_uart_error;
+ 638              		.loc 1 233 3 view .LVU147
+ 639              		.loc 1 233 10 is_stmt 0 view .LVU148
+ 640 0000 014B     		ldr	r3, .L57
+ 641 0002 1868     		ldr	r0, [r3]
+ 234:Glider-Core/glider_core.c **** }
+ 642              		.loc 1 234 1 view .LVU149
+ 643 0004 7047     		bx	lr
+ 644              	.L58:
+ 645 0006 00BF     		.align	2
+ 646              	.L57:
+ 647 0008 00000000 		.word	s_tx_last_uart_error
+ 648              		.cfi_endproc
+ 649              	.LFE353:
+ 651              		.section	.text.GliderCore_OnTextFrame,"ax",%progbits
+ 652              		.align	1
+ 653              		.weak	GliderCore_OnTextFrame
+ 654              		.syntax unified
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 17
+
+
+ 655              		.thumb
+ 656              		.thumb_func
+ 658              	GliderCore_OnTextFrame:
+ 659              	.LVL30:
+ 660              	.LFB354:
+ 235:Glider-Core/glider_core.c **** 
+ 236:Glider-Core/glider_core.c **** __weak void GliderCore_OnTextFrame(const char *line)
+ 237:Glider-Core/glider_core.c **** {
+ 661              		.loc 1 237 1 is_stmt 1 view -0
+ 662              		.cfi_startproc
+ 663              		@ args = 0, pretend = 0, frame = 0
+ 664              		@ frame_needed = 0, uses_anonymous_args = 0
+ 665              		@ link register save eliminated.
+ 238:Glider-Core/glider_core.c ****   (void)line;
+ 666              		.loc 1 238 3 view .LVU151
+ 239:Glider-Core/glider_core.c **** }
+ 667              		.loc 1 239 1 is_stmt 0 view .LVU152
+ 668 0000 7047     		bx	lr
+ 669              		.cfi_endproc
+ 670              	.LFE354:
+ 672              		.section	.text.GliderCore_OnBinaryFrame,"ax",%progbits
+ 673              		.align	1
+ 674              		.weak	GliderCore_OnBinaryFrame
+ 675              		.syntax unified
+ 676              		.thumb
+ 677              		.thumb_func
+ 679              	GliderCore_OnBinaryFrame:
+ 680              	.LVL31:
+ 681              	.LFB355:
+ 240:Glider-Core/glider_core.c **** 
+ 241:Glider-Core/glider_core.c **** __weak void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len)
+ 242:Glider-Core/glider_core.c **** {
+ 682              		.loc 1 242 1 is_stmt 1 view -0
+ 683              		.cfi_startproc
+ 684              		@ args = 0, pretend = 0, frame = 0
+ 685              		@ frame_needed = 0, uses_anonymous_args = 0
+ 686              		@ link register save eliminated.
+ 243:Glider-Core/glider_core.c ****   (void)payload;
+ 687              		.loc 1 243 3 view .LVU154
+ 244:Glider-Core/glider_core.c ****   (void)payload_len;
+ 688              		.loc 1 244 3 view .LVU155
+ 245:Glider-Core/glider_core.c **** }
+ 689              		.loc 1 245 1 is_stmt 0 view .LVU156
+ 690 0000 7047     		bx	lr
+ 691              		.cfi_endproc
+ 692              	.LFE355:
+ 694              		.section	.text.process_line,"ax",%progbits
+ 695              		.align	1
+ 696              		.syntax unified
+ 697              		.thumb
+ 698              		.thumb_func
+ 700              	process_line:
+ 701              	.LVL32:
+ 702              	.LFB341:
+  69:Glider-Core/glider_core.c ****   GliderRdssDecodedFrame frame;
+ 703              		.loc 1 69 1 is_stmt 1 view -0
+ 704              		.cfi_startproc
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 18
+
+
+ 705              		@ args = 0, pretend = 0, frame = 384
+ 706              		@ frame_needed = 0, uses_anonymous_args = 0
+  69:Glider-Core/glider_core.c ****   GliderRdssDecodedFrame frame;
+ 707              		.loc 1 69 1 is_stmt 0 view .LVU158
+ 708 0000 00B5     		push	{lr}
+ 709              	.LCFI5:
+ 710              		.cfi_def_cfa_offset 4
+ 711              		.cfi_offset 14, -4
+ 712 0002 E1B0     		sub	sp, sp, #388
+ 713              	.LCFI6:
+ 714              		.cfi_def_cfa_offset 392
+  70:Glider-Core/glider_core.c **** 
+ 715              		.loc 1 70 3 is_stmt 1 view .LVU159
+  72:Glider-Core/glider_core.c ****   {
+ 716              		.loc 1 72 3 view .LVU160
+  72:Glider-Core/glider_core.c ****   {
+ 717              		.loc 1 72 8 is_stmt 0 view .LVU161
+ 718 0004 01A9     		add	r1, sp, #4
+ 719 0006 FFF7FEFF 		bl	GliderRdssCodec_TryDecodeLine
+ 720              	.LVL33:
+  72:Glider-Core/glider_core.c ****   {
+ 721              		.loc 1 72 6 view .LVU162
+ 722 000a 58B1     		cbz	r0, .L61
+  77:Glider-Core/glider_core.c **** 
+ 723              		.loc 1 77 3 is_stmt 1 view .LVU163
+  77:Glider-Core/glider_core.c **** 
+ 724              		.loc 1 77 18 is_stmt 0 view .LVU164
+ 725 000c 0A4A     		ldr	r2, .L67
+ 726 000e 1368     		ldr	r3, [r2]
+ 727 0010 0133     		adds	r3, r3, #1
+ 728 0012 1360     		str	r3, [r2]
+  79:Glider-Core/glider_core.c ****   {
+ 729              		.loc 1 79 3 is_stmt 1 view .LVU165
+  79:Glider-Core/glider_core.c ****   {
+ 730              		.loc 1 79 12 is_stmt 0 view .LVU166
+ 731 0014 9DF80430 		ldrb	r3, [sp, #4]	@ zero_extendqisi2
+  79:Glider-Core/glider_core.c ****   {
+ 732              		.loc 1 79 6 view .LVU167
+ 733 0018 042B     		cmp	r3, #4
+ 734 001a 06D0     		beq	.L66
+  85:Glider-Core/glider_core.c **** }
+ 735              		.loc 1 85 3 is_stmt 1 view .LVU168
+ 736 001c 0DF13900 		add	r0, sp, #57
+ 737 0020 FFF7FEFF 		bl	GliderCore_OnTextFrame
+ 738              	.LVL34:
+ 739              	.L61:
+  86:Glider-Core/glider_core.c **** 
+ 740              		.loc 1 86 1 is_stmt 0 view .LVU169
+ 741 0024 61B0     		add	sp, sp, #388
+ 742              	.LCFI7:
+ 743              		.cfi_remember_state
+ 744              		.cfi_def_cfa_offset 4
+ 745              		@ sp needed
+ 746 0026 5DF804FB 		ldr	pc, [sp], #4
+ 747              	.L66:
+ 748              	.LCFI8:
+ 749              		.cfi_restore_state
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 19
+
+
+  81:Glider-Core/glider_core.c ****     return;
+ 750              		.loc 1 81 5 is_stmt 1 view .LVU170
+ 751 002a 5F99     		ldr	r1, [sp, #380]
+ 752 002c 0DF1F900 		add	r0, sp, #249
+ 753 0030 FFF7FEFF 		bl	GliderCore_OnBinaryFrame
+ 754              	.LVL35:
+  82:Glider-Core/glider_core.c ****   }
+ 755              		.loc 1 82 5 view .LVU171
+ 756 0034 F6E7     		b	.L61
+ 757              	.L68:
+ 758 0036 00BF     		.align	2
+ 759              	.L67:
+ 760 0038 00000000 		.word	s_rx_line_count
+ 761              		.cfi_endproc
+ 762              	.LFE341:
+ 764              		.section	.text.process_rx_byte,"ax",%progbits
+ 765              		.align	1
+ 766              		.syntax unified
+ 767              		.thumb
+ 768              		.thumb_func
+ 770              	process_rx_byte:
+ 771              	.LVL36:
+ 772              	.LFB342:
+  89:Glider-Core/glider_core.c ****   if (byte == '\r')
+ 773              		.loc 1 89 1 view -0
+ 774              		.cfi_startproc
+ 775              		@ args = 0, pretend = 0, frame = 0
+ 776              		@ frame_needed = 0, uses_anonymous_args = 0
+  90:Glider-Core/glider_core.c ****   {
+ 777              		.loc 1 90 3 view .LVU173
+  90:Glider-Core/glider_core.c ****   {
+ 778              		.loc 1 90 6 is_stmt 0 view .LVU174
+ 779 0000 0D28     		cmp	r0, #13
+ 780 0002 12D0     		beq	.L75
+  95:Glider-Core/glider_core.c ****   {
+ 781              		.loc 1 95 3 is_stmt 1 view .LVU175
+  95:Glider-Core/glider_core.c ****   {
+ 782              		.loc 1 95 6 is_stmt 0 view .LVU176
+ 783 0004 0A28     		cmp	r0, #10
+ 784 0006 0DD0     		beq	.L78
+ 106:Glider-Core/glider_core.c ****   {
+ 785              		.loc 1 106 3 is_stmt 1 view .LVU177
+ 106:Glider-Core/glider_core.c ****   {
+ 786              		.loc 1 106 18 is_stmt 0 view .LVU178
+ 787 0008 0D4B     		ldr	r3, .L80
+ 788 000a 1B68     		ldr	r3, [r3]
+ 106:Glider-Core/glider_core.c ****   {
+ 789              		.loc 1 106 6 view .LVU179
+ 790 000c BE2B     		cmp	r3, #190
+ 791 000e 02D9     		bls	.L73
+ 108:Glider-Core/glider_core.c ****   }
+ 792              		.loc 1 108 5 is_stmt 1 view .LVU180
+ 108:Glider-Core/glider_core.c ****   }
+ 793              		.loc 1 108 16 is_stmt 0 view .LVU181
+ 794 0010 0B4B     		ldr	r3, .L80
+ 795 0012 0022     		movs	r2, #0
+ 796 0014 1A60     		str	r2, [r3]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 20
+
+
+ 797              	.L73:
+ 111:Glider-Core/glider_core.c **** }
+ 798              		.loc 1 111 3 is_stmt 1 view .LVU182
+ 111:Glider-Core/glider_core.c **** }
+ 799              		.loc 1 111 27 is_stmt 0 view .LVU183
+ 800 0016 0A4A     		ldr	r2, .L80
+ 801 0018 1368     		ldr	r3, [r2]
+ 802 001a 591C     		adds	r1, r3, #1
+ 803 001c 1160     		str	r1, [r2]
+ 111:Glider-Core/glider_core.c **** }
+ 804              		.loc 1 111 31 view .LVU184
+ 805 001e 094A     		ldr	r2, .L80+4
+ 806 0020 D054     		strb	r0, [r2, r3]
+ 807 0022 7047     		bx	lr
+ 808              	.L78:
+  97:Glider-Core/glider_core.c ****     {
+ 809              		.loc 1 97 5 is_stmt 1 view .LVU185
+  97:Glider-Core/glider_core.c ****     {
+ 810              		.loc 1 97 20 is_stmt 0 view .LVU186
+ 811 0024 064B     		ldr	r3, .L80
+ 812 0026 1B68     		ldr	r3, [r3]
+  97:Glider-Core/glider_core.c ****     {
+ 813              		.loc 1 97 8 view .LVU187
+ 814 0028 03B9     		cbnz	r3, .L79
+ 815              	.L75:
+ 816 002a 7047     		bx	lr
+ 817              	.L79:
+  89:Glider-Core/glider_core.c ****   if (byte == '\r')
+ 818              		.loc 1 89 1 view .LVU188
+ 819 002c 10B5     		push	{r4, lr}
+ 820              	.LCFI9:
+ 821              		.cfi_def_cfa_offset 8
+ 822              		.cfi_offset 4, -8
+ 823              		.cfi_offset 14, -4
+  99:Glider-Core/glider_core.c ****       process_line(s_line_buffer);
+ 824              		.loc 1 99 7 is_stmt 1 view .LVU189
+  99:Glider-Core/glider_core.c ****       process_line(s_line_buffer);
+ 825              		.loc 1 99 33 is_stmt 0 view .LVU190
+ 826 002e 0548     		ldr	r0, .L80+4
+ 827              	.LVL37:
+  99:Glider-Core/glider_core.c ****       process_line(s_line_buffer);
+ 828              		.loc 1 99 33 view .LVU191
+ 829 0030 0024     		movs	r4, #0
+ 830 0032 C454     		strb	r4, [r0, r3]
+ 100:Glider-Core/glider_core.c ****       s_line_len = 0;
+ 831              		.loc 1 100 7 is_stmt 1 view .LVU192
+ 832 0034 FFF7FEFF 		bl	process_line
+ 833              	.LVL38:
+ 101:Glider-Core/glider_core.c ****     }
+ 834              		.loc 1 101 7 view .LVU193
+ 101:Glider-Core/glider_core.c ****     }
+ 835              		.loc 1 101 18 is_stmt 0 view .LVU194
+ 836 0038 014B     		ldr	r3, .L80
+ 837 003a 1C60     		str	r4, [r3]
+ 103:Glider-Core/glider_core.c ****   }
+ 838              		.loc 1 103 5 is_stmt 1 view .LVU195
+ 112:Glider-Core/glider_core.c **** 
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 21
+
+
+ 839              		.loc 1 112 1 is_stmt 0 view .LVU196
+ 840 003c 10BD     		pop	{r4, pc}
+ 841              	.L81:
+ 842 003e 00BF     		.align	2
+ 843              	.L80:
+ 844 0040 00000000 		.word	s_line_len
+ 845 0044 00000000 		.word	s_line_buffer
+ 846              		.cfi_endproc
+ 847              	.LFE342:
+ 849              		.section	.text.GliderCore_RunRxTask,"ax",%progbits
+ 850              		.align	1
+ 851              		.global	GliderCore_RunRxTask
+ 852              		.syntax unified
+ 853              		.thumb
+ 854              		.thumb_func
+ 856              	GliderCore_RunRxTask:
+ 857              	.LFB344:
+ 135:Glider-Core/glider_core.c ****   uint8_t byte = 0;
+ 858              		.loc 1 135 1 is_stmt 1 view -0
+ 859              		.cfi_startproc
+ 860              		@ Volatile: function does not return.
+ 861              		@ args = 0, pretend = 0, frame = 8
+ 862              		@ frame_needed = 0, uses_anonymous_args = 0
+ 863 0000 00B5     		push	{lr}
+ 864              	.LCFI10:
+ 865              		.cfi_def_cfa_offset 4
+ 866              		.cfi_offset 14, -4
+ 867 0002 83B0     		sub	sp, sp, #12
+ 868              	.LCFI11:
+ 869              		.cfi_def_cfa_offset 16
+ 136:Glider-Core/glider_core.c **** 
+ 870              		.loc 1 136 3 view .LVU198
+ 136:Glider-Core/glider_core.c **** 
+ 871              		.loc 1 136 11 is_stmt 0 view .LVU199
+ 872 0004 0023     		movs	r3, #0
+ 873 0006 8DF80730 		strb	r3, [sp, #7]
+ 874 000a 03E0     		b	.L83
+ 875              	.L84:
+ 142:Glider-Core/glider_core.c ****     }
+ 876              		.loc 1 142 7 is_stmt 1 view .LVU200
+ 877 000c 9DF80700 		ldrb	r0, [sp, #7]	@ zero_extendqisi2
+ 878 0010 FFF7FEFF 		bl	process_rx_byte
+ 879              	.LVL39:
+ 880              	.L83:
+ 140:Glider-Core/glider_core.c ****     {
+ 881              		.loc 1 140 12 view .LVU201
+ 882 0014 0DF10700 		add	r0, sp, #7
+ 883 0018 FFF7FEFF 		bl	ring_pop
+ 884              	.LVL40:
+ 885 001c 0028     		cmp	r0, #0
+ 886 001e F5D1     		bne	.L84
+ 145:Glider-Core/glider_core.c ****   }
+ 887              		.loc 1 145 5 view .LVU202
+ 888 0020 0220     		movs	r0, #2
+ 889 0022 FFF7FEFF 		bl	osDelay
+ 890              	.LVL41:
+ 138:Glider-Core/glider_core.c ****   {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 22
+
+
+ 891              		.loc 1 138 3 view .LVU203
+ 140:Glider-Core/glider_core.c ****     {
+ 892              		.loc 1 140 11 is_stmt 0 view .LVU204
+ 893 0026 F5E7     		b	.L83
+ 894              		.cfi_endproc
+ 895              	.LFE344:
+ 897              		.section	.text.HAL_UART_RxCpltCallback,"ax",%progbits
+ 898              		.align	1
+ 899              		.global	HAL_UART_RxCpltCallback
+ 900              		.syntax unified
+ 901              		.thumb
+ 902              		.thumb_func
+ 904              	HAL_UART_RxCpltCallback:
+ 905              	.LVL42:
+ 906              	.LFB356:
+ 246:Glider-Core/glider_core.c **** 
+ 247:Glider-Core/glider_core.c **** void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+ 248:Glider-Core/glider_core.c **** {
+ 907              		.loc 1 248 1 is_stmt 1 view -0
+ 908              		.cfi_startproc
+ 909              		@ args = 0, pretend = 0, frame = 0
+ 910              		@ frame_needed = 0, uses_anonymous_args = 0
+ 249:Glider-Core/glider_core.c ****   if (huart == NULL)
+ 911              		.loc 1 249 3 view .LVU206
+ 912              		.loc 1 249 6 is_stmt 0 view .LVU207
+ 913 0000 30B1     		cbz	r0, .L90
+ 250:Glider-Core/glider_core.c ****   {
+ 251:Glider-Core/glider_core.c ****     return;
+ 252:Glider-Core/glider_core.c ****   }
+ 253:Glider-Core/glider_core.c **** 
+ 254:Glider-Core/glider_core.c ****   if (s_uart != NULL && huart->Instance == s_uart->Instance)
+ 914              		.loc 1 254 3 is_stmt 1 view .LVU208
+ 915              		.loc 1 254 14 is_stmt 0 view .LVU209
+ 916 0002 0A4B     		ldr	r3, .L94
+ 917 0004 1B68     		ldr	r3, [r3]
+ 918              		.loc 1 254 6 view .LVU210
+ 919 0006 1BB1     		cbz	r3, .L90
+ 920              		.loc 1 254 30 discriminator 1 view .LVU211
+ 921 0008 0268     		ldr	r2, [r0]
+ 922              		.loc 1 254 50 discriminator 1 view .LVU212
+ 923 000a 1B68     		ldr	r3, [r3]
+ 924              		.loc 1 254 22 discriminator 1 view .LVU213
+ 925 000c 9A42     		cmp	r2, r3
+ 926 000e 00D0     		beq	.L93
+ 927              	.L90:
+ 928 0010 7047     		bx	lr
+ 929              	.L93:
+ 248:Glider-Core/glider_core.c ****   if (huart == NULL)
+ 930              		.loc 1 248 1 view .LVU214
+ 931 0012 10B5     		push	{r4, lr}
+ 932              	.LCFI12:
+ 933              		.cfi_def_cfa_offset 8
+ 934              		.cfi_offset 4, -8
+ 935              		.cfi_offset 14, -4
+ 255:Glider-Core/glider_core.c ****   {
+ 256:Glider-Core/glider_core.c ****     ring_push(s_rx_byte);
+ 936              		.loc 1 256 5 is_stmt 1 view .LVU215
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 23
+
+
+ 937 0014 064C     		ldr	r4, .L94+4
+ 938 0016 2078     		ldrb	r0, [r4]	@ zero_extendqisi2
+ 939              	.LVL43:
+ 940              		.loc 1 256 5 is_stmt 0 view .LVU216
+ 941 0018 FFF7FEFF 		bl	ring_push
+ 942              	.LVL44:
+ 257:Glider-Core/glider_core.c ****     (void)HAL_UART_Receive_IT(s_uart, (uint8_t *)&s_rx_byte, 1U);
+ 943              		.loc 1 257 5 is_stmt 1 view .LVU217
+ 944              		.loc 1 257 11 is_stmt 0 view .LVU218
+ 945 001c 0122     		movs	r2, #1
+ 946 001e 2146     		mov	r1, r4
+ 947 0020 024B     		ldr	r3, .L94
+ 948 0022 1868     		ldr	r0, [r3]
+ 949 0024 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 950              	.LVL45:
+ 258:Glider-Core/glider_core.c ****   }
+ 259:Glider-Core/glider_core.c **** }
+ 951              		.loc 1 259 1 view .LVU219
+ 952 0028 10BD     		pop	{r4, pc}
+ 953              	.L95:
+ 954 002a 00BF     		.align	2
+ 955              	.L94:
+ 956 002c 00000000 		.word	s_uart
+ 957 0030 00000000 		.word	s_rx_byte
+ 958              		.cfi_endproc
+ 959              	.LFE356:
+ 961              		.section	.rodata.str1.4,"aMS",%progbits,1
+ 962              		.align	2
+ 963              	.LC1:
+ 964 0000 41540D0A 		.ascii	"AT\015\012\000"
+ 964      00
+ 965 0005 000000   		.align	2
+ 966              	.LC2:
+ 967 0008 4154490D 		.ascii	"ATI\015\012\000"
+ 967      0A00
+ 968 000e 0000     		.align	2
+ 969              	.LC3:
+ 970 0010 41542B43 		.ascii	"AT+CSQ\015\012\000"
+ 970      53510D0A 
+ 970      00
+ 971              		.section	.rodata.s_boot_test_cmds,"a"
+ 972              		.align	2
+ 975              	s_boot_test_cmds:
+ 976 0000 00000000 		.word	.LC1
+ 977 0004 08000000 		.word	.LC2
+ 978 0008 10000000 		.word	.LC3
+ 979              		.section	.bss.s_line_len,"aw",%nobits
+ 980              		.align	2
+ 983              	s_line_len:
+ 984 0000 00000000 		.space	4
+ 985              		.section	.bss.s_line_buffer,"aw",%nobits
+ 986              		.align	2
+ 989              	s_line_buffer:
+ 990 0000 00000000 		.space	192
+ 990      00000000 
+ 990      00000000 
+ 990      00000000 
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 24
+
+
+ 990      00000000 
+ 991              		.section	.bss.s_tx_last_uart_error,"aw",%nobits
+ 992              		.align	2
+ 995              	s_tx_last_uart_error:
+ 996 0000 00000000 		.space	4
+ 997              		.section	.bss.s_tx_last_hal_status,"aw",%nobits
+ 998              		.align	2
+ 1001              	s_tx_last_hal_status:
+ 1002 0000 00000000 		.space	4
+ 1003              		.section	.bss.s_tx_fail_count,"aw",%nobits
+ 1004              		.align	2
+ 1007              	s_tx_fail_count:
+ 1008 0000 00000000 		.space	4
+ 1009              		.section	.bss.s_tx_ok_count,"aw",%nobits
+ 1010              		.align	2
+ 1013              	s_tx_ok_count:
+ 1014 0000 00000000 		.space	4
+ 1015              		.section	.bss.s_tx_attempt_count,"aw",%nobits
+ 1016              		.align	2
+ 1019              	s_tx_attempt_count:
+ 1020 0000 00000000 		.space	4
+ 1021              		.section	.bss.s_rx_line_count,"aw",%nobits
+ 1022              		.align	2
+ 1025              	s_rx_line_count:
+ 1026 0000 00000000 		.space	4
+ 1027              		.section	.bss.s_rx_overflow_count,"aw",%nobits
+ 1028              		.align	2
+ 1031              	s_rx_overflow_count:
+ 1032 0000 00000000 		.space	4
+ 1033              		.section	.bss.s_rx_byte,"aw",%nobits
+ 1036              	s_rx_byte:
+ 1037 0000 00       		.space	1
+ 1038              		.section	.bss.s_rx_tail,"aw",%nobits
+ 1039              		.align	1
+ 1042              	s_rx_tail:
+ 1043 0000 0000     		.space	2
+ 1044              		.section	.bss.s_rx_head,"aw",%nobits
+ 1045              		.align	1
+ 1048              	s_rx_head:
+ 1049 0000 0000     		.space	2
+ 1050              		.section	.bss.s_rx_ring,"aw",%nobits
+ 1051              		.align	2
+ 1054              	s_rx_ring:
+ 1055 0000 00000000 		.space	512
+ 1055      00000000 
+ 1055      00000000 
+ 1055      00000000 
+ 1055      00000000 
+ 1056              		.section	.bss.s_uart,"aw",%nobits
+ 1057              		.align	2
+ 1060              	s_uart:
+ 1061 0000 00000000 		.space	4
+ 1062              		.text
+ 1063              	.Letext0:
+ 1064              		.file 2 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 1065              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 1066              		.file 4 "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h743xx.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 25
+
+
+ 1067              		.file 5 "c:\\msys64\\mingw64\\lib\\gcc\\arm-none-eabi\\12.2.0\\include\\stddef.h"
+ 1068              		.file 6 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h"
+ 1069              		.file 7 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma.h"
+ 1070              		.file 8 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h"
+ 1071              		.file 9 "Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h"
+ 1072              		.file 10 "Glider-Core/glider_rdss_codec.h"
+ 1073              		.file 11 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\string.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 26
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 glider_core.c
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:20     .text.ring_pop:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:25     .text.ring_pop:00000000 ring_pop
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:93     .text.ring_pop:00000034 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1042   .bss.s_rx_tail:00000000 s_rx_tail
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1048   .bss.s_rx_head:00000000 s_rx_head
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1054   .bss.s_rx_ring:00000000 s_rx_ring
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:100    .text.ring_push:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:105    .text.ring_push:00000000 ring_push
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:166    .text.ring_push:00000034 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1031   .bss.s_rx_overflow_count:00000000 s_rx_overflow_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:174    .text.GliderCore_Init:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:180    .text.GliderCore_Init:00000000 GliderCore_Init
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:253    .text.GliderCore_Init:0000003c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1060   .bss.s_uart:00000000 s_uart
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:983    .bss.s_line_len:00000000 s_line_len
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1025   .bss.s_rx_line_count:00000000 s_rx_line_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1019   .bss.s_tx_attempt_count:00000000 s_tx_attempt_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1013   .bss.s_tx_ok_count:00000000 s_tx_ok_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1007   .bss.s_tx_fail_count:00000000 s_tx_fail_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1001   .bss.s_tx_last_hal_status:00000000 s_tx_last_hal_status
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:995    .bss.s_tx_last_uart_error:00000000 s_tx_last_uart_error
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1036   .bss.s_rx_byte:00000000 s_rx_byte
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:269    .text.GliderCore_SendText:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:275    .text.GliderCore_SendText:00000000 GliderCore_SendText
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:384    .text.GliderCore_SendText:00000060 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:394    .rodata.GliderCore_RunTxTask.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:398    .text.GliderCore_RunTxTask:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:404    .text.GliderCore_RunTxTask:00000000 GliderCore_RunTxTask
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:457    .text.GliderCore_RunTxTask:00000030 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:975    .rodata.s_boot_test_cmds:00000000 s_boot_test_cmds
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:463    .text.GliderCore_GetRxLineCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:469    .text.GliderCore_GetRxLineCount:00000000 GliderCore_GetRxLineCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:485    .text.GliderCore_GetRxLineCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:490    .text.GliderCore_GetRxOverflowCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:496    .text.GliderCore_GetRxOverflowCount:00000000 GliderCore_GetRxOverflowCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:512    .text.GliderCore_GetRxOverflowCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:517    .text.GliderCore_GetTxAttemptCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:523    .text.GliderCore_GetTxAttemptCount:00000000 GliderCore_GetTxAttemptCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:539    .text.GliderCore_GetTxAttemptCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:544    .text.GliderCore_GetTxOkCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:550    .text.GliderCore_GetTxOkCount:00000000 GliderCore_GetTxOkCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:566    .text.GliderCore_GetTxOkCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:571    .text.GliderCore_GetTxFailCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:577    .text.GliderCore_GetTxFailCount:00000000 GliderCore_GetTxFailCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:593    .text.GliderCore_GetTxFailCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:598    .text.GliderCore_GetLastTxHalStatus:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:604    .text.GliderCore_GetLastTxHalStatus:00000000 GliderCore_GetLastTxHalStatus
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:620    .text.GliderCore_GetLastTxHalStatus:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:625    .text.GliderCore_GetLastUartErrorCode:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:631    .text.GliderCore_GetLastUartErrorCode:00000000 GliderCore_GetLastUartErrorCode
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:647    .text.GliderCore_GetLastUartErrorCode:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:652    .text.GliderCore_OnTextFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:658    .text.GliderCore_OnTextFrame:00000000 GliderCore_OnTextFrame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:673    .text.GliderCore_OnBinaryFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:679    .text.GliderCore_OnBinaryFrame:00000000 GliderCore_OnBinaryFrame
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s 			page 27
+
+
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:695    .text.process_line:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:700    .text.process_line:00000000 process_line
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:760    .text.process_line:00000038 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:765    .text.process_rx_byte:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:770    .text.process_rx_byte:00000000 process_rx_byte
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:844    .text.process_rx_byte:00000040 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:989    .bss.s_line_buffer:00000000 s_line_buffer
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:850    .text.GliderCore_RunRxTask:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:856    .text.GliderCore_RunRxTask:00000000 GliderCore_RunRxTask
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:898    .text.HAL_UART_RxCpltCallback:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:904    .text.HAL_UART_RxCpltCallback:00000000 HAL_UART_RxCpltCallback
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:956    .text.HAL_UART_RxCpltCallback:0000002c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:962    .rodata.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:972    .rodata.s_boot_test_cmds:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:980    .bss.s_line_len:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:986    .bss.s_line_buffer:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:992    .bss.s_tx_last_uart_error:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:998    .bss.s_tx_last_hal_status:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1004   .bss.s_tx_fail_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1010   .bss.s_tx_ok_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1016   .bss.s_tx_attempt_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1022   .bss.s_rx_line_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1028   .bss.s_rx_overflow_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1037   .bss.s_rx_byte:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1039   .bss.s_rx_tail:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1045   .bss.s_rx_head:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1051   .bss.s_rx_ring:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPO1EH9.s:1057   .bss.s_uart:00000000 $d
+
+UNDEFINED SYMBOLS
+HAL_UART_Receive_IT
+strlen
+HAL_UART_Transmit
+osDelay
+GliderRdssCodec_TryDecodeLine

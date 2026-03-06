@@ -1,0 +1,1788 @@
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 1
+
+
+   1              		.cpu cortex-m7
+   2              		.arch armv7e-m
+   3              		.fpu fpv5-d16
+   4              		.eabi_attribute 28, 1
+   5              		.eabi_attribute 20, 1
+   6              		.eabi_attribute 21, 1
+   7              		.eabi_attribute 23, 3
+   8              		.eabi_attribute 24, 1
+   9              		.eabi_attribute 25, 1
+  10              		.eabi_attribute 26, 1
+  11              		.eabi_attribute 30, 1
+  12              		.eabi_attribute 34, 1
+  13              		.eabi_attribute 18, 4
+  14              		.file	"glider_rdss_codec.c"
+  15              		.text
+  16              	.Ltext0:
+  17              		.cfi_sections	.debug_frame
+  18              		.file 1 "Glider-Core/glider_rdss_codec.c"
+  19              		.section	.text.bounded_strnlen,"ax",%progbits
+  20              		.align	1
+  21              		.syntax unified
+  22              		.thumb
+  23              		.thumb_func
+  25              	bounded_strnlen:
+  26              	.LVL0:
+  27              	.LFB1:
+   1:Glider-Core/glider_rdss_codec.c **** #include "glider_rdss_codec.h"
+   2:Glider-Core/glider_rdss_codec.c **** 
+   3:Glider-Core/glider_rdss_codec.c **** #include <ctype.h>
+   4:Glider-Core/glider_rdss_codec.c **** #include <string.h>
+   5:Glider-Core/glider_rdss_codec.c **** 
+   6:Glider-Core/glider_rdss_codec.c **** static size_t bounded_strnlen(const char *s, size_t max_len)
+   7:Glider-Core/glider_rdss_codec.c **** {
+  28              		.loc 1 7 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		@ link register save eliminated.
+  33              		.loc 1 7 1 is_stmt 0 view .LVU1
+  34 0000 0246     		mov	r2, r0
+   8:Glider-Core/glider_rdss_codec.c ****   size_t n = 0;
+  35              		.loc 1 8 3 is_stmt 1 view .LVU2
+  36              	.LVL1:
+   9:Glider-Core/glider_rdss_codec.c **** 
+  10:Glider-Core/glider_rdss_codec.c ****   while (n < max_len && s[n] != '\0')
+  37              		.loc 1 10 3 view .LVU3
+   8:Glider-Core/glider_rdss_codec.c ****   size_t n = 0;
+  38              		.loc 1 8 10 is_stmt 0 view .LVU4
+  39 0002 0020     		movs	r0, #0
+  40              	.LVL2:
+  41              		.loc 1 10 9 view .LVU5
+  42 0004 00E0     		b	.L2
+  43              	.LVL3:
+  44              	.L4:
+  11:Glider-Core/glider_rdss_codec.c ****   {
+  12:Glider-Core/glider_rdss_codec.c ****     n++;
+  45              		.loc 1 12 5 is_stmt 1 view .LVU6
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 2
+
+
+  46              		.loc 1 12 6 is_stmt 0 view .LVU7
+  47 0006 0130     		adds	r0, r0, #1
+  48              	.LVL4:
+  49              	.L2:
+  10:Glider-Core/glider_rdss_codec.c ****   {
+  50              		.loc 1 10 22 is_stmt 1 view .LVU8
+  51 0008 8842     		cmp	r0, r1
+  52 000a 02D2     		bcs	.L1
+  10:Glider-Core/glider_rdss_codec.c ****   {
+  53              		.loc 1 10 26 is_stmt 0 discriminator 1 view .LVU9
+  54 000c 135C     		ldrb	r3, [r2, r0]	@ zero_extendqisi2
+  10:Glider-Core/glider_rdss_codec.c ****   {
+  55              		.loc 1 10 22 discriminator 1 view .LVU10
+  56 000e 002B     		cmp	r3, #0
+  57 0010 F9D1     		bne	.L4
+  58              	.L1:
+  13:Glider-Core/glider_rdss_codec.c ****   }
+  14:Glider-Core/glider_rdss_codec.c **** 
+  15:Glider-Core/glider_rdss_codec.c ****   return n;
+  16:Glider-Core/glider_rdss_codec.c **** }
+  59              		.loc 1 16 1 view .LVU11
+  60 0012 7047     		bx	lr
+  61              		.cfi_endproc
+  62              	.LFE1:
+  64              		.section	.text.calc_xor_checksum,"ax",%progbits
+  65              		.align	1
+  66              		.syntax unified
+  67              		.thumb
+  68              		.thumb_func
+  70              	calc_xor_checksum:
+  71              	.LVL5:
+  72              	.LFB3:
+  17:Glider-Core/glider_rdss_codec.c **** 
+  18:Glider-Core/glider_rdss_codec.c **** static void copy_token(char *dst, size_t dst_size, const char *src, size_t src_len)
+  19:Glider-Core/glider_rdss_codec.c **** {
+  20:Glider-Core/glider_rdss_codec.c ****   size_t copy_len = 0;
+  21:Glider-Core/glider_rdss_codec.c **** 
+  22:Glider-Core/glider_rdss_codec.c ****   if (dst == NULL || dst_size == 0U)
+  23:Glider-Core/glider_rdss_codec.c ****   {
+  24:Glider-Core/glider_rdss_codec.c ****     return;
+  25:Glider-Core/glider_rdss_codec.c ****   }
+  26:Glider-Core/glider_rdss_codec.c **** 
+  27:Glider-Core/glider_rdss_codec.c ****   if (src == NULL)
+  28:Glider-Core/glider_rdss_codec.c ****   {
+  29:Glider-Core/glider_rdss_codec.c ****     dst[0] = '\0';
+  30:Glider-Core/glider_rdss_codec.c ****     return;
+  31:Glider-Core/glider_rdss_codec.c ****   }
+  32:Glider-Core/glider_rdss_codec.c **** 
+  33:Glider-Core/glider_rdss_codec.c ****   copy_len = src_len;
+  34:Glider-Core/glider_rdss_codec.c ****   if (copy_len >= (dst_size - 1U))
+  35:Glider-Core/glider_rdss_codec.c ****   {
+  36:Glider-Core/glider_rdss_codec.c ****     copy_len = dst_size - 1U;
+  37:Glider-Core/glider_rdss_codec.c ****   }
+  38:Glider-Core/glider_rdss_codec.c **** 
+  39:Glider-Core/glider_rdss_codec.c ****   if (copy_len > 0U)
+  40:Glider-Core/glider_rdss_codec.c ****   {
+  41:Glider-Core/glider_rdss_codec.c ****     memcpy(dst, src, copy_len);
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 3
+
+
+  42:Glider-Core/glider_rdss_codec.c ****   }
+  43:Glider-Core/glider_rdss_codec.c ****   dst[copy_len] = '\0';
+  44:Glider-Core/glider_rdss_codec.c **** }
+  45:Glider-Core/glider_rdss_codec.c **** 
+  46:Glider-Core/glider_rdss_codec.c **** static uint8_t calc_xor_checksum(const char *data, size_t len)
+  47:Glider-Core/glider_rdss_codec.c **** {
+  73              		.loc 1 47 1 is_stmt 1 view -0
+  74              		.cfi_startproc
+  75              		@ args = 0, pretend = 0, frame = 0
+  76              		@ frame_needed = 0, uses_anonymous_args = 0
+  77              		@ link register save eliminated.
+  78              		.loc 1 47 1 is_stmt 0 view .LVU13
+  79 0000 8446     		mov	ip, r0
+  48:Glider-Core/glider_rdss_codec.c ****   uint8_t checksum = 0U;
+  80              		.loc 1 48 3 is_stmt 1 view .LVU14
+  81              	.LVL6:
+  49:Glider-Core/glider_rdss_codec.c ****   size_t i = 0;
+  82              		.loc 1 49 3 view .LVU15
+  50:Glider-Core/glider_rdss_codec.c **** 
+  51:Glider-Core/glider_rdss_codec.c ****   for (i = 0; i < len; i++)
+  83              		.loc 1 51 3 view .LVU16
+  84              		.loc 1 51 10 is_stmt 0 view .LVU17
+  85 0002 0023     		movs	r3, #0
+  48:Glider-Core/glider_rdss_codec.c ****   size_t i = 0;
+  86              		.loc 1 48 11 view .LVU18
+  87 0004 1846     		mov	r0, r3
+  88              	.LVL7:
+  89              		.loc 1 51 3 view .LVU19
+  90 0006 03E0     		b	.L6
+  91              	.LVL8:
+  92              	.L7:
+  52:Glider-Core/glider_rdss_codec.c ****   {
+  53:Glider-Core/glider_rdss_codec.c ****     checksum ^= (uint8_t)data[i];
+  93              		.loc 1 53 5 is_stmt 1 discriminator 3 view .LVU20
+  94              		.loc 1 53 30 is_stmt 0 discriminator 3 view .LVU21
+  95 0008 1CF80320 		ldrb	r2, [ip, r3]	@ zero_extendqisi2
+  96              		.loc 1 53 14 discriminator 3 view .LVU22
+  97 000c 5040     		eors	r0, r0, r2
+  98              	.LVL9:
+  51:Glider-Core/glider_rdss_codec.c ****   {
+  99              		.loc 1 51 25 is_stmt 1 discriminator 3 view .LVU23
+ 100 000e 0133     		adds	r3, r3, #1
+ 101              	.LVL10:
+ 102              	.L6:
+  51:Glider-Core/glider_rdss_codec.c ****   {
+ 103              		.loc 1 51 17 discriminator 1 view .LVU24
+ 104 0010 8B42     		cmp	r3, r1
+ 105 0012 F9D3     		bcc	.L7
+  54:Glider-Core/glider_rdss_codec.c ****   }
+  55:Glider-Core/glider_rdss_codec.c **** 
+  56:Glider-Core/glider_rdss_codec.c ****   return checksum;
+ 106              		.loc 1 56 3 view .LVU25
+  57:Glider-Core/glider_rdss_codec.c **** }
+ 107              		.loc 1 57 1 is_stmt 0 view .LVU26
+ 108 0014 7047     		bx	lr
+ 109              		.cfi_endproc
+ 110              	.LFE3:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 4
+
+
+ 112              		.section	.text.parse_hex_byte,"ax",%progbits
+ 113              		.align	1
+ 114              		.syntax unified
+ 115              		.thumb
+ 116              		.thumb_func
+ 118              	parse_hex_byte:
+ 119              	.LVL11:
+ 120              	.LFB4:
+  58:Glider-Core/glider_rdss_codec.c **** 
+  59:Glider-Core/glider_rdss_codec.c **** static bool parse_hex_byte(const char hi, const char lo, uint8_t *out)
+  60:Glider-Core/glider_rdss_codec.c **** {
+ 121              		.loc 1 60 1 is_stmt 1 view -0
+ 122              		.cfi_startproc
+ 123              		@ args = 0, pretend = 0, frame = 0
+ 124              		@ frame_needed = 0, uses_anonymous_args = 0
+ 125              		@ link register save eliminated.
+  61:Glider-Core/glider_rdss_codec.c ****   int value_hi = 0;
+ 126              		.loc 1 61 3 view .LVU28
+  62:Glider-Core/glider_rdss_codec.c ****   int value_lo = 0;
+ 127              		.loc 1 62 3 view .LVU29
+  63:Glider-Core/glider_rdss_codec.c **** 
+  64:Glider-Core/glider_rdss_codec.c ****   if (!isxdigit((unsigned char)hi) || !isxdigit((unsigned char)lo))
+ 128              		.loc 1 64 3 view .LVU30
+ 129              		.loc 1 64 8 is_stmt 0 view .LVU31
+ 130 0000 174B     		ldr	r3, .L26
+ 131 0002 1B5C     		ldrb	r3, [r3, r0]	@ zero_extendqisi2
+ 132              		.loc 1 64 6 view .LVU32
+ 133 0004 13F0440F 		tst	r3, #68
+ 134 0008 26D0     		beq	.L18
+  60:Glider-Core/glider_rdss_codec.c ****   int value_hi = 0;
+ 135              		.loc 1 60 1 discriminator 1 view .LVU33
+ 136 000a 10B4     		push	{r4}
+ 137              	.LCFI0:
+ 138              		.cfi_def_cfa_offset 4
+ 139              		.cfi_offset 4, -4
+ 140              		.loc 1 64 40 discriminator 1 view .LVU34
+ 141 000c 144C     		ldr	r4, .L26
+ 142 000e 14F801C0 		ldrb	ip, [r4, r1]	@ zero_extendqisi2
+ 143              		.loc 1 64 36 discriminator 1 view .LVU35
+ 144 0012 1CF0440F 		tst	ip, #68
+ 145 0016 21D0     		beq	.L19
+  65:Glider-Core/glider_rdss_codec.c ****   {
+  66:Glider-Core/glider_rdss_codec.c ****     return false;
+  67:Glider-Core/glider_rdss_codec.c ****   }
+  68:Glider-Core/glider_rdss_codec.c **** 
+  69:Glider-Core/glider_rdss_codec.c ****   value_hi = isdigit((unsigned char)hi) ? (hi - '0') : (tolower((unsigned char)hi) - 'a' + 10);
+ 146              		.loc 1 69 3 is_stmt 1 view .LVU36
+ 147              		.loc 1 69 54 is_stmt 0 view .LVU37
+ 148 0018 13F0040F 		tst	r3, #4
+ 149 001c 0BD0     		beq	.L10
+ 150              		.loc 1 69 54 discriminator 1 view .LVU38
+ 151 001e 3038     		subs	r0, r0, #48
+ 152              	.LVL12:
+ 153              	.L11:
+  70:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ 154              		.loc 1 70 3 is_stmt 1 discriminator 8 view .LVU39
+ 155              		.loc 1 70 54 is_stmt 0 discriminator 8 view .LVU40
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 5
+
+
+ 156 0020 1CF0040F 		tst	ip, #4
+ 157 0024 0FD0     		beq	.L14
+ 158              		.loc 1 70 54 discriminator 1 view .LVU41
+ 159 0026 3039     		subs	r1, r1, #48
+ 160              	.LVL13:
+ 161              	.L15:
+  71:Glider-Core/glider_rdss_codec.c **** 
+  72:Glider-Core/glider_rdss_codec.c ****   *out = (uint8_t)((value_hi << 4) | value_lo);
+ 162              		.loc 1 72 3 is_stmt 1 discriminator 8 view .LVU42
+ 163              		.loc 1 72 36 is_stmt 0 discriminator 8 view .LVU43
+ 164 0028 41EA0011 		orr	r1, r1, r0, lsl #4
+ 165              	.LVL14:
+ 166              		.loc 1 72 8 discriminator 8 view .LVU44
+ 167 002c 1170     		strb	r1, [r2]
+  73:Glider-Core/glider_rdss_codec.c ****   return true;
+ 168              		.loc 1 73 3 is_stmt 1 discriminator 8 view .LVU45
+ 169              		.loc 1 73 10 is_stmt 0 discriminator 8 view .LVU46
+ 170 002e 0120     		movs	r0, #1
+ 171              	.LVL15:
+ 172              	.L9:
+  74:Glider-Core/glider_rdss_codec.c **** }
+ 173              		.loc 1 74 1 view .LVU47
+ 174 0030 5DF8044B 		ldr	r4, [sp], #4
+ 175              	.LCFI1:
+ 176              		.cfi_remember_state
+ 177              		.cfi_restore 4
+ 178              		.cfi_def_cfa_offset 0
+ 179 0034 7047     		bx	lr
+ 180              	.LVL16:
+ 181              	.L10:
+ 182              	.LCFI2:
+ 183              		.cfi_restore_state
+ 184              	.LBB2:
+  69:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ 185              		.loc 1 69 57 is_stmt 1 discriminator 2 view .LVU48
+  69:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ 186              		.loc 1 69 57 discriminator 2 view .LVU49
+ 187 0036 03F00303 		and	r3, r3, #3
+ 188 003a 012B     		cmp	r3, #1
+ 189 003c 01D0     		beq	.L24
+ 190              	.LVL17:
+ 191              	.L13:
+  69:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ 192              		.loc 1 69 57 is_stmt 0 discriminator 2 view .LVU50
+ 193              	.LBE2:
+  69:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ 194              		.loc 1 69 54 discriminator 7 view .LVU51
+ 195 003e 5738     		subs	r0, r0, #87
+ 196 0040 EEE7     		b	.L11
+ 197              	.LVL18:
+ 198              	.L24:
+ 199              	.LBB3:
+  69:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ 200              		.loc 1 69 57 discriminator 4 view .LVU52
+ 201 0042 2030     		adds	r0, r0, #32
+ 202              	.LVL19:
+  69:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 6
+
+
+ 203              		.loc 1 69 57 discriminator 4 view .LVU53
+ 204 0044 FBE7     		b	.L13
+ 205              	.LVL20:
+ 206              	.L14:
+  69:Glider-Core/glider_rdss_codec.c ****   value_lo = isdigit((unsigned char)lo) ? (lo - '0') : (tolower((unsigned char)lo) - 'a' + 10);
+ 207              		.loc 1 69 57 discriminator 4 view .LVU54
+ 208              	.LBE3:
+ 209              	.LBB4:
+  70:Glider-Core/glider_rdss_codec.c **** 
+ 210              		.loc 1 70 57 is_stmt 1 discriminator 2 view .LVU55
+  70:Glider-Core/glider_rdss_codec.c **** 
+ 211              		.loc 1 70 57 discriminator 2 view .LVU56
+ 212 0046 0CF0030C 		and	ip, ip, #3
+ 213 004a BCF1010F 		cmp	ip, #1
+ 214 004e 01D0     		beq	.L25
+ 215              	.LVL21:
+ 216              	.L17:
+  70:Glider-Core/glider_rdss_codec.c **** 
+ 217              		.loc 1 70 57 is_stmt 0 discriminator 2 view .LVU57
+ 218              	.LBE4:
+  70:Glider-Core/glider_rdss_codec.c **** 
+ 219              		.loc 1 70 54 discriminator 7 view .LVU58
+ 220 0050 5739     		subs	r1, r1, #87
+ 221 0052 E9E7     		b	.L15
+ 222              	.LVL22:
+ 223              	.L25:
+ 224              	.LBB5:
+  70:Glider-Core/glider_rdss_codec.c **** 
+ 225              		.loc 1 70 57 discriminator 4 view .LVU59
+ 226 0054 2031     		adds	r1, r1, #32
+ 227              	.LVL23:
+  70:Glider-Core/glider_rdss_codec.c **** 
+ 228              		.loc 1 70 57 discriminator 4 view .LVU60
+ 229 0056 FBE7     		b	.L17
+ 230              	.LVL24:
+ 231              	.L18:
+ 232              	.LCFI3:
+ 233              		.cfi_def_cfa_offset 0
+ 234              		.cfi_restore 4
+  70:Glider-Core/glider_rdss_codec.c **** 
+ 235              		.loc 1 70 57 discriminator 4 view .LVU61
+ 236              	.LBE5:
+  66:Glider-Core/glider_rdss_codec.c ****   }
+ 237              		.loc 1 66 12 view .LVU62
+ 238 0058 0020     		movs	r0, #0
+ 239              	.LVL25:
+ 240              		.loc 1 74 1 view .LVU63
+ 241 005a 7047     		bx	lr
+ 242              	.LVL26:
+ 243              	.L19:
+ 244              	.LCFI4:
+ 245              		.cfi_def_cfa_offset 4
+ 246              		.cfi_offset 4, -4
+  66:Glider-Core/glider_rdss_codec.c ****   }
+ 247              		.loc 1 66 12 view .LVU64
+ 248 005c 0020     		movs	r0, #0
+ 249              	.LVL27:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 7
+
+
+  66:Glider-Core/glider_rdss_codec.c ****   }
+ 250              		.loc 1 66 12 view .LVU65
+ 251 005e E7E7     		b	.L9
+ 252              	.L27:
+ 253              		.align	2
+ 254              	.L26:
+ 255 0060 01000000 		.word	_ctype_+1
+ 256              		.cfi_endproc
+ 257              	.LFE4:
+ 259              		.section	.text.copy_token,"ax",%progbits
+ 260              		.align	1
+ 261              		.syntax unified
+ 262              		.thumb
+ 263              		.thumb_func
+ 265              	copy_token:
+ 266              	.LVL28:
+ 267              	.LFB2:
+  19:Glider-Core/glider_rdss_codec.c ****   size_t copy_len = 0;
+ 268              		.loc 1 19 1 is_stmt 1 view -0
+ 269              		.cfi_startproc
+ 270              		@ args = 0, pretend = 0, frame = 0
+ 271              		@ frame_needed = 0, uses_anonymous_args = 0
+  20:Glider-Core/glider_rdss_codec.c **** 
+ 272              		.loc 1 20 3 view .LVU67
+  22:Glider-Core/glider_rdss_codec.c ****   {
+ 273              		.loc 1 22 3 view .LVU68
+  22:Glider-Core/glider_rdss_codec.c ****   {
+ 274              		.loc 1 22 6 is_stmt 0 view .LVU69
+ 275 0000 0029     		cmp	r1, #0
+ 276 0002 18BF     		it	ne
+ 277 0004 0028     		cmpne	r0, #0
+ 278 0006 14D0     		beq	.L34
+  19:Glider-Core/glider_rdss_codec.c ****   size_t copy_len = 0;
+ 279              		.loc 1 19 1 view .LVU70
+ 280 0008 70B5     		push	{r4, r5, r6, lr}
+ 281              	.LCFI5:
+ 282              		.cfi_def_cfa_offset 16
+ 283              		.cfi_offset 4, -16
+ 284              		.cfi_offset 5, -12
+ 285              		.cfi_offset 6, -8
+ 286              		.cfi_offset 14, -4
+ 287 000a 1546     		mov	r5, r2
+ 288 000c 0646     		mov	r6, r0
+  27:Glider-Core/glider_rdss_codec.c ****   {
+ 289              		.loc 1 27 3 is_stmt 1 view .LVU71
+  27:Glider-Core/glider_rdss_codec.c ****   {
+ 290              		.loc 1 27 6 is_stmt 0 view .LVU72
+ 291 000e 3AB1     		cbz	r2, .L37
+  33:Glider-Core/glider_rdss_codec.c ****   if (copy_len >= (dst_size - 1U))
+ 292              		.loc 1 33 3 is_stmt 1 view .LVU73
+ 293              	.LVL29:
+  34:Glider-Core/glider_rdss_codec.c ****   {
+ 294              		.loc 1 34 3 view .LVU74
+  34:Glider-Core/glider_rdss_codec.c ****   {
+ 295              		.loc 1 34 29 is_stmt 0 view .LVU75
+ 296 0010 4C1E     		subs	r4, r1, #1
+  34:Glider-Core/glider_rdss_codec.c ****   {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 8
+
+
+ 297              		.loc 1 34 6 view .LVU76
+ 298 0012 9C42     		cmp	r4, r3
+ 299 0014 00D9     		bls	.L31
+  33:Glider-Core/glider_rdss_codec.c ****   if (copy_len >= (dst_size - 1U))
+ 300              		.loc 1 33 12 view .LVU77
+ 301 0016 1C46     		mov	r4, r3
+ 302              	.L31:
+ 303              	.LVL30:
+  39:Glider-Core/glider_rdss_codec.c ****   {
+ 304              		.loc 1 39 3 is_stmt 1 view .LVU78
+  39:Glider-Core/glider_rdss_codec.c ****   {
+ 305              		.loc 1 39 6 is_stmt 0 view .LVU79
+ 306 0018 2CB9     		cbnz	r4, .L38
+ 307              	.LVL31:
+ 308              	.L32:
+  43:Glider-Core/glider_rdss_codec.c **** }
+ 309              		.loc 1 43 3 is_stmt 1 view .LVU80
+  43:Glider-Core/glider_rdss_codec.c **** }
+ 310              		.loc 1 43 17 is_stmt 0 view .LVU81
+ 311 001a 0023     		movs	r3, #0
+ 312 001c 3355     		strb	r3, [r6, r4]
+ 313              	.LVL32:
+ 314              	.L28:
+  44:Glider-Core/glider_rdss_codec.c **** 
+ 315              		.loc 1 44 1 view .LVU82
+ 316 001e 70BD     		pop	{r4, r5, r6, pc}
+ 317              	.LVL33:
+ 318              	.L37:
+  29:Glider-Core/glider_rdss_codec.c ****     return;
+ 319              		.loc 1 29 5 is_stmt 1 view .LVU83
+  29:Glider-Core/glider_rdss_codec.c ****     return;
+ 320              		.loc 1 29 12 is_stmt 0 view .LVU84
+ 321 0020 0023     		movs	r3, #0
+ 322              	.LVL34:
+  29:Glider-Core/glider_rdss_codec.c ****     return;
+ 323              		.loc 1 29 12 view .LVU85
+ 324 0022 0370     		strb	r3, [r0]
+  30:Glider-Core/glider_rdss_codec.c ****   }
+ 325              		.loc 1 30 5 is_stmt 1 view .LVU86
+ 326 0024 FBE7     		b	.L28
+ 327              	.LVL35:
+ 328              	.L38:
+  41:Glider-Core/glider_rdss_codec.c ****   }
+ 329              		.loc 1 41 5 view .LVU87
+ 330 0026 2246     		mov	r2, r4
+ 331              	.LVL36:
+  41:Glider-Core/glider_rdss_codec.c ****   }
+ 332              		.loc 1 41 5 is_stmt 0 view .LVU88
+ 333 0028 2946     		mov	r1, r5
+ 334              	.LVL37:
+  41:Glider-Core/glider_rdss_codec.c ****   }
+ 335              		.loc 1 41 5 view .LVU89
+ 336 002a 3046     		mov	r0, r6
+ 337              	.LVL38:
+  41:Glider-Core/glider_rdss_codec.c ****   }
+ 338              		.loc 1 41 5 view .LVU90
+ 339 002c FFF7FEFF 		bl	memcpy
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 9
+
+
+ 340              	.LVL39:
+  41:Glider-Core/glider_rdss_codec.c ****   }
+ 341              		.loc 1 41 5 view .LVU91
+ 342 0030 F3E7     		b	.L32
+ 343              	.LVL40:
+ 344              	.L34:
+ 345              	.LCFI6:
+ 346              		.cfi_def_cfa_offset 0
+ 347              		.cfi_restore 4
+ 348              		.cfi_restore 5
+ 349              		.cfi_restore 6
+ 350              		.cfi_restore 14
+  41:Glider-Core/glider_rdss_codec.c ****   }
+ 351              		.loc 1 41 5 view .LVU92
+ 352 0032 7047     		bx	lr
+ 353              		.cfi_endproc
+ 354              	.LFE2:
+ 356              		.section	.text.parse_nmea_like_frame,"ax",%progbits
+ 357              		.align	1
+ 358              		.syntax unified
+ 359              		.thumb
+ 360              		.thumb_func
+ 362              	parse_nmea_like_frame:
+ 363              	.LVL41:
+ 364              	.LFB5:
+  75:Glider-Core/glider_rdss_codec.c **** 
+  76:Glider-Core/glider_rdss_codec.c **** static bool parse_nmea_like_frame(const char *line, size_t line_len, GliderRdssDecodedFrame *out_fr
+  77:Glider-Core/glider_rdss_codec.c **** {
+ 365              		.loc 1 77 1 is_stmt 1 view -0
+ 366              		.cfi_startproc
+ 367              		@ args = 0, pretend = 0, frame = 0
+ 368              		@ frame_needed = 0, uses_anonymous_args = 0
+  78:Glider-Core/glider_rdss_codec.c ****   const char *asterisk = NULL;
+ 369              		.loc 1 78 3 view .LVU94
+  79:Glider-Core/glider_rdss_codec.c ****   size_t body_len = 0;
+ 370              		.loc 1 79 3 view .LVU95
+  80:Glider-Core/glider_rdss_codec.c ****   size_t sentence_len = 0;
+ 371              		.loc 1 80 3 view .LVU96
+  81:Glider-Core/glider_rdss_codec.c ****   const char *comma = NULL;
+ 372              		.loc 1 81 3 view .LVU97
+  82:Glider-Core/glider_rdss_codec.c **** 
+  83:Glider-Core/glider_rdss_codec.c ****   if (line_len < 2U || line[0] != '$')
+ 373              		.loc 1 83 3 view .LVU98
+ 374              		.loc 1 83 6 is_stmt 0 view .LVU99
+ 375 0000 0129     		cmp	r1, #1
+ 376 0002 56D9     		bls	.L44
+  77:Glider-Core/glider_rdss_codec.c ****   const char *asterisk = NULL;
+ 377              		.loc 1 77 1 discriminator 1 view .LVU100
+ 378 0004 2DE9F041 		push	{r4, r5, r6, r7, r8, lr}
+ 379              	.LCFI7:
+ 380              		.cfi_def_cfa_offset 24
+ 381              		.cfi_offset 4, -24
+ 382              		.cfi_offset 5, -20
+ 383              		.cfi_offset 6, -16
+ 384              		.cfi_offset 7, -12
+ 385              		.cfi_offset 8, -8
+ 386              		.cfi_offset 14, -4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 10
+
+
+ 387 0008 0446     		mov	r4, r0
+ 388 000a 0D46     		mov	r5, r1
+ 389 000c 1646     		mov	r6, r2
+ 390              		.loc 1 83 28 discriminator 1 view .LVU101
+ 391 000e 0378     		ldrb	r3, [r0]	@ zero_extendqisi2
+ 392              		.loc 1 83 21 discriminator 1 view .LVU102
+ 393 0010 242B     		cmp	r3, #36
+ 394 0012 50D1     		bne	.L45
+  84:Glider-Core/glider_rdss_codec.c ****   {
+  85:Glider-Core/glider_rdss_codec.c ****     return false;
+  86:Glider-Core/glider_rdss_codec.c ****   }
+  87:Glider-Core/glider_rdss_codec.c **** 
+  88:Glider-Core/glider_rdss_codec.c ****   asterisk = strchr(line, '*');
+ 395              		.loc 1 88 3 is_stmt 1 view .LVU103
+ 396              		.loc 1 88 14 is_stmt 0 view .LVU104
+ 397 0014 2A21     		movs	r1, #42
+ 398              	.LVL42:
+ 399              		.loc 1 88 14 view .LVU105
+ 400 0016 FFF7FEFF 		bl	strchr
+ 401              	.LVL43:
+  89:Glider-Core/glider_rdss_codec.c ****   body_len = line_len - 1U;
+ 402              		.loc 1 89 3 is_stmt 1 view .LVU106
+ 403              		.loc 1 89 12 is_stmt 0 view .LVU107
+ 404 001a 05F1FF38 		add	r8, r5, #-1
+ 405              	.LVL44:
+  90:Glider-Core/glider_rdss_codec.c **** 
+  91:Glider-Core/glider_rdss_codec.c ****   if (asterisk != NULL)
+ 406              		.loc 1 91 3 is_stmt 1 view .LVU108
+ 407              		.loc 1 91 6 is_stmt 0 view .LVU109
+ 408 001e 90B1     		cbz	r0, .L41
+ 409              	.LBB6:
+  92:Glider-Core/glider_rdss_codec.c ****   {
+  93:Glider-Core/glider_rdss_codec.c ****     size_t cs_index = (size_t)(asterisk - line) + 1U;
+ 410              		.loc 1 93 5 is_stmt 1 view .LVU110
+ 411              		.loc 1 93 41 is_stmt 0 view .LVU111
+ 412 0020 071B     		subs	r7, r0, r4
+ 413              		.loc 1 93 12 view .LVU112
+ 414 0022 781C     		adds	r0, r7, #1
+ 415              	.LVL45:
+  94:Glider-Core/glider_rdss_codec.c ****     if (cs_index + 2U != line_len)
+ 416              		.loc 1 94 5 is_stmt 1 view .LVU113
+ 417              		.loc 1 94 18 is_stmt 0 view .LVU114
+ 418 0024 FB1C     		adds	r3, r7, #3
+ 419              		.loc 1 94 8 view .LVU115
+ 420 0026 AB42     		cmp	r3, r5
+ 421 0028 01D0     		beq	.L54
+  95:Glider-Core/glider_rdss_codec.c ****     {
+  96:Glider-Core/glider_rdss_codec.c ****       return false;
+ 422              		.loc 1 96 14 view .LVU116
+ 423 002a 0020     		movs	r0, #0
+ 424              	.LVL46:
+ 425              		.loc 1 96 14 view .LVU117
+ 426 002c 44E0     		b	.L40
+ 427              	.LVL47:
+ 428              	.L54:
+  97:Glider-Core/glider_rdss_codec.c ****     }
+  98:Glider-Core/glider_rdss_codec.c **** 
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 11
+
+
+  99:Glider-Core/glider_rdss_codec.c ****     if (!parse_hex_byte(line[cs_index], line[cs_index + 1U], &out_frame->checksum_rx))
+ 429              		.loc 1 99 5 is_stmt 1 view .LVU118
+ 430              		.loc 1 99 45 is_stmt 0 view .LVU119
+ 431 002e BB1C     		adds	r3, r7, #2
+ 432              		.loc 1 99 10 view .LVU120
+ 433 0030 F21C     		adds	r2, r6, #3
+ 434 0032 E15C     		ldrb	r1, [r4, r3]	@ zero_extendqisi2
+ 435 0034 205C     		ldrb	r0, [r4, r0]	@ zero_extendqisi2
+ 436              	.LVL48:
+ 437              		.loc 1 99 10 view .LVU121
+ 438 0036 FFF7FEFF 		bl	parse_hex_byte
+ 439              	.LVL49:
+ 440              		.loc 1 99 8 view .LVU122
+ 441 003a 0028     		cmp	r0, #0
+ 442 003c 3CD0     		beq	.L40
+ 100:Glider-Core/glider_rdss_codec.c ****     {
+ 101:Glider-Core/glider_rdss_codec.c ****       return false;
+ 102:Glider-Core/glider_rdss_codec.c ****     }
+ 103:Glider-Core/glider_rdss_codec.c **** 
+ 104:Glider-Core/glider_rdss_codec.c ****     out_frame->has_checksum = true;
+ 443              		.loc 1 104 5 is_stmt 1 view .LVU123
+ 444              		.loc 1 104 29 is_stmt 0 view .LVU124
+ 445 003e 0123     		movs	r3, #1
+ 446 0040 7370     		strb	r3, [r6, #1]
+ 105:Glider-Core/glider_rdss_codec.c ****     body_len = (size_t)(asterisk - line) - 1U;
+ 447              		.loc 1 105 5 is_stmt 1 view .LVU125
+ 448              		.loc 1 105 14 is_stmt 0 view .LVU126
+ 449 0042 07F1FF38 		add	r8, r7, #-1
+ 450              	.LVL50:
+ 451              	.L41:
+ 452              		.loc 1 105 14 view .LVU127
+ 453              	.LBE6:
+ 106:Glider-Core/glider_rdss_codec.c ****   }
+ 107:Glider-Core/glider_rdss_codec.c **** 
+ 108:Glider-Core/glider_rdss_codec.c ****   if (body_len == 0U)
+ 454              		.loc 1 108 3 is_stmt 1 view .LVU128
+ 455              		.loc 1 108 6 is_stmt 0 view .LVU129
+ 456 0046 B8F1000F 		cmp	r8, #0
+ 457 004a 37D0     		beq	.L47
+ 109:Glider-Core/glider_rdss_codec.c ****   {
+ 110:Glider-Core/glider_rdss_codec.c ****     return false;
+ 111:Glider-Core/glider_rdss_codec.c ****   }
+ 112:Glider-Core/glider_rdss_codec.c **** 
+ 113:Glider-Core/glider_rdss_codec.c ****   out_frame->checksum_calc = calc_xor_checksum(&line[1], body_len);
+ 458              		.loc 1 113 3 is_stmt 1 view .LVU130
+ 459              		.loc 1 113 30 is_stmt 0 view .LVU131
+ 460 004c 671C     		adds	r7, r4, #1
+ 461 004e 4146     		mov	r1, r8
+ 462 0050 3846     		mov	r0, r7
+ 463 0052 FFF7FEFF 		bl	calc_xor_checksum
+ 464              	.LVL51:
+ 465              		.loc 1 113 28 view .LVU132
+ 466 0056 3071     		strb	r0, [r6, #4]
+ 114:Glider-Core/glider_rdss_codec.c ****   out_frame->checksum_valid = (!out_frame->has_checksum) || (out_frame->checksum_rx == out_frame->c
+ 467              		.loc 1 114 3 is_stmt 1 view .LVU133
+ 468              		.loc 1 114 42 is_stmt 0 view .LVU134
+ 469 0058 7378     		ldrb	r3, [r6, #1]	@ zero_extendqisi2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 12
+
+
+ 470              		.loc 1 114 58 view .LVU135
+ 471 005a 33B1     		cbz	r3, .L48
+ 472              		.loc 1 114 71 discriminator 2 view .LVU136
+ 473 005c F378     		ldrb	r3, [r6, #3]	@ zero_extendqisi2
+ 474              		.loc 1 114 58 discriminator 2 view .LVU137
+ 475 005e 9842     		cmp	r0, r3
+ 476 0060 01D0     		beq	.L55
+ 477              		.loc 1 114 58 view .LVU138
+ 478 0062 0023     		movs	r3, #0
+ 479 0064 02E0     		b	.L42
+ 480              	.L55:
+ 481 0066 0123     		movs	r3, #1
+ 482 0068 00E0     		b	.L42
+ 483              	.L48:
+ 484 006a 0123     		movs	r3, #1
+ 485              	.L42:
+ 486              		.loc 1 114 29 discriminator 6 view .LVU139
+ 487 006c B370     		strb	r3, [r6, #2]
+ 115:Glider-Core/glider_rdss_codec.c **** 
+ 116:Glider-Core/glider_rdss_codec.c ****   copy_token(out_frame->text, sizeof(out_frame->text), line, line_len);
+ 488              		.loc 1 116 3 is_stmt 1 discriminator 6 view .LVU140
+ 489 006e 2B46     		mov	r3, r5
+ 490 0070 2246     		mov	r2, r4
+ 491 0072 C021     		movs	r1, #192
+ 492 0074 06F13500 		add	r0, r6, #53
+ 493 0078 FFF7FEFF 		bl	copy_token
+ 494              	.LVL52:
+ 117:Glider-Core/glider_rdss_codec.c ****   copy_token((char *)out_frame->payload, sizeof(out_frame->payload), &line[1], body_len);
+ 495              		.loc 1 117 3 discriminator 6 view .LVU141
+ 496 007c 4346     		mov	r3, r8
+ 497 007e 3A46     		mov	r2, r7
+ 498 0080 8021     		movs	r1, #128
+ 499 0082 06F1F500 		add	r0, r6, #245
+ 500 0086 FFF7FEFF 		bl	copy_token
+ 501              	.LVL53:
+ 118:Glider-Core/glider_rdss_codec.c ****   out_frame->payload_len = body_len;
+ 502              		.loc 1 118 3 discriminator 6 view .LVU142
+ 503              		.loc 1 118 26 is_stmt 0 discriminator 6 view .LVU143
+ 504 008a C6F87881 		str	r8, [r6, #376]
+ 119:Glider-Core/glider_rdss_codec.c **** 
+ 120:Glider-Core/glider_rdss_codec.c ****   comma = memchr(&line[1], ',', body_len);
+ 505              		.loc 1 120 3 is_stmt 1 discriminator 6 view .LVU144
+ 506              		.loc 1 120 11 is_stmt 0 discriminator 6 view .LVU145
+ 507 008e 4246     		mov	r2, r8
+ 508 0090 2C21     		movs	r1, #44
+ 509 0092 3846     		mov	r0, r7
+ 510 0094 FFF7FEFF 		bl	memchr
+ 511              	.LVL54:
+ 121:Glider-Core/glider_rdss_codec.c ****   if (comma == NULL)
+ 512              		.loc 1 121 3 is_stmt 1 discriminator 6 view .LVU146
+ 513              		.loc 1 121 6 is_stmt 0 discriminator 6 view .LVU147
+ 514 0098 08B1     		cbz	r0, .L43
+ 122:Glider-Core/glider_rdss_codec.c ****   {
+ 123:Glider-Core/glider_rdss_codec.c ****     sentence_len = body_len;
+ 124:Glider-Core/glider_rdss_codec.c ****   }
+ 125:Glider-Core/glider_rdss_codec.c ****   else
+ 126:Glider-Core/glider_rdss_codec.c ****   {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 13
+
+
+ 127:Glider-Core/glider_rdss_codec.c ****     sentence_len = (size_t)(comma - &line[1]);
+ 515              		.loc 1 127 5 is_stmt 1 view .LVU148
+ 516              		.loc 1 127 35 is_stmt 0 view .LVU149
+ 517 009a A0EB0708 		sub	r8, r0, r7
+ 518              	.LVL55:
+ 519              	.L43:
+ 128:Glider-Core/glider_rdss_codec.c ****   }
+ 129:Glider-Core/glider_rdss_codec.c ****   copy_token(out_frame->sentence, sizeof(out_frame->sentence), &line[1], sentence_len);
+ 520              		.loc 1 129 3 is_stmt 1 view .LVU150
+ 521 009e 4346     		mov	r3, r8
+ 522 00a0 3A46     		mov	r2, r7
+ 523 00a2 1821     		movs	r1, #24
+ 524 00a4 701D     		adds	r0, r6, #5
+ 525              	.LVL56:
+ 526              		.loc 1 129 3 is_stmt 0 view .LVU151
+ 527 00a6 FFF7FEFF 		bl	copy_token
+ 528              	.LVL57:
+ 130:Glider-Core/glider_rdss_codec.c **** 
+ 131:Glider-Core/glider_rdss_codec.c ****   out_frame->type = GLIDER_RDSS_FRAME_NMEA_TEXT;
+ 529              		.loc 1 131 3 is_stmt 1 view .LVU152
+ 530              		.loc 1 131 19 is_stmt 0 view .LVU153
+ 531 00aa 0223     		movs	r3, #2
+ 532 00ac 3370     		strb	r3, [r6]
+ 132:Glider-Core/glider_rdss_codec.c ****   return true;
+ 533              		.loc 1 132 3 is_stmt 1 view .LVU154
+ 534              		.loc 1 132 10 is_stmt 0 view .LVU155
+ 535 00ae 0120     		movs	r0, #1
+ 536 00b0 02E0     		b	.L40
+ 537              	.LVL58:
+ 538              	.L44:
+ 539              	.LCFI8:
+ 540              		.cfi_def_cfa_offset 0
+ 541              		.cfi_restore 4
+ 542              		.cfi_restore 5
+ 543              		.cfi_restore 6
+ 544              		.cfi_restore 7
+ 545              		.cfi_restore 8
+ 546              		.cfi_restore 14
+  85:Glider-Core/glider_rdss_codec.c ****   }
+ 547              		.loc 1 85 12 view .LVU156
+ 548 00b2 0020     		movs	r0, #0
+ 549              	.LVL59:
+ 133:Glider-Core/glider_rdss_codec.c **** }
+ 550              		.loc 1 133 1 view .LVU157
+ 551 00b4 7047     		bx	lr
+ 552              	.LVL60:
+ 553              	.L45:
+ 554              	.LCFI9:
+ 555              		.cfi_def_cfa_offset 24
+ 556              		.cfi_offset 4, -24
+ 557              		.cfi_offset 5, -20
+ 558              		.cfi_offset 6, -16
+ 559              		.cfi_offset 7, -12
+ 560              		.cfi_offset 8, -8
+ 561              		.cfi_offset 14, -4
+  85:Glider-Core/glider_rdss_codec.c ****   }
+ 562              		.loc 1 85 12 view .LVU158
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 14
+
+
+ 563 00b6 0020     		movs	r0, #0
+ 564              	.LVL61:
+ 565              	.L40:
+ 566              		.loc 1 133 1 view .LVU159
+ 567 00b8 BDE8F081 		pop	{r4, r5, r6, r7, r8, pc}
+ 568              	.LVL62:
+ 569              	.L47:
+ 110:Glider-Core/glider_rdss_codec.c ****   }
+ 570              		.loc 1 110 12 view .LVU160
+ 571 00bc 0020     		movs	r0, #0
+ 572 00be FBE7     		b	.L40
+ 573              		.cfi_endproc
+ 574              	.LFE5:
+ 576              		.section	.rodata.parse_hex_line.str1.4,"aMS",%progbits,1
+ 577              		.align	2
+ 578              	.LC0:
+ 579 0000 4845583A 		.ascii	"HEX:\000"
+ 579      00
+ 580              		.section	.text.parse_hex_line,"ax",%progbits
+ 581              		.align	1
+ 582              		.syntax unified
+ 583              		.thumb
+ 584              		.thumb_func
+ 586              	parse_hex_line:
+ 587              	.LVL63:
+ 588              	.LFB6:
+ 134:Glider-Core/glider_rdss_codec.c **** 
+ 135:Glider-Core/glider_rdss_codec.c **** static bool parse_hex_line(const char *line, size_t line_len, GliderRdssDecodedFrame *out_frame)
+ 136:Glider-Core/glider_rdss_codec.c **** {
+ 589              		.loc 1 136 1 is_stmt 1 view -0
+ 590              		.cfi_startproc
+ 591              		@ args = 0, pretend = 0, frame = 0
+ 592              		@ frame_needed = 0, uses_anonymous_args = 0
+ 137:Glider-Core/glider_rdss_codec.c ****   size_t i = 0;
+ 593              		.loc 1 137 3 view .LVU162
+ 138:Glider-Core/glider_rdss_codec.c ****   int pending_nibble = -1;
+ 594              		.loc 1 138 3 view .LVU163
+ 139:Glider-Core/glider_rdss_codec.c **** 
+ 140:Glider-Core/glider_rdss_codec.c ****   if (line_len < 4U || strncmp(line, "HEX:", 4) != 0)
+ 595              		.loc 1 140 3 view .LVU164
+ 596              		.loc 1 140 6 is_stmt 0 view .LVU165
+ 597 0000 0329     		cmp	r1, #3
+ 598 0002 61D9     		bls	.L66
+ 136:Glider-Core/glider_rdss_codec.c ****   size_t i = 0;
+ 599              		.loc 1 136 1 discriminator 1 view .LVU166
+ 600 0004 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 601              	.LCFI10:
+ 602              		.cfi_def_cfa_offset 24
+ 603              		.cfi_offset 3, -24
+ 604              		.cfi_offset 4, -20
+ 605              		.cfi_offset 5, -16
+ 606              		.cfi_offset 6, -12
+ 607              		.cfi_offset 7, -8
+ 608              		.cfi_offset 14, -4
+ 609 0006 0546     		mov	r5, r0
+ 610 0008 0E46     		mov	r6, r1
+ 611 000a 1746     		mov	r7, r2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 15
+
+
+ 612              		.loc 1 140 24 discriminator 1 view .LVU167
+ 613 000c 0422     		movs	r2, #4
+ 614              	.LVL64:
+ 615              		.loc 1 140 24 discriminator 1 view .LVU168
+ 616 000e 3049     		ldr	r1, .L77
+ 617              	.LVL65:
+ 618              		.loc 1 140 24 discriminator 1 view .LVU169
+ 619 0010 FFF7FEFF 		bl	strncmp
+ 620              	.LVL66:
+ 621              		.loc 1 140 21 discriminator 1 view .LVU170
+ 622 0014 0028     		cmp	r0, #0
+ 623 0016 59D1     		bne	.L67
+ 138:Glider-Core/glider_rdss_codec.c ****   int pending_nibble = -1;
+ 624              		.loc 1 138 7 view .LVU171
+ 625 0018 4FF0FF31 		mov	r1, #-1
+ 141:Glider-Core/glider_rdss_codec.c ****   {
+ 142:Glider-Core/glider_rdss_codec.c ****     return false;
+ 143:Glider-Core/glider_rdss_codec.c ****   }
+ 144:Glider-Core/glider_rdss_codec.c **** 
+ 145:Glider-Core/glider_rdss_codec.c ****   for (i = 4U; i < line_len; i++)
+ 626              		.loc 1 145 10 view .LVU172
+ 627 001c 0424     		movs	r4, #4
+ 628 001e 19E0     		b	.L58
+ 629              	.LVL67:
+ 630              	.L60:
+ 631              	.LBB7:
+ 146:Glider-Core/glider_rdss_codec.c ****   {
+ 147:Glider-Core/glider_rdss_codec.c ****     unsigned char ch = (unsigned char)line[i];
+ 148:Glider-Core/glider_rdss_codec.c ****     int nibble = 0;
+ 149:Glider-Core/glider_rdss_codec.c **** 
+ 150:Glider-Core/glider_rdss_codec.c ****     if (ch == ' ' || ch == '\t' || ch == ',' || ch == '-' || ch == ':')
+ 151:Glider-Core/glider_rdss_codec.c ****     {
+ 152:Glider-Core/glider_rdss_codec.c ****       continue;
+ 153:Glider-Core/glider_rdss_codec.c ****     }
+ 154:Glider-Core/glider_rdss_codec.c **** 
+ 155:Glider-Core/glider_rdss_codec.c ****     if ((ch == 'x' || ch == 'X') && i > 0U && line[i - 1U] == '0')
+ 156:Glider-Core/glider_rdss_codec.c ****     {
+ 157:Glider-Core/glider_rdss_codec.c ****       continue;
+ 158:Glider-Core/glider_rdss_codec.c ****     }
+ 159:Glider-Core/glider_rdss_codec.c **** 
+ 160:Glider-Core/glider_rdss_codec.c ****     if (!isxdigit(ch))
+ 632              		.loc 1 160 5 is_stmt 1 view .LVU173
+ 633              		.loc 1 160 10 is_stmt 0 view .LVU174
+ 634 0020 2C4A     		ldr	r2, .L77+4
+ 635 0022 D25C     		ldrb	r2, [r2, r3]	@ zero_extendqisi2
+ 636              		.loc 1 160 8 view .LVU175
+ 637 0024 12F0440F 		tst	r2, #68
+ 638 0028 51D0     		beq	.L57
+ 161:Glider-Core/glider_rdss_codec.c ****     {
+ 162:Glider-Core/glider_rdss_codec.c ****       return false;
+ 163:Glider-Core/glider_rdss_codec.c ****     }
+ 164:Glider-Core/glider_rdss_codec.c **** 
+ 165:Glider-Core/glider_rdss_codec.c ****     nibble = isdigit(ch) ? (ch - '0') : (tolower(ch) - 'a' + 10);
+ 639              		.loc 1 165 5 is_stmt 1 view .LVU176
+ 640              		.loc 1 165 39 is_stmt 0 view .LVU177
+ 641 002a 12F0040F 		tst	r2, #4
+ 642 002e 2ED0     		beq	.L61
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 16
+
+
+ 643              		.loc 1 165 39 discriminator 1 view .LVU178
+ 644 0030 303B     		subs	r3, r3, #48
+ 645              	.LVL68:
+ 646              	.L62:
+ 166:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ 647              		.loc 1 166 5 is_stmt 1 discriminator 8 view .LVU179
+ 648              		.loc 1 166 8 is_stmt 0 discriminator 8 view .LVU180
+ 649 0032 0029     		cmp	r1, #0
+ 650 0034 33DB     		blt	.L68
+ 167:Glider-Core/glider_rdss_codec.c ****     {
+ 168:Glider-Core/glider_rdss_codec.c ****       pending_nibble = nibble;
+ 169:Glider-Core/glider_rdss_codec.c ****       continue;
+ 170:Glider-Core/glider_rdss_codec.c ****     }
+ 171:Glider-Core/glider_rdss_codec.c **** 
+ 172:Glider-Core/glider_rdss_codec.c ****     if (out_frame->payload_len >= sizeof(out_frame->payload))
+ 651              		.loc 1 172 5 is_stmt 1 view .LVU181
+ 652              		.loc 1 172 18 is_stmt 0 view .LVU182
+ 653 0036 D7F87821 		ldr	r2, [r7, #376]
+ 654              		.loc 1 172 8 view .LVU183
+ 655 003a 7F2A     		cmp	r2, #127
+ 656 003c 47D8     		bhi	.L57
+ 173:Glider-Core/glider_rdss_codec.c ****     {
+ 174:Glider-Core/glider_rdss_codec.c ****       return false;
+ 175:Glider-Core/glider_rdss_codec.c ****     }
+ 176:Glider-Core/glider_rdss_codec.c **** 
+ 177:Glider-Core/glider_rdss_codec.c ****     out_frame->payload[out_frame->payload_len++] = (uint8_t)((pending_nibble << 4) | nibble);
+ 657              		.loc 1 177 5 is_stmt 1 view .LVU184
+ 658              		.loc 1 177 84 is_stmt 0 view .LVU185
+ 659 003e 43EA0113 		orr	r3, r3, r1, lsl #4
+ 660              	.LVL69:
+ 661              		.loc 1 177 46 view .LVU186
+ 662 0042 511C     		adds	r1, r2, #1
+ 663              	.LVL70:
+ 664              		.loc 1 177 46 view .LVU187
+ 665 0044 C7F87811 		str	r1, [r7, #376]
+ 666              	.LVL71:
+ 667              		.loc 1 177 50 view .LVU188
+ 668 0048 3A44     		add	r2, r2, r7
+ 669 004a 82F8F530 		strb	r3, [r2, #245]
+ 178:Glider-Core/glider_rdss_codec.c ****     pending_nibble = -1;
+ 670              		.loc 1 178 5 is_stmt 1 view .LVU189
+ 671              	.LVL72:
+ 672              		.loc 1 178 20 is_stmt 0 view .LVU190
+ 673 004e 4FF0FF31 		mov	r1, #-1
+ 674              	.LVL73:
+ 675              	.L59:
+ 676              		.loc 1 178 20 view .LVU191
+ 677              	.LBE7:
+ 145:Glider-Core/glider_rdss_codec.c ****   {
+ 678              		.loc 1 145 31 is_stmt 1 discriminator 2 view .LVU192
+ 679 0052 0134     		adds	r4, r4, #1
+ 680              	.LVL74:
+ 681              	.L58:
+ 145:Glider-Core/glider_rdss_codec.c ****   {
+ 682              		.loc 1 145 18 discriminator 1 view .LVU193
+ 683 0054 B442     		cmp	r4, r6
+ 684 0056 24D2     		bcs	.L74
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 17
+
+
+ 685              	.LBB10:
+ 147:Glider-Core/glider_rdss_codec.c ****     int nibble = 0;
+ 686              		.loc 1 147 5 view .LVU194
+ 147:Glider-Core/glider_rdss_codec.c ****     int nibble = 0;
+ 687              		.loc 1 147 19 is_stmt 0 view .LVU195
+ 688 0058 2B5D     		ldrb	r3, [r5, r4]	@ zero_extendqisi2
+ 689              	.LVL75:
+ 148:Glider-Core/glider_rdss_codec.c **** 
+ 690              		.loc 1 148 5 is_stmt 1 view .LVU196
+ 150:Glider-Core/glider_rdss_codec.c ****     {
+ 691              		.loc 1 150 5 view .LVU197
+ 150:Glider-Core/glider_rdss_codec.c ****     {
+ 692              		.loc 1 150 8 is_stmt 0 view .LVU198
+ 693 005a 092B     		cmp	r3, #9
+ 694 005c 18BF     		it	ne
+ 695 005e 202B     		cmpne	r3, #32
+ 696 0060 0CBF     		ite	eq
+ 697 0062 0120     		moveq	r0, #1
+ 698 0064 0020     		movne	r0, #0
+ 699 0066 F4D0     		beq	.L59
+ 150:Glider-Core/glider_rdss_codec.c ****     {
+ 700              		.loc 1 150 46 discriminator 2 view .LVU199
+ 701 0068 A3F12C02 		sub	r2, r3, #44
+ 702 006c D2B2     		uxtb	r2, r2
+ 703 006e 012A     		cmp	r2, #1
+ 704 0070 EFD9     		bls	.L59
+ 150:Glider-Core/glider_rdss_codec.c ****     {
+ 705              		.loc 1 150 59 discriminator 4 view .LVU200
+ 706 0072 3A2B     		cmp	r3, #58
+ 707 0074 EDD0     		beq	.L59
+ 155:Glider-Core/glider_rdss_codec.c ****     {
+ 708              		.loc 1 155 5 is_stmt 1 view .LVU201
+ 155:Glider-Core/glider_rdss_codec.c ****     {
+ 709              		.loc 1 155 8 is_stmt 0 view .LVU202
+ 710 0076 582B     		cmp	r3, #88
+ 711 0078 18BF     		it	ne
+ 712 007a 782B     		cmpne	r3, #120
+ 713 007c D0D1     		bne	.L60
+ 155:Glider-Core/glider_rdss_codec.c ****     {
+ 714              		.loc 1 155 34 discriminator 1 view .LVU203
+ 715 007e 002C     		cmp	r4, #0
+ 716 0080 CED0     		beq	.L60
+ 155:Glider-Core/glider_rdss_codec.c ****     {
+ 717              		.loc 1 155 51 discriminator 2 view .LVU204
+ 718 0082 2A19     		adds	r2, r5, r4
+ 719 0084 12F8012C 		ldrb	r2, [r2, #-1]	@ zero_extendqisi2
+ 155:Glider-Core/glider_rdss_codec.c ****     {
+ 720              		.loc 1 155 44 discriminator 2 view .LVU205
+ 721 0088 302A     		cmp	r2, #48
+ 722 008a C9D1     		bne	.L60
+ 723 008c E1E7     		b	.L59
+ 724              	.L61:
+ 725              	.LBB8:
+ 165:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ 726              		.loc 1 165 42 is_stmt 1 discriminator 2 view .LVU206
+ 727              	.LVL76:
+ 165:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 18
+
+
+ 728              		.loc 1 165 42 discriminator 2 view .LVU207
+ 729 008e 02F00302 		and	r2, r2, #3
+ 730 0092 012A     		cmp	r2, #1
+ 731 0094 01D0     		beq	.L75
+ 732              	.LVL77:
+ 733              	.L64:
+ 165:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ 734              		.loc 1 165 42 is_stmt 0 discriminator 2 view .LVU208
+ 735              	.LBE8:
+ 165:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ 736              		.loc 1 165 39 discriminator 7 view .LVU209
+ 737 0096 573B     		subs	r3, r3, #87
+ 738 0098 CBE7     		b	.L62
+ 739              	.LVL78:
+ 740              	.L75:
+ 741              	.LBB9:
+ 165:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ 742              		.loc 1 165 42 discriminator 4 view .LVU210
+ 743 009a 2033     		adds	r3, r3, #32
+ 744              	.LVL79:
+ 165:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ 745              		.loc 1 165 42 discriminator 4 view .LVU211
+ 746 009c FBE7     		b	.L64
+ 747              	.LVL80:
+ 748              	.L68:
+ 165:Glider-Core/glider_rdss_codec.c ****     if (pending_nibble < 0)
+ 749              		.loc 1 165 42 discriminator 4 view .LVU212
+ 750              	.LBE9:
+ 168:Glider-Core/glider_rdss_codec.c ****       continue;
+ 751              		.loc 1 168 22 view .LVU213
+ 752 009e 1946     		mov	r1, r3
+ 753              	.LVL81:
+ 168:Glider-Core/glider_rdss_codec.c ****       continue;
+ 754              		.loc 1 168 22 view .LVU214
+ 755 00a0 D7E7     		b	.L59
+ 756              	.LVL82:
+ 757              	.L74:
+ 168:Glider-Core/glider_rdss_codec.c ****       continue;
+ 758              		.loc 1 168 22 view .LVU215
+ 759              	.LBE10:
+ 179:Glider-Core/glider_rdss_codec.c ****   }
+ 180:Glider-Core/glider_rdss_codec.c **** 
+ 181:Glider-Core/glider_rdss_codec.c ****   if (pending_nibble >= 0)
+ 760              		.loc 1 181 3 is_stmt 1 view .LVU216
+ 761              		.loc 1 181 6 is_stmt 0 view .LVU217
+ 762 00a2 0029     		cmp	r1, #0
+ 763 00a4 01DB     		blt	.L76
+ 182:Glider-Core/glider_rdss_codec.c ****   {
+ 183:Glider-Core/glider_rdss_codec.c ****     return false;
+ 764              		.loc 1 183 12 view .LVU218
+ 765 00a6 0020     		movs	r0, #0
+ 766 00a8 11E0     		b	.L57
+ 767              	.L76:
+ 184:Glider-Core/glider_rdss_codec.c ****   }
+ 185:Glider-Core/glider_rdss_codec.c **** 
+ 186:Glider-Core/glider_rdss_codec.c ****   out_frame->type = GLIDER_RDSS_FRAME_HEX_BINARY;
+ 768              		.loc 1 186 3 is_stmt 1 view .LVU219
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 19
+
+
+ 769              		.loc 1 186 19 is_stmt 0 view .LVU220
+ 770 00aa 3846     		mov	r0, r7
+ 771 00ac 0423     		movs	r3, #4
+ 772 00ae 00F8353B 		strb	r3, [r0], #53
+ 187:Glider-Core/glider_rdss_codec.c ****   copy_token(out_frame->text, sizeof(out_frame->text), line, line_len);
+ 773              		.loc 1 187 3 is_stmt 1 view .LVU221
+ 774 00b2 3346     		mov	r3, r6
+ 775 00b4 2A46     		mov	r2, r5
+ 776 00b6 C021     		movs	r1, #192
+ 777              	.LVL83:
+ 778              		.loc 1 187 3 is_stmt 0 view .LVU222
+ 779 00b8 FFF7FEFF 		bl	copy_token
+ 780              	.LVL84:
+ 188:Glider-Core/glider_rdss_codec.c ****   return out_frame->payload_len > 0U;
+ 781              		.loc 1 188 3 is_stmt 1 view .LVU223
+ 782              		.loc 1 188 19 is_stmt 0 view .LVU224
+ 783 00bc D7F87801 		ldr	r0, [r7, #376]
+ 784              		.loc 1 188 33 view .LVU225
+ 785 00c0 0038     		subs	r0, r0, #0
+ 786 00c2 18BF     		it	ne
+ 787 00c4 0120     		movne	r0, #1
+ 788 00c6 02E0     		b	.L57
+ 789              	.LVL85:
+ 790              	.L66:
+ 791              	.LCFI11:
+ 792              		.cfi_def_cfa_offset 0
+ 793              		.cfi_restore 3
+ 794              		.cfi_restore 4
+ 795              		.cfi_restore 5
+ 796              		.cfi_restore 6
+ 797              		.cfi_restore 7
+ 798              		.cfi_restore 14
+ 142:Glider-Core/glider_rdss_codec.c ****   }
+ 799              		.loc 1 142 12 view .LVU226
+ 800 00c8 0020     		movs	r0, #0
+ 801              	.LVL86:
+ 189:Glider-Core/glider_rdss_codec.c **** }
+ 802              		.loc 1 189 1 view .LVU227
+ 803 00ca 7047     		bx	lr
+ 804              	.LVL87:
+ 805              	.L67:
+ 806              	.LCFI12:
+ 807              		.cfi_def_cfa_offset 24
+ 808              		.cfi_offset 3, -24
+ 809              		.cfi_offset 4, -20
+ 810              		.cfi_offset 5, -16
+ 811              		.cfi_offset 6, -12
+ 812              		.cfi_offset 7, -8
+ 813              		.cfi_offset 14, -4
+ 142:Glider-Core/glider_rdss_codec.c ****   }
+ 814              		.loc 1 142 12 view .LVU228
+ 815 00cc 0020     		movs	r0, #0
+ 816              	.LVL88:
+ 817              	.L57:
+ 818              		.loc 1 189 1 view .LVU229
+ 819 00ce F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 820              	.LVL89:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 20
+
+
+ 821              	.L78:
+ 822              		.loc 1 189 1 view .LVU230
+ 823              		.align	2
+ 824              	.L77:
+ 825 00d0 00000000 		.word	.LC0
+ 826 00d4 01000000 		.word	_ctype_+1
+ 827              		.cfi_endproc
+ 828              	.LFE6:
+ 830              		.section	.rodata.parse_at_response.str1.4,"aMS",%progbits,1
+ 831              		.align	2
+ 832              	.LC1:
+ 833 0000 415400   		.ascii	"AT\000"
+ 834 0003 00       		.align	2
+ 835              	.LC2:
+ 836 0004 4F4B00   		.ascii	"OK\000"
+ 837 0007 00       		.align	2
+ 838              	.LC3:
+ 839 0008 4552524F 		.ascii	"ERROR\000"
+ 839      5200
+ 840              		.section	.text.parse_at_response,"ax",%progbits
+ 841              		.align	1
+ 842              		.syntax unified
+ 843              		.thumb
+ 844              		.thumb_func
+ 846              	parse_at_response:
+ 847              	.LVL90:
+ 848              	.LFB7:
+ 190:Glider-Core/glider_rdss_codec.c **** 
+ 191:Glider-Core/glider_rdss_codec.c **** static bool parse_at_response(const char *line, size_t line_len, GliderRdssDecodedFrame *out_frame)
+ 192:Glider-Core/glider_rdss_codec.c **** {
+ 849              		.loc 1 192 1 is_stmt 1 view -0
+ 850              		.cfi_startproc
+ 851              		@ args = 0, pretend = 0, frame = 0
+ 852              		@ frame_needed = 0, uses_anonymous_args = 0
+ 193:Glider-Core/glider_rdss_codec.c ****   const char *plus = NULL;
+ 853              		.loc 1 193 3 view .LVU232
+ 194:Glider-Core/glider_rdss_codec.c ****   const char *sep = NULL;
+ 854              		.loc 1 194 3 view .LVU233
+ 195:Glider-Core/glider_rdss_codec.c **** 
+ 196:Glider-Core/glider_rdss_codec.c ****   if (line_len == 0U)
+ 855              		.loc 1 196 3 view .LVU234
+ 856              		.loc 1 196 6 is_stmt 0 view .LVU235
+ 857 0000 09B9     		cbnz	r1, .L90
+ 197:Glider-Core/glider_rdss_codec.c ****   {
+ 198:Glider-Core/glider_rdss_codec.c ****     return false;
+ 858              		.loc 1 198 12 view .LVU236
+ 859 0002 0020     		movs	r0, #0
+ 860              	.LVL91:
+ 199:Glider-Core/glider_rdss_codec.c ****   }
+ 200:Glider-Core/glider_rdss_codec.c **** 
+ 201:Glider-Core/glider_rdss_codec.c ****   copy_token(out_frame->text, sizeof(out_frame->text), line, line_len);
+ 202:Glider-Core/glider_rdss_codec.c **** 
+ 203:Glider-Core/glider_rdss_codec.c ****   if (strncmp(line, "AT", 2) == 0 || strncmp(line, "OK", 2) == 0 || strncmp(line, "ERROR", 5) == 0)
+ 204:Glider-Core/glider_rdss_codec.c ****   {
+ 205:Glider-Core/glider_rdss_codec.c ****     out_frame->type = GLIDER_RDSS_FRAME_AT_RESPONSE;
+ 206:Glider-Core/glider_rdss_codec.c ****     copy_token(out_frame->command, sizeof(out_frame->command), line, line_len);
+ 207:Glider-Core/glider_rdss_codec.c ****     return true;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 21
+
+
+ 208:Glider-Core/glider_rdss_codec.c ****   }
+ 209:Glider-Core/glider_rdss_codec.c **** 
+ 210:Glider-Core/glider_rdss_codec.c ****   plus = strchr(line, '+');
+ 211:Glider-Core/glider_rdss_codec.c ****   if (plus != NULL)
+ 212:Glider-Core/glider_rdss_codec.c ****   {
+ 213:Glider-Core/glider_rdss_codec.c ****     sep = strchr(plus, ':');
+ 214:Glider-Core/glider_rdss_codec.c ****     if (sep == NULL)
+ 215:Glider-Core/glider_rdss_codec.c ****     {
+ 216:Glider-Core/glider_rdss_codec.c ****       sep = strchr(plus, ',');
+ 217:Glider-Core/glider_rdss_codec.c ****     }
+ 218:Glider-Core/glider_rdss_codec.c ****     if (sep == NULL)
+ 219:Glider-Core/glider_rdss_codec.c ****     {
+ 220:Glider-Core/glider_rdss_codec.c ****       sep = line + line_len;
+ 221:Glider-Core/glider_rdss_codec.c ****     }
+ 222:Glider-Core/glider_rdss_codec.c **** 
+ 223:Glider-Core/glider_rdss_codec.c ****     copy_token(out_frame->command, sizeof(out_frame->command), plus, (size_t)(sep - plus));
+ 224:Glider-Core/glider_rdss_codec.c ****     out_frame->type = GLIDER_RDSS_FRAME_AT_RESPONSE;
+ 225:Glider-Core/glider_rdss_codec.c ****     return true;
+ 226:Glider-Core/glider_rdss_codec.c ****   }
+ 227:Glider-Core/glider_rdss_codec.c **** 
+ 228:Glider-Core/glider_rdss_codec.c ****   return false;
+ 229:Glider-Core/glider_rdss_codec.c **** }
+ 861              		.loc 1 229 1 view .LVU237
+ 862 0004 7047     		bx	lr
+ 863              	.LVL92:
+ 864              	.L90:
+ 192:Glider-Core/glider_rdss_codec.c ****   const char *plus = NULL;
+ 865              		.loc 1 192 1 view .LVU238
+ 866 0006 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 867              	.LCFI13:
+ 868              		.cfi_def_cfa_offset 24
+ 869              		.cfi_offset 3, -24
+ 870              		.cfi_offset 4, -20
+ 871              		.cfi_offset 5, -16
+ 872              		.cfi_offset 6, -12
+ 873              		.cfi_offset 7, -8
+ 874              		.cfi_offset 14, -4
+ 875 0008 0546     		mov	r5, r0
+ 876 000a 1446     		mov	r4, r2
+ 877 000c 0E46     		mov	r6, r1
+ 201:Glider-Core/glider_rdss_codec.c **** 
+ 878              		.loc 1 201 3 is_stmt 1 view .LVU239
+ 879 000e 0B46     		mov	r3, r1
+ 880 0010 0246     		mov	r2, r0
+ 881              	.LVL93:
+ 201:Glider-Core/glider_rdss_codec.c **** 
+ 882              		.loc 1 201 3 is_stmt 0 view .LVU240
+ 883 0012 C021     		movs	r1, #192
+ 884              	.LVL94:
+ 201:Glider-Core/glider_rdss_codec.c **** 
+ 885              		.loc 1 201 3 view .LVU241
+ 886 0014 04F13500 		add	r0, r4, #53
+ 887              	.LVL95:
+ 201:Glider-Core/glider_rdss_codec.c **** 
+ 888              		.loc 1 201 3 view .LVU242
+ 889 0018 FFF7FEFF 		bl	copy_token
+ 890              	.LVL96:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 22
+
+
+ 203:Glider-Core/glider_rdss_codec.c ****   {
+ 891              		.loc 1 203 3 is_stmt 1 view .LVU243
+ 203:Glider-Core/glider_rdss_codec.c ****   {
+ 892              		.loc 1 203 7 is_stmt 0 view .LVU244
+ 893 001c 0222     		movs	r2, #2
+ 894 001e 1E49     		ldr	r1, .L92
+ 895 0020 2846     		mov	r0, r5
+ 896 0022 FFF7FEFF 		bl	strncmp
+ 897              	.LVL97:
+ 203:Glider-Core/glider_rdss_codec.c ****   {
+ 898              		.loc 1 203 6 view .LVU245
+ 899 0026 08B3     		cbz	r0, .L81
+ 203:Glider-Core/glider_rdss_codec.c ****   {
+ 900              		.loc 1 203 38 discriminator 1 view .LVU246
+ 901 0028 0222     		movs	r2, #2
+ 902 002a 1C49     		ldr	r1, .L92+4
+ 903 002c 2846     		mov	r0, r5
+ 904 002e FFF7FEFF 		bl	strncmp
+ 905              	.LVL98:
+ 203:Glider-Core/glider_rdss_codec.c ****   {
+ 906              		.loc 1 203 35 discriminator 1 view .LVU247
+ 907 0032 D8B1     		cbz	r0, .L81
+ 203:Glider-Core/glider_rdss_codec.c ****   {
+ 908              		.loc 1 203 69 discriminator 2 view .LVU248
+ 909 0034 0522     		movs	r2, #5
+ 910 0036 1A49     		ldr	r1, .L92+8
+ 911 0038 2846     		mov	r0, r5
+ 912 003a FFF7FEFF 		bl	strncmp
+ 913              	.LVL99:
+ 203:Glider-Core/glider_rdss_codec.c ****   {
+ 914              		.loc 1 203 66 discriminator 2 view .LVU249
+ 915 003e A8B1     		cbz	r0, .L81
+ 210:Glider-Core/glider_rdss_codec.c ****   if (plus != NULL)
+ 916              		.loc 1 210 3 is_stmt 1 view .LVU250
+ 210:Glider-Core/glider_rdss_codec.c ****   if (plus != NULL)
+ 917              		.loc 1 210 10 is_stmt 0 view .LVU251
+ 918 0040 2B21     		movs	r1, #43
+ 919 0042 2846     		mov	r0, r5
+ 920 0044 FFF7FEFF 		bl	strchr
+ 921              	.LVL100:
+ 211:Glider-Core/glider_rdss_codec.c ****   {
+ 922              		.loc 1 211 3 is_stmt 1 view .LVU252
+ 211:Glider-Core/glider_rdss_codec.c ****   {
+ 923              		.loc 1 211 6 is_stmt 0 view .LVU253
+ 924 0048 0746     		mov	r7, r0
+ 925 004a 18B3     		cbz	r0, .L85
+ 213:Glider-Core/glider_rdss_codec.c ****     if (sep == NULL)
+ 926              		.loc 1 213 5 is_stmt 1 view .LVU254
+ 213:Glider-Core/glider_rdss_codec.c ****     if (sep == NULL)
+ 927              		.loc 1 213 11 is_stmt 0 view .LVU255
+ 928 004c 3A21     		movs	r1, #58
+ 929 004e FFF7FEFF 		bl	strchr
+ 930              	.LVL101:
+ 214:Glider-Core/glider_rdss_codec.c ****     {
+ 931              		.loc 1 214 5 is_stmt 1 view .LVU256
+ 214:Glider-Core/glider_rdss_codec.c ****     {
+ 932              		.loc 1 214 8 is_stmt 0 view .LVU257
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 23
+
+
+ 933 0052 0346     		mov	r3, r0
+ 934 0054 A8B1     		cbz	r0, .L91
+ 935              	.LVL102:
+ 936              	.L83:
+ 223:Glider-Core/glider_rdss_codec.c ****     out_frame->type = GLIDER_RDSS_FRAME_AT_RESPONSE;
+ 937              		.loc 1 223 5 is_stmt 1 view .LVU258
+ 938 0056 DB1B     		subs	r3, r3, r7
+ 939              	.LVL103:
+ 223:Glider-Core/glider_rdss_codec.c ****     out_frame->type = GLIDER_RDSS_FRAME_AT_RESPONSE;
+ 940              		.loc 1 223 5 is_stmt 0 view .LVU259
+ 941 0058 3A46     		mov	r2, r7
+ 942 005a 1821     		movs	r1, #24
+ 943 005c 04F11D00 		add	r0, r4, #29
+ 944 0060 FFF7FEFF 		bl	copy_token
+ 945              	.LVL104:
+ 224:Glider-Core/glider_rdss_codec.c ****     return true;
+ 946              		.loc 1 224 5 is_stmt 1 view .LVU260
+ 224:Glider-Core/glider_rdss_codec.c ****     return true;
+ 947              		.loc 1 224 21 is_stmt 0 view .LVU261
+ 948 0064 0323     		movs	r3, #3
+ 949 0066 2370     		strb	r3, [r4]
+ 225:Glider-Core/glider_rdss_codec.c ****   }
+ 950              		.loc 1 225 5 is_stmt 1 view .LVU262
+ 225:Glider-Core/glider_rdss_codec.c ****   }
+ 951              		.loc 1 225 12 is_stmt 0 view .LVU263
+ 952 0068 0120     		movs	r0, #1
+ 953 006a 09E0     		b	.L80
+ 954              	.LVL105:
+ 955              	.L81:
+ 205:Glider-Core/glider_rdss_codec.c ****     copy_token(out_frame->command, sizeof(out_frame->command), line, line_len);
+ 956              		.loc 1 205 5 is_stmt 1 view .LVU264
+ 205:Glider-Core/glider_rdss_codec.c ****     copy_token(out_frame->command, sizeof(out_frame->command), line, line_len);
+ 957              		.loc 1 205 21 is_stmt 0 view .LVU265
+ 958 006c 2046     		mov	r0, r4
+ 959 006e 0323     		movs	r3, #3
+ 960 0070 00F81D3B 		strb	r3, [r0], #29
+ 206:Glider-Core/glider_rdss_codec.c ****     return true;
+ 961              		.loc 1 206 5 is_stmt 1 view .LVU266
+ 962 0074 3346     		mov	r3, r6
+ 963 0076 2A46     		mov	r2, r5
+ 964 0078 1821     		movs	r1, #24
+ 965 007a FFF7FEFF 		bl	copy_token
+ 966              	.LVL106:
+ 207:Glider-Core/glider_rdss_codec.c ****   }
+ 967              		.loc 1 207 5 view .LVU267
+ 207:Glider-Core/glider_rdss_codec.c ****   }
+ 968              		.loc 1 207 12 is_stmt 0 view .LVU268
+ 969 007e 0120     		movs	r0, #1
+ 970              	.LVL107:
+ 971              	.L80:
+ 972              		.loc 1 229 1 view .LVU269
+ 973 0080 F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 974              	.LVL108:
+ 975              	.L91:
+ 216:Glider-Core/glider_rdss_codec.c ****     }
+ 976              		.loc 1 216 7 is_stmt 1 view .LVU270
+ 216:Glider-Core/glider_rdss_codec.c ****     }
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 24
+
+
+ 977              		.loc 1 216 13 is_stmt 0 view .LVU271
+ 978 0082 2C21     		movs	r1, #44
+ 979 0084 3846     		mov	r0, r7
+ 980              	.LVL109:
+ 216:Glider-Core/glider_rdss_codec.c ****     }
+ 981              		.loc 1 216 13 view .LVU272
+ 982 0086 FFF7FEFF 		bl	strchr
+ 983              	.LVL110:
+ 218:Glider-Core/glider_rdss_codec.c ****     {
+ 984              		.loc 1 218 5 is_stmt 1 view .LVU273
+ 218:Glider-Core/glider_rdss_codec.c ****     {
+ 985              		.loc 1 218 8 is_stmt 0 view .LVU274
+ 986 008a 0346     		mov	r3, r0
+ 987 008c 0028     		cmp	r0, #0
+ 988 008e E2D1     		bne	.L83
+ 220:Glider-Core/glider_rdss_codec.c ****     }
+ 989              		.loc 1 220 7 is_stmt 1 view .LVU275
+ 220:Glider-Core/glider_rdss_codec.c ****     }
+ 990              		.loc 1 220 11 is_stmt 0 view .LVU276
+ 991 0090 AB19     		adds	r3, r5, r6
+ 992              	.LVL111:
+ 220:Glider-Core/glider_rdss_codec.c ****     }
+ 993              		.loc 1 220 11 view .LVU277
+ 994 0092 E0E7     		b	.L83
+ 995              	.LVL112:
+ 996              	.L85:
+ 228:Glider-Core/glider_rdss_codec.c **** }
+ 997              		.loc 1 228 10 view .LVU278
+ 998 0094 0020     		movs	r0, #0
+ 999              	.LVL113:
+ 228:Glider-Core/glider_rdss_codec.c **** }
+ 1000              		.loc 1 228 10 view .LVU279
+ 1001 0096 F3E7     		b	.L80
+ 1002              	.L93:
+ 1003              		.align	2
+ 1004              	.L92:
+ 1005 0098 00000000 		.word	.LC1
+ 1006 009c 04000000 		.word	.LC2
+ 1007 00a0 08000000 		.word	.LC3
+ 1008              		.cfi_endproc
+ 1009              	.LFE7:
+ 1011              		.section	.text.GliderRdssCodec_TryDecodeLine,"ax",%progbits
+ 1012              		.align	1
+ 1013              		.global	GliderRdssCodec_TryDecodeLine
+ 1014              		.syntax unified
+ 1015              		.thumb
+ 1016              		.thumb_func
+ 1018              	GliderRdssCodec_TryDecodeLine:
+ 1019              	.LVL114:
+ 1020              	.LFB8:
+ 230:Glider-Core/glider_rdss_codec.c **** 
+ 231:Glider-Core/glider_rdss_codec.c **** bool GliderRdssCodec_TryDecodeLine(const char *line, GliderRdssDecodedFrame *out_frame)
+ 232:Glider-Core/glider_rdss_codec.c **** {
+ 1021              		.loc 1 232 1 is_stmt 1 view -0
+ 1022              		.cfi_startproc
+ 1023              		@ args = 0, pretend = 0, frame = 192
+ 1024              		@ frame_needed = 0, uses_anonymous_args = 0
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 25
+
+
+ 1025              		.loc 1 232 1 is_stmt 0 view .LVU281
+ 1026 0000 F0B5     		push	{r4, r5, r6, r7, lr}
+ 1027              	.LCFI14:
+ 1028              		.cfi_def_cfa_offset 20
+ 1029              		.cfi_offset 4, -20
+ 1030              		.cfi_offset 5, -16
+ 1031              		.cfi_offset 6, -12
+ 1032              		.cfi_offset 7, -8
+ 1033              		.cfi_offset 14, -4
+ 1034 0002 B1B0     		sub	sp, sp, #196
+ 1035              	.LCFI15:
+ 1036              		.cfi_def_cfa_offset 216
+ 233:Glider-Core/glider_rdss_codec.c ****   size_t line_len = 0;
+ 1037              		.loc 1 233 3 is_stmt 1 view .LVU282
+ 1038              	.LVL115:
+ 234:Glider-Core/glider_rdss_codec.c ****   const char *start = NULL;
+ 1039              		.loc 1 234 3 view .LVU283
+ 235:Glider-Core/glider_rdss_codec.c ****   const char *end = NULL;
+ 1040              		.loc 1 235 3 view .LVU284
+ 236:Glider-Core/glider_rdss_codec.c ****   char normalized_line[192];
+ 1041              		.loc 1 236 3 view .LVU285
+ 237:Glider-Core/glider_rdss_codec.c ****   size_t normalized_len = 0;
+ 1042              		.loc 1 237 3 view .LVU286
+ 238:Glider-Core/glider_rdss_codec.c **** 
+ 239:Glider-Core/glider_rdss_codec.c ****   if (line == NULL || out_frame == NULL)
+ 1043              		.loc 1 239 3 view .LVU287
+ 1044              		.loc 1 239 6 is_stmt 0 view .LVU288
+ 1045 0004 0029     		cmp	r1, #0
+ 1046 0006 18BF     		it	ne
+ 1047 0008 0028     		cmpne	r0, #0
+ 1048 000a 0CBF     		ite	eq
+ 1049 000c 0126     		moveq	r6, #1
+ 1050 000e 0026     		movne	r6, #0
+ 1051 0010 03D1     		bne	.L104
+ 240:Glider-Core/glider_rdss_codec.c ****   {
+ 241:Glider-Core/glider_rdss_codec.c ****     return false;
+ 1052              		.loc 1 241 12 view .LVU289
+ 1053 0012 0026     		movs	r6, #0
+ 1054              	.LVL116:
+ 1055              	.L95:
+ 242:Glider-Core/glider_rdss_codec.c ****   }
+ 243:Glider-Core/glider_rdss_codec.c **** 
+ 244:Glider-Core/glider_rdss_codec.c ****   memset(out_frame, 0, sizeof(*out_frame));
+ 245:Glider-Core/glider_rdss_codec.c ****   line_len = bounded_strnlen(line, sizeof(normalized_line) - 1U);
+ 246:Glider-Core/glider_rdss_codec.c **** 
+ 247:Glider-Core/glider_rdss_codec.c ****   if (line_len == 0)
+ 248:Glider-Core/glider_rdss_codec.c ****   {
+ 249:Glider-Core/glider_rdss_codec.c ****     return false;
+ 250:Glider-Core/glider_rdss_codec.c ****   }
+ 251:Glider-Core/glider_rdss_codec.c **** 
+ 252:Glider-Core/glider_rdss_codec.c ****   start = line;
+ 253:Glider-Core/glider_rdss_codec.c ****   end = line + line_len;
+ 254:Glider-Core/glider_rdss_codec.c **** 
+ 255:Glider-Core/glider_rdss_codec.c ****   while (start < end && isspace((unsigned char)*start))
+ 256:Glider-Core/glider_rdss_codec.c ****   {
+ 257:Glider-Core/glider_rdss_codec.c ****     start++;
+ 258:Glider-Core/glider_rdss_codec.c ****   }
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 26
+
+
+ 259:Glider-Core/glider_rdss_codec.c **** 
+ 260:Glider-Core/glider_rdss_codec.c ****   while (end > start && isspace((unsigned char)*(end - 1)))
+ 261:Glider-Core/glider_rdss_codec.c ****   {
+ 262:Glider-Core/glider_rdss_codec.c ****     end--;
+ 263:Glider-Core/glider_rdss_codec.c ****   }
+ 264:Glider-Core/glider_rdss_codec.c **** 
+ 265:Glider-Core/glider_rdss_codec.c ****   normalized_len = (size_t)(end - start);
+ 266:Glider-Core/glider_rdss_codec.c ****   if (normalized_len == 0U)
+ 267:Glider-Core/glider_rdss_codec.c ****   {
+ 268:Glider-Core/glider_rdss_codec.c ****     return false;
+ 269:Glider-Core/glider_rdss_codec.c ****   }
+ 270:Glider-Core/glider_rdss_codec.c **** 
+ 271:Glider-Core/glider_rdss_codec.c ****   copy_token(normalized_line, sizeof(normalized_line), start, normalized_len);
+ 272:Glider-Core/glider_rdss_codec.c **** 
+ 273:Glider-Core/glider_rdss_codec.c ****   if (parse_nmea_like_frame(normalized_line, normalized_len, out_frame))
+ 274:Glider-Core/glider_rdss_codec.c ****   {
+ 275:Glider-Core/glider_rdss_codec.c ****     return true;
+ 276:Glider-Core/glider_rdss_codec.c ****   }
+ 277:Glider-Core/glider_rdss_codec.c **** 
+ 278:Glider-Core/glider_rdss_codec.c ****   if (parse_hex_line(normalized_line, normalized_len, out_frame))
+ 279:Glider-Core/glider_rdss_codec.c ****   {
+ 280:Glider-Core/glider_rdss_codec.c ****     return true;
+ 281:Glider-Core/glider_rdss_codec.c ****   }
+ 282:Glider-Core/glider_rdss_codec.c **** 
+ 283:Glider-Core/glider_rdss_codec.c ****   if (parse_at_response(normalized_line, normalized_len, out_frame))
+ 284:Glider-Core/glider_rdss_codec.c ****   {
+ 285:Glider-Core/glider_rdss_codec.c ****     return true;
+ 286:Glider-Core/glider_rdss_codec.c ****   }
+ 287:Glider-Core/glider_rdss_codec.c **** 
+ 288:Glider-Core/glider_rdss_codec.c ****   out_frame->type = GLIDER_RDSS_FRAME_UNKNOWN;
+ 289:Glider-Core/glider_rdss_codec.c ****   copy_token(out_frame->text, sizeof(out_frame->text), normalized_line, normalized_len);
+ 290:Glider-Core/glider_rdss_codec.c ****   return true;
+ 291:Glider-Core/glider_rdss_codec.c **** }
+ 1056              		.loc 1 291 1 view .LVU290
+ 1057 0014 3046     		mov	r0, r6
+ 1058 0016 31B0     		add	sp, sp, #196
+ 1059              	.LCFI16:
+ 1060              		.cfi_remember_state
+ 1061              		.cfi_def_cfa_offset 20
+ 1062              		@ sp needed
+ 1063 0018 F0BD     		pop	{r4, r5, r6, r7, pc}
+ 1064              	.LVL117:
+ 1065              	.L104:
+ 1066              	.LCFI17:
+ 1067              		.cfi_restore_state
+ 1068              		.loc 1 291 1 view .LVU291
+ 1069 001a 0446     		mov	r4, r0
+ 1070 001c 0F46     		mov	r7, r1
+ 244:Glider-Core/glider_rdss_codec.c ****   line_len = bounded_strnlen(line, sizeof(normalized_line) - 1U);
+ 1071              		.loc 1 244 3 is_stmt 1 view .LVU292
+ 1072 001e 4FF4BE72 		mov	r2, #380
+ 1073 0022 0021     		movs	r1, #0
+ 1074              	.LVL118:
+ 244:Glider-Core/glider_rdss_codec.c ****   line_len = bounded_strnlen(line, sizeof(normalized_line) - 1U);
+ 1075              		.loc 1 244 3 is_stmt 0 view .LVU293
+ 1076 0024 3846     		mov	r0, r7
+ 1077              	.LVL119:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 27
+
+
+ 244:Glider-Core/glider_rdss_codec.c ****   line_len = bounded_strnlen(line, sizeof(normalized_line) - 1U);
+ 1078              		.loc 1 244 3 view .LVU294
+ 1079 0026 FFF7FEFF 		bl	memset
+ 1080              	.LVL120:
+ 245:Glider-Core/glider_rdss_codec.c **** 
+ 1081              		.loc 1 245 3 is_stmt 1 view .LVU295
+ 245:Glider-Core/glider_rdss_codec.c **** 
+ 1082              		.loc 1 245 14 is_stmt 0 view .LVU296
+ 1083 002a BF21     		movs	r1, #191
+ 1084 002c 2046     		mov	r0, r4
+ 1085 002e FFF7FEFF 		bl	bounded_strnlen
+ 1086              	.LVL121:
+ 247:Glider-Core/glider_rdss_codec.c ****   {
+ 1087              		.loc 1 247 3 is_stmt 1 view .LVU297
+ 247:Glider-Core/glider_rdss_codec.c ****   {
+ 1088              		.loc 1 247 6 is_stmt 0 view .LVU298
+ 1089 0032 0346     		mov	r3, r0
+ 1090 0034 0028     		cmp	r0, #0
+ 1091 0036 EDD0     		beq	.L95
+ 252:Glider-Core/glider_rdss_codec.c ****   end = line + line_len;
+ 1092              		.loc 1 252 3 is_stmt 1 view .LVU299
+ 1093              	.LVL122:
+ 253:Glider-Core/glider_rdss_codec.c **** 
+ 1094              		.loc 1 253 3 view .LVU300
+ 253:Glider-Core/glider_rdss_codec.c **** 
+ 1095              		.loc 1 253 7 is_stmt 0 view .LVU301
+ 1096 0038 2344     		add	r3, r3, r4
+ 1097              	.LVL123:
+ 255:Glider-Core/glider_rdss_codec.c ****   {
+ 1098              		.loc 1 255 3 is_stmt 1 view .LVU302
+ 255:Glider-Core/glider_rdss_codec.c ****   {
+ 1099              		.loc 1 255 9 is_stmt 0 view .LVU303
+ 1100 003a 00E0     		b	.L96
+ 1101              	.LVL124:
+ 1102              	.L98:
+ 257:Glider-Core/glider_rdss_codec.c ****   }
+ 1103              		.loc 1 257 5 is_stmt 1 view .LVU304
+ 257:Glider-Core/glider_rdss_codec.c ****   }
+ 1104              		.loc 1 257 10 is_stmt 0 view .LVU305
+ 1105 003c 0134     		adds	r4, r4, #1
+ 1106              	.LVL125:
+ 1107              	.L96:
+ 255:Glider-Core/glider_rdss_codec.c ****   {
+ 1108              		.loc 1 255 22 is_stmt 1 view .LVU306
+ 1109 003e 9C42     		cmp	r4, r3
+ 1110 0040 07D2     		bcs	.L99
+ 255:Glider-Core/glider_rdss_codec.c ****   {
+ 1111              		.loc 1 255 25 is_stmt 0 discriminator 1 view .LVU307
+ 1112 0042 2278     		ldrb	r2, [r4]	@ zero_extendqisi2
+ 1113 0044 1D49     		ldr	r1, .L105
+ 1114 0046 8A5C     		ldrb	r2, [r1, r2]	@ zero_extendqisi2
+ 255:Glider-Core/glider_rdss_codec.c ****   {
+ 1115              		.loc 1 255 22 discriminator 1 view .LVU308
+ 1116 0048 12F0080F 		tst	r2, #8
+ 1117 004c F6D1     		bne	.L98
+ 1118 004e 00E0     		b	.L99
+ 1119              	.L101:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 28
+
+
+ 262:Glider-Core/glider_rdss_codec.c ****   }
+ 1120              		.loc 1 262 5 is_stmt 1 view .LVU309
+ 262:Glider-Core/glider_rdss_codec.c ****   }
+ 1121              		.loc 1 262 8 is_stmt 0 view .LVU310
+ 1122 0050 013B     		subs	r3, r3, #1
+ 1123              	.LVL126:
+ 1124              	.L99:
+ 260:Glider-Core/glider_rdss_codec.c ****   {
+ 1125              		.loc 1 260 22 is_stmt 1 view .LVU311
+ 1126 0052 9C42     		cmp	r4, r3
+ 1127 0054 06D2     		bcs	.L100
+ 260:Glider-Core/glider_rdss_codec.c ****   {
+ 1128              		.loc 1 260 25 is_stmt 0 discriminator 1 view .LVU312
+ 1129 0056 13F8012C 		ldrb	r2, [r3, #-1]	@ zero_extendqisi2
+ 1130 005a 1849     		ldr	r1, .L105
+ 1131 005c 8A5C     		ldrb	r2, [r1, r2]	@ zero_extendqisi2
+ 260:Glider-Core/glider_rdss_codec.c ****   {
+ 1132              		.loc 1 260 22 discriminator 1 view .LVU313
+ 1133 005e 12F0080F 		tst	r2, #8
+ 1134 0062 F5D1     		bne	.L101
+ 1135              	.L100:
+ 265:Glider-Core/glider_rdss_codec.c ****   if (normalized_len == 0U)
+ 1136              		.loc 1 265 3 is_stmt 1 view .LVU314
+ 1137              	.LVL127:
+ 266:Glider-Core/glider_rdss_codec.c ****   {
+ 1138              		.loc 1 266 3 view .LVU315
+ 266:Glider-Core/glider_rdss_codec.c ****   {
+ 1139              		.loc 1 266 6 is_stmt 0 view .LVU316
+ 1140 0064 1D1B     		subs	r5, r3, r4
+ 1141              	.LVL128:
+ 266:Glider-Core/glider_rdss_codec.c ****   {
+ 1142              		.loc 1 266 6 view .LVU317
+ 1143 0066 D5D0     		beq	.L95
+ 271:Glider-Core/glider_rdss_codec.c **** 
+ 1144              		.loc 1 271 3 is_stmt 1 view .LVU318
+ 1145 0068 2B46     		mov	r3, r5
+ 1146              	.LVL129:
+ 271:Glider-Core/glider_rdss_codec.c **** 
+ 1147              		.loc 1 271 3 is_stmt 0 view .LVU319
+ 1148 006a 2246     		mov	r2, r4
+ 1149 006c C021     		movs	r1, #192
+ 1150 006e 6846     		mov	r0, sp
+ 1151              	.LVL130:
+ 271:Glider-Core/glider_rdss_codec.c **** 
+ 1152              		.loc 1 271 3 view .LVU320
+ 1153 0070 FFF7FEFF 		bl	copy_token
+ 1154              	.LVL131:
+ 273:Glider-Core/glider_rdss_codec.c ****   {
+ 1155              		.loc 1 273 3 is_stmt 1 view .LVU321
+ 273:Glider-Core/glider_rdss_codec.c ****   {
+ 1156              		.loc 1 273 7 is_stmt 0 view .LVU322
+ 1157 0074 3A46     		mov	r2, r7
+ 1158 0076 2946     		mov	r1, r5
+ 1159 0078 6846     		mov	r0, sp
+ 1160 007a FFF7FEFF 		bl	parse_nmea_like_frame
+ 1161              	.LVL132:
+ 273:Glider-Core/glider_rdss_codec.c ****   {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 29
+
+
+ 1162              		.loc 1 273 6 view .LVU323
+ 1163 007e 0646     		mov	r6, r0
+ 1164 0080 0028     		cmp	r0, #0
+ 1165 0082 C7D1     		bne	.L95
+ 278:Glider-Core/glider_rdss_codec.c ****   {
+ 1166              		.loc 1 278 3 is_stmt 1 view .LVU324
+ 278:Glider-Core/glider_rdss_codec.c ****   {
+ 1167              		.loc 1 278 7 is_stmt 0 view .LVU325
+ 1168 0084 3A46     		mov	r2, r7
+ 1169 0086 2946     		mov	r1, r5
+ 1170 0088 6846     		mov	r0, sp
+ 1171 008a FFF7FEFF 		bl	parse_hex_line
+ 1172              	.LVL133:
+ 278:Glider-Core/glider_rdss_codec.c ****   {
+ 1173              		.loc 1 278 6 view .LVU326
+ 1174 008e 0646     		mov	r6, r0
+ 1175 0090 0028     		cmp	r0, #0
+ 1176 0092 BFD1     		bne	.L95
+ 283:Glider-Core/glider_rdss_codec.c ****   {
+ 1177              		.loc 1 283 3 is_stmt 1 view .LVU327
+ 283:Glider-Core/glider_rdss_codec.c ****   {
+ 1178              		.loc 1 283 7 is_stmt 0 view .LVU328
+ 1179 0094 3A46     		mov	r2, r7
+ 1180 0096 2946     		mov	r1, r5
+ 1181 0098 6846     		mov	r0, sp
+ 1182 009a FFF7FEFF 		bl	parse_at_response
+ 1183              	.LVL134:
+ 283:Glider-Core/glider_rdss_codec.c ****   {
+ 1184              		.loc 1 283 6 view .LVU329
+ 1185 009e 0646     		mov	r6, r0
+ 1186 00a0 0028     		cmp	r0, #0
+ 1187 00a2 B7D1     		bne	.L95
+ 288:Glider-Core/glider_rdss_codec.c ****   copy_token(out_frame->text, sizeof(out_frame->text), normalized_line, normalized_len);
+ 1188              		.loc 1 288 3 is_stmt 1 view .LVU330
+ 288:Glider-Core/glider_rdss_codec.c ****   copy_token(out_frame->text, sizeof(out_frame->text), normalized_line, normalized_len);
+ 1189              		.loc 1 288 19 is_stmt 0 view .LVU331
+ 1190 00a4 3846     		mov	r0, r7
+ 1191 00a6 0023     		movs	r3, #0
+ 1192 00a8 00F8353B 		strb	r3, [r0], #53
+ 289:Glider-Core/glider_rdss_codec.c ****   return true;
+ 1193              		.loc 1 289 3 is_stmt 1 view .LVU332
+ 1194 00ac 2B46     		mov	r3, r5
+ 1195 00ae 6A46     		mov	r2, sp
+ 1196 00b0 C021     		movs	r1, #192
+ 1197 00b2 FFF7FEFF 		bl	copy_token
+ 1198              	.LVL135:
+ 290:Glider-Core/glider_rdss_codec.c **** }
+ 1199              		.loc 1 290 3 view .LVU333
+ 290:Glider-Core/glider_rdss_codec.c **** }
+ 1200              		.loc 1 290 10 is_stmt 0 view .LVU334
+ 1201 00b6 0126     		movs	r6, #1
+ 1202 00b8 ACE7     		b	.L95
+ 1203              	.L106:
+ 1204 00ba 00BF     		.align	2
+ 1205              	.L105:
+ 1206 00bc 01000000 		.word	_ctype_+1
+ 1207              		.cfi_endproc
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 30
+
+
+ 1208              	.LFE8:
+ 1210              		.text
+ 1211              	.Letext0:
+ 1212              		.file 2 "c:\\msys64\\mingw64\\lib\\gcc\\arm-none-eabi\\12.2.0\\include\\stddef.h"
+ 1213              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 1214              		.file 4 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 1215              		.file 5 "Glider-Core/glider_rdss_codec.h"
+ 1216              		.file 6 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\string.h"
+ 1217              		.file 7 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\ctype.h"
+ 1218              		.file 8 "<built-in>"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s 			page 31
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 glider_rdss_codec.c
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:20     .text.bounded_strnlen:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:25     .text.bounded_strnlen:00000000 bounded_strnlen
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:65     .text.calc_xor_checksum:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:70     .text.calc_xor_checksum:00000000 calc_xor_checksum
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:113    .text.parse_hex_byte:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:118    .text.parse_hex_byte:00000000 parse_hex_byte
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:255    .text.parse_hex_byte:00000060 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:260    .text.copy_token:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:265    .text.copy_token:00000000 copy_token
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:357    .text.parse_nmea_like_frame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:362    .text.parse_nmea_like_frame:00000000 parse_nmea_like_frame
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:577    .rodata.parse_hex_line.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:581    .text.parse_hex_line:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:586    .text.parse_hex_line:00000000 parse_hex_line
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:825    .text.parse_hex_line:000000d0 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:831    .rodata.parse_at_response.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:841    .text.parse_at_response:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:846    .text.parse_at_response:00000000 parse_at_response
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:1005   .text.parse_at_response:00000098 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:1012   .text.GliderRdssCodec_TryDecodeLine:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:1018   .text.GliderRdssCodec_TryDecodeLine:00000000 GliderRdssCodec_TryDecodeLine
+C:\Users\OUFARU~1\AppData\Local\Temp\cc4UKl5d.s:1206   .text.GliderRdssCodec_TryDecodeLine:000000bc $d
+
+UNDEFINED SYMBOLS
+_ctype_
+memcpy
+strchr
+memchr
+strncmp
+memset
