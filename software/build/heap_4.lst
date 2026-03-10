@@ -1,4 +1,4 @@
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 1
 
 
    1              		.cpu cortex-m7
@@ -58,7 +58,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
   30:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c ****  * (coalescences) adjacent memory blocks as they are freed, and in so doing
   31:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c ****  * limits memory fragmentation.
   32:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c ****  *
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 2
 
 
   33:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c ****  * See heap_1.c, heap_2.c and heap_3.c for alternative implementations, and the
@@ -118,7 +118,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
   87:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c ****  * pvPortMalloc() is called.
   88:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c ****  */
   89:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** static void prvHeapInit( void );
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 3
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 3
 
 
   90:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
@@ -178,7 +178,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  144:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
  145:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				/* Ensure that blocks are always aligned to the required number
  146:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				of bytes. */
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 4
 
 
  147:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				if( ( xWantedSize & portBYTE_ALIGNMENT_MASK ) != 0x00 )
@@ -238,7 +238,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  201:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
  202:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
  203:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						/* Insert the new block into the list of free blocks. */
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 5
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 5
 
 
  204:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						prvInsertBlockIntoFreeList( pxNewBlockLink );
@@ -298,7 +298,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  258:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
  259:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	#endif
  260:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 6
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 6
 
 
  261:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	configASSERT( ( ( ( size_t ) pvReturn ) & ( size_t ) portBYTE_ALIGNMENT_MASK ) == 0 );
@@ -358,7 +358,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  315:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** size_t xPortGetFreeHeapSize( void )
  316:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** {
  317:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return xFreeBytesRemaining;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 7
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 7
 
 
  318:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
@@ -418,7 +418,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
   52              	.LVL3:
  347:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		xTotalHeapSize -= uxAddress - ( size_t ) ucHeap;
   53              		.loc 1 347 3 is_stmt 1 view .LVU13
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 8
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 8
 
 
   54              		.loc 1 347 18 is_stmt 0 view .LVU14
@@ -478,7 +478,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
   90              		.loc 1 364 2 is_stmt 1 view .LVU31
   91              		.loc 1 364 25 is_stmt 0 view .LVU32
   92 002c 1960     		str	r1, [r3]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 9
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 9
 
 
  365:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
@@ -538,7 +538,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  132 0054 00000000 		.word	pxEnd
  133 0058 00000000 		.word	xMinimumEverFreeBytesRemaining
  134 005c 00000000 		.word	xFreeBytesRemaining
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 10
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 10
 
 
  135 0060 00000000 		.word	xBlockAllocatedBit
@@ -598,7 +598,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  173              		.loc 1 396 12 view .LVU60
  174 000c 02EB010C 		add	ip, r2, r1
  175              		.loc 1 396 4 view .LVU61
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 11
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 11
 
 
  176 0010 8445     		cmp	ip, r0
@@ -658,7 +658,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  195 0020 9042     		cmp	r0, r2
  196 0022 19D0     		beq	.L16
  432:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	{
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 12
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 12
 
 
  433:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		pxIterator->pxNextFreeBlock = pxBlockToInsert;
@@ -718,7 +718,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  234 003e 1944     		add	r1, r1, r3
  235 0040 4160     		str	r1, [r0, #4]
  415:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 13
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 13
 
 
  236              		.loc 1 415 4 is_stmt 1 view .LVU87
@@ -778,7 +778,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  278              		.cfi_endproc
  279              	.LFE10:
  281              		.section	.rodata.pvPortMalloc.str1.4,"aMS",%progbits,1
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 14
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 14
 
 
  282              		.align	2
@@ -831,14 +831,14 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  317              		.loc 1 124 3 view .LVU105
  124:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
  318              		.loc 1 124 13 is_stmt 0 view .LVU106
- 319 0008 3B4B     		ldr	r3, .L49
+ 319 0008 364B     		ldr	r3, .L43
  320 000a 1B68     		ldr	r3, [r3]
  124:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
  321              		.loc 1 124 5 view .LVU107
- 322 000c ABB1     		cbz	r3, .L42
+ 322 000c B3B1     		cbz	r3, .L40
  323              	.L24:
  130:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 15
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 15
 
 
  324              		.loc 1 130 28 is_stmt 1 view .LVU108
@@ -846,18 +846,18 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  325              		.loc 1 137 3 view .LVU109
  137:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
  326              		.loc 1 137 21 is_stmt 0 view .LVU110
- 327 000e 3B4B     		ldr	r3, .L49+4
+ 327 000e 364B     		ldr	r3, .L43+4
  328 0010 1B68     		ldr	r3, [r3]
  137:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
  329              		.loc 1 137 5 view .LVU111
  330 0012 1C42     		tst	r4, r3
- 331 0014 14D1     		bne	.L43
+ 331 0014 4FD1     		bne	.L33
  141:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
  332              		.loc 1 141 4 is_stmt 1 view .LVU112
  141:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
  333              		.loc 1 141 6 is_stmt 0 view .LVU113
  334 0016 002C     		cmp	r4, #0
- 335 0018 62D0     		beq	.L39
+ 335 0018 55D0     		beq	.L34
  143:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
  336              		.loc 1 143 5 is_stmt 1 view .LVU114
  143:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
@@ -869,7 +869,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  147:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
  341              		.loc 1 147 7 is_stmt 0 view .LVU117
  342 001e 14F0070F 		tst	r4, #7
- 343 0022 02D0     		beq	.L28
+ 343 0022 02D0     		beq	.L26
  150:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					configASSERT( ( xWantedSize & portBYTE_ALIGNMENT_MASK ) == 0 );
  344              		.loc 1 150 6 is_stmt 1 view .LVU118
  150:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					configASSERT( ( xWantedSize & portBYTE_ALIGNMENT_MASK ) == 0 );
@@ -882,699 +882,629 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  350              	.LVL27:
  151:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
  351              		.loc 1 151 6 is_stmt 1 view .LVU121
- 352              	.L28:
+ 352              	.L26:
  160:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			}
  353              		.loc 1 160 29 view .LVU122
  163:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
  354              		.loc 1 163 4 view .LVU123
  163:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
  355              		.loc 1 163 6 is_stmt 0 view .LVU124
- 356 002a 9DB1     		cbz	r5, .L44
+ 356 002a 002D     		cmp	r5, #0
+ 357 002c 4DD0     		beq	.L35
  163:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
- 357              		.loc 1 163 45 discriminator 1 view .LVU125
- 358 002c 344B     		ldr	r3, .L49+8
- 359 002e 1B68     		ldr	r3, [r3]
+ 358              		.loc 1 163 45 discriminator 1 view .LVU125
+ 359 002e 2F4B     		ldr	r3, .L43+8
+ 360 0030 1B68     		ldr	r3, [r3]
  163:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
- 360              		.loc 1 163 28 discriminator 1 view .LVU126
- 361 0030 AB42     		cmp	r3, r5
- 362 0032 13D3     		bcc	.L45
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 16
+ 361              		.loc 1 163 28 discriminator 1 view .LVU126
+ 362 0032 AB42     		cmp	r3, r5
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 16
 
 
+ 363 0034 4BD3     		bcc	.L36
  167:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				pxBlock = xStart.pxNextFreeBlock;
- 363              		.loc 1 167 5 is_stmt 1 view .LVU127
- 364              	.LVL28:
+ 364              		.loc 1 167 5 is_stmt 1 view .LVU127
+ 365              	.LVL28:
  168:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				while( ( pxBlock->xBlockSize < xWantedSize ) && ( pxBlock->pxNextFreeBlock != NULL ) )
- 365              		.loc 1 168 5 view .LVU128
+ 366              		.loc 1 168 5 view .LVU128
  168:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				while( ( pxBlock->xBlockSize < xWantedSize ) && ( pxBlock->pxNextFreeBlock != NULL ) )
- 366              		.loc 1 168 13 is_stmt 0 view .LVU129
- 367 0034 334A     		ldr	r2, .L49+12
- 368 0036 1468     		ldr	r4, [r2]
- 369              	.LVL29:
+ 367              		.loc 1 168 13 is_stmt 0 view .LVU129
+ 368 0036 2E4A     		ldr	r2, .L43+12
+ 369 0038 1468     		ldr	r4, [r2]
+ 370              	.LVL29:
  169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 370              		.loc 1 169 5 is_stmt 1 view .LVU130
+ 371              		.loc 1 169 5 is_stmt 1 view .LVU130
  169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 371              		.loc 1 169 10 is_stmt 0 view .LVU131
- 372 0038 16E0     		b	.L32
- 373              	.LVL30:
- 374              	.L42:
+ 372              		.loc 1 169 10 is_stmt 0 view .LVU131
+ 373 003a 04E0     		b	.L28
+ 374              	.LVL30:
+ 375              	.L40:
  126:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 375              		.loc 1 126 4 is_stmt 1 view .LVU132
- 376 003a FFF7FEFF 		bl	prvHeapInit
- 377              	.LVL31:
- 378 003e E6E7     		b	.L24
- 379              	.L43:
- 240:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 380              		.loc 1 240 28 view .LVU133
- 243:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
- 381              		.loc 1 243 39 view .LVU134
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 382              		.loc 1 245 2 view .LVU135
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 383              		.loc 1 245 11 is_stmt 0 view .LVU136
- 384 0040 FFF7FEFF 		bl	xTaskResumeAll
- 385              	.LVL32:
- 249:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 386              		.loc 1 249 3 is_stmt 1 view .LVU137
- 118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 387              		.loc 1 118 7 is_stmt 0 view .LVU138
- 388 0044 0026     		movs	r6, #0
- 389              	.LVL33:
- 390              	.L26:
- 391              	.LBB2:
- 251:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			vApplicationMallocFailedHook();
- 392              		.loc 1 251 4 is_stmt 1 view .LVU139
- 252:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 393              		.loc 1 252 4 view .LVU140
- 394 0046 FFF7FEFF 		bl	vApplicationMallocFailedHook
- 395              	.LVL34:
- 396              	.L37:
- 397              	.LBE2:
- 256:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 398              		.loc 1 256 28 view .LVU141
- 261:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return pvReturn;
- 399              		.loc 1 261 2 view .LVU142
- 400 004a 16F0070F 		tst	r6, #7
- 401 004e 4DD1     		bne	.L46
- 402              	.L23:
- 263:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 17
-
-
- 403              		.loc 1 263 1 is_stmt 0 view .LVU143
- 404 0050 3046     		mov	r0, r6
- 405 0052 F8BD     		pop	{r3, r4, r5, r6, r7, pc}
- 406              	.LVL35:
- 407              	.L44:
- 240:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 408              		.loc 1 240 28 is_stmt 1 view .LVU144
- 243:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
- 409              		.loc 1 243 39 view .LVU145
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 410              		.loc 1 245 2 view .LVU146
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 411              		.loc 1 245 11 is_stmt 0 view .LVU147
- 412 0054 FFF7FEFF 		bl	xTaskResumeAll
- 413              	.LVL36:
- 249:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 414              		.loc 1 249 3 is_stmt 1 view .LVU148
- 118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 415              		.loc 1 118 7 is_stmt 0 view .LVU149
- 416 0058 0026     		movs	r6, #0
- 417 005a F4E7     		b	.L26
- 418              	.L45:
- 240:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 419              		.loc 1 240 28 is_stmt 1 view .LVU150
- 243:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
- 420              		.loc 1 243 39 view .LVU151
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 421              		.loc 1 245 2 view .LVU152
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 422              		.loc 1 245 11 is_stmt 0 view .LVU153
- 423 005c FFF7FEFF 		bl	xTaskResumeAll
- 424              	.LVL37:
- 249:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 425              		.loc 1 249 3 is_stmt 1 view .LVU154
- 118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 426              		.loc 1 118 7 is_stmt 0 view .LVU155
- 427 0060 0026     		movs	r6, #0
- 428 0062 F0E7     		b	.L26
- 429              	.LVL38:
- 430              	.L40:
+ 376              		.loc 1 126 4 is_stmt 1 view .LVU132
+ 377 003c FFF7FEFF 		bl	prvHeapInit
+ 378              	.LVL31:
+ 379 0040 E5E7     		b	.L24
+ 380              	.LVL32:
+ 381              	.L37:
  171:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					pxBlock = pxBlock->pxNextFreeBlock;
- 431              		.loc 1 171 22 view .LVU156
- 432 0064 2246     		mov	r2, r4
- 433              	.LVL39:
+ 382              		.loc 1 171 22 is_stmt 0 view .LVU133
+ 383 0042 2246     		mov	r2, r4
+ 384              	.LVL33:
  172:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 434              		.loc 1 172 14 view .LVU157
- 435 0066 1C46     		mov	r4, r3
- 436              	.LVL40:
- 437              	.L32:
+ 385              		.loc 1 172 14 view .LVU134
+ 386 0044 1C46     		mov	r4, r3
+ 387              	.LVL34:
+ 388              	.L28:
  169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 438              		.loc 1 169 50 is_stmt 1 view .LVU158
+ 389              		.loc 1 169 50 is_stmt 1 view .LVU135
  169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 439              		.loc 1 169 21 is_stmt 0 view .LVU159
- 440 0068 6368     		ldr	r3, [r4, #4]
+ 390              		.loc 1 169 21 is_stmt 0 view .LVU136
+ 391 0046 6368     		ldr	r3, [r4, #4]
  169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 441              		.loc 1 169 50 view .LVU160
- 442 006a AB42     		cmp	r3, r5
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 18
+ 392              		.loc 1 169 50 view .LVU137
+ 393 0048 AB42     		cmp	r3, r5
+ 394 004a 02D2     		bcs	.L27
+ 169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
+ 395              		.loc 1 169 62 discriminator 1 view .LVU138
+ 396 004c 2368     		ldr	r3, [r4]
+ 169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
+ 397              		.loc 1 169 50 discriminator 1 view .LVU139
+ 398 004e 002B     		cmp	r3, #0
+ 399 0050 F7D1     		bne	.L37
+ 400              	.L27:
+ 177:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
+ 401              		.loc 1 177 5 is_stmt 1 view .LVU140
+ 177:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
+ 402              		.loc 1 177 17 is_stmt 0 view .LVU141
+ 403 0052 244B     		ldr	r3, .L43
+ 404 0054 1B68     		ldr	r3, [r3]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 17
 
 
- 443 006c 02D2     		bcs	.L31
- 169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 444              		.loc 1 169 62 discriminator 1 view .LVU161
- 445 006e 2368     		ldr	r3, [r4]
- 169:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 446              		.loc 1 169 50 discriminator 1 view .LVU162
- 447 0070 002B     		cmp	r3, #0
- 448 0072 F7D1     		bne	.L40
- 449              	.L31:
  177:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 450              		.loc 1 177 5 is_stmt 1 view .LVU163
- 177:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 451              		.loc 1 177 17 is_stmt 0 view .LVU164
- 452 0074 204B     		ldr	r3, .L49
- 453 0076 1B68     		ldr	r3, [r3]
- 177:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 454              		.loc 1 177 7 view .LVU165
- 455 0078 A342     		cmp	r3, r4
- 456 007a 28D0     		beq	.L47
+ 405              		.loc 1 177 7 view .LVU142
+ 406 0056 A342     		cmp	r3, r4
+ 407 0058 3BD0     		beq	.L38
  181:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 457              		.loc 1 181 6 is_stmt 1 view .LVU166
+ 408              		.loc 1 181 6 is_stmt 1 view .LVU143
  181:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 458              		.loc 1 181 61 is_stmt 0 view .LVU167
- 459 007c 1668     		ldr	r6, [r2]
+ 409              		.loc 1 181 61 is_stmt 0 view .LVU144
+ 410 005a 1668     		ldr	r6, [r2]
  181:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 460              		.loc 1 181 15 view .LVU168
- 461 007e 0836     		adds	r6, r6, #8
- 462              	.LVL41:
+ 411              		.loc 1 181 15 view .LVU145
+ 412 005c 0836     		adds	r6, r6, #8
+ 413              	.LVL35:
  185:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 463              		.loc 1 185 6 is_stmt 1 view .LVU169
+ 414              		.loc 1 185 6 is_stmt 1 view .LVU146
  185:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 464              		.loc 1 185 48 is_stmt 0 view .LVU170
- 465 0080 2368     		ldr	r3, [r4]
+ 415              		.loc 1 185 48 is_stmt 0 view .LVU147
+ 416 005e 2368     		ldr	r3, [r4]
  185:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 466              		.loc 1 185 39 view .LVU171
- 467 0082 1360     		str	r3, [r2]
+ 417              		.loc 1 185 39 view .LVU148
+ 418 0060 1360     		str	r3, [r2]
  189:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					{
- 468              		.loc 1 189 6 is_stmt 1 view .LVU172
+ 419              		.loc 1 189 6 is_stmt 1 view .LVU149
  189:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					{
- 469              		.loc 1 189 19 is_stmt 0 view .LVU173
- 470 0084 6368     		ldr	r3, [r4, #4]
+ 420              		.loc 1 189 19 is_stmt 0 view .LVU150
+ 421 0062 6368     		ldr	r3, [r4, #4]
  189:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					{
- 471              		.loc 1 189 32 view .LVU174
- 472 0086 5B1B     		subs	r3, r3, r5
+ 422              		.loc 1 189 32 view .LVU151
+ 423 0064 5B1B     		subs	r3, r3, r5
  189:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					{
- 473              		.loc 1 189 8 view .LVU175
- 474 0088 102B     		cmp	r3, #16
- 475 008a 0AD9     		bls	.L34
+ 424              		.loc 1 189 8 view .LVU152
+ 425 0066 102B     		cmp	r3, #16
+ 426 0068 0AD9     		bls	.L29
  195:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						configASSERT( ( ( ( size_t ) pxNewBlockLink ) & portBYTE_ALIGNMENT_MASK ) == 0 );
- 476              		.loc 1 195 7 is_stmt 1 view .LVU176
+ 427              		.loc 1 195 7 is_stmt 1 view .LVU153
  195:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						configASSERT( ( ( ( size_t ) pxNewBlockLink ) & portBYTE_ALIGNMENT_MASK ) == 0 );
- 477              		.loc 1 195 22 is_stmt 0 view .LVU177
- 478 008c 6719     		adds	r7, r4, r5
- 479              	.LVL42:
+ 428              		.loc 1 195 22 is_stmt 0 view .LVU154
+ 429 006a 6719     		adds	r7, r4, r5
+ 430              	.LVL36:
  196:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 480              		.loc 1 196 7 is_stmt 1 view .LVU178
- 481 008e 17F0070F 		tst	r7, #7
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 19
+ 431              		.loc 1 196 7 is_stmt 1 view .LVU155
+ 432 006c 17F0070F 		tst	r7, #7
+ 433 0070 1CD1     		bne	.L41
+ 434              	.LVL37:
+ 435              	.L30:
+ 196:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
+ 436              		.loc 1 196 87 discriminator 3 view .LVU156
+ 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
+ 437              		.loc 1 200 7 discriminator 3 view .LVU157
+ 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
+ 438              		.loc 1 200 43 is_stmt 0 discriminator 3 view .LVU158
+ 439 0072 6368     		ldr	r3, [r4, #4]
+ 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
+ 440              		.loc 1 200 56 discriminator 3 view .LVU159
+ 441 0074 5B1B     		subs	r3, r3, r5
+ 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
+ 442              		.loc 1 200 34 discriminator 3 view .LVU160
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 18
 
 
- 482 0092 20D1     		bne	.L48
- 483              	.LVL43:
- 484              	.L35:
- 196:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 485              		.loc 1 196 87 discriminator 3 view .LVU179
- 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
- 486              		.loc 1 200 7 discriminator 3 view .LVU180
- 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
- 487              		.loc 1 200 43 is_stmt 0 discriminator 3 view .LVU181
- 488 0094 6368     		ldr	r3, [r4, #4]
- 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
- 489              		.loc 1 200 56 discriminator 3 view .LVU182
- 490 0096 5B1B     		subs	r3, r3, r5
- 200:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 						pxBlock->xBlockSize = xWantedSize;
- 491              		.loc 1 200 34 discriminator 3 view .LVU183
- 492 0098 7B60     		str	r3, [r7, #4]
+ 443 0076 7B60     		str	r3, [r7, #4]
  201:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 493              		.loc 1 201 7 is_stmt 1 discriminator 3 view .LVU184
+ 444              		.loc 1 201 7 is_stmt 1 discriminator 3 view .LVU161
  201:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 494              		.loc 1 201 27 is_stmt 0 discriminator 3 view .LVU185
- 495 009a 6560     		str	r5, [r4, #4]
+ 445              		.loc 1 201 27 is_stmt 0 discriminator 3 view .LVU162
+ 446 0078 6560     		str	r5, [r4, #4]
  204:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					}
- 496              		.loc 1 204 7 is_stmt 1 discriminator 3 view .LVU186
- 497 009c 3846     		mov	r0, r7
- 498 009e FFF7FEFF 		bl	prvInsertBlockIntoFreeList
- 499              	.LVL44:
- 500              	.L34:
+ 447              		.loc 1 204 7 is_stmt 1 discriminator 3 view .LVU163
+ 448 007a 3846     		mov	r0, r7
+ 449 007c FFF7FEFF 		bl	prvInsertBlockIntoFreeList
+ 450              	.LVL38:
+ 451              	.L29:
  208:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					}
- 501              		.loc 1 208 31 view .LVU187
+ 452              		.loc 1 208 31 view .LVU164
  211:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 502              		.loc 1 211 6 view .LVU188
+ 453              		.loc 1 211 6 view .LVU165
  211:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 503              		.loc 1 211 36 is_stmt 0 view .LVU189
- 504 00a2 6268     		ldr	r2, [r4, #4]
+ 454              		.loc 1 211 36 is_stmt 0 view .LVU166
+ 455 0080 6268     		ldr	r2, [r4, #4]
  211:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 505              		.loc 1 211 26 view .LVU190
- 506 00a4 1649     		ldr	r1, .L49+8
- 507 00a6 0B68     		ldr	r3, [r1]
- 508 00a8 9B1A     		subs	r3, r3, r2
- 509 00aa 0B60     		str	r3, [r1]
+ 456              		.loc 1 211 26 view .LVU167
+ 457 0082 1A49     		ldr	r1, .L43+8
+ 458 0084 0B68     		ldr	r3, [r1]
+ 459 0086 9B1A     		subs	r3, r3, r2
+ 460 0088 0B60     		str	r3, [r1]
  213:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					{
- 510              		.loc 1 213 6 is_stmt 1 view .LVU191
+ 461              		.loc 1 213 6 is_stmt 1 view .LVU168
  213:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					{
- 511              		.loc 1 213 30 is_stmt 0 view .LVU192
- 512 00ac 1649     		ldr	r1, .L49+16
- 513 00ae 0968     		ldr	r1, [r1]
+ 462              		.loc 1 213 30 is_stmt 0 view .LVU169
+ 463 008a 1A49     		ldr	r1, .L43+16
+ 464 008c 0968     		ldr	r1, [r1]
  213:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					{
- 514              		.loc 1 213 8 view .LVU193
- 515 00b0 8B42     		cmp	r3, r1
- 516 00b2 01D2     		bcs	.L36
+ 465              		.loc 1 213 8 view .LVU170
+ 466 008e 8B42     		cmp	r3, r1
+ 467 0090 01D2     		bcs	.L31
  215:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					}
- 517              		.loc 1 215 7 is_stmt 1 view .LVU194
+ 468              		.loc 1 215 7 is_stmt 1 view .LVU171
  215:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					}
- 518              		.loc 1 215 38 is_stmt 0 view .LVU195
- 519 00b4 1449     		ldr	r1, .L49+16
- 520 00b6 0B60     		str	r3, [r1]
- 521              	.L36:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 20
-
-
+ 469              		.loc 1 215 38 is_stmt 0 view .LVU172
+ 470 0092 1849     		ldr	r1, .L43+16
+ 471 0094 0B60     		str	r3, [r1]
+ 472              	.L31:
  219:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					}
- 522              		.loc 1 219 31 is_stmt 1 view .LVU196
+ 473              		.loc 1 219 31 is_stmt 1 view .LVU173
  224:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					pxBlock->pxNextFreeBlock = NULL;
- 523              		.loc 1 224 6 view .LVU197
+ 474              		.loc 1 224 6 view .LVU174
  224:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					pxBlock->pxNextFreeBlock = NULL;
- 524              		.loc 1 224 26 is_stmt 0 view .LVU198
- 525 00b8 104B     		ldr	r3, .L49+4
- 526 00ba 1B68     		ldr	r3, [r3]
- 527 00bc 1343     		orrs	r3, r3, r2
- 528 00be 6360     		str	r3, [r4, #4]
+ 475              		.loc 1 224 26 is_stmt 0 view .LVU175
+ 476 0096 144B     		ldr	r3, .L43+4
+ 477 0098 1B68     		ldr	r3, [r3]
+ 478 009a 1343     		orrs	r3, r3, r2
+ 479 009c 6360     		str	r3, [r4, #4]
  225:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					xNumberOfSuccessfulAllocations++;
- 529              		.loc 1 225 6 is_stmt 1 view .LVU199
+ 480              		.loc 1 225 6 is_stmt 1 view .LVU176
  225:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					xNumberOfSuccessfulAllocations++;
- 530              		.loc 1 225 31 is_stmt 0 view .LVU200
- 531 00c0 0023     		movs	r3, #0
- 532 00c2 2360     		str	r3, [r4]
+ 481              		.loc 1 225 31 is_stmt 0 view .LVU177
+ 482 009e 0023     		movs	r3, #0
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 19
+
+
+ 483 00a0 2360     		str	r3, [r4]
  226:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 533              		.loc 1 226 6 is_stmt 1 view .LVU201
+ 484              		.loc 1 226 6 is_stmt 1 view .LVU178
  226:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 534              		.loc 1 226 36 is_stmt 0 view .LVU202
- 535 00c4 114A     		ldr	r2, .L49+20
- 536 00c6 1368     		ldr	r3, [r2]
- 537 00c8 0133     		adds	r3, r3, #1
- 538 00ca 1360     		str	r3, [r2]
- 539 00cc 09E0     		b	.L27
- 540              	.LVL45:
- 541              	.L47:
- 240:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 542              		.loc 1 240 28 is_stmt 1 view .LVU203
- 243:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
- 543              		.loc 1 243 39 view .LVU204
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 544              		.loc 1 245 2 view .LVU205
- 245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 545              		.loc 1 245 11 is_stmt 0 view .LVU206
- 546 00ce FFF7FEFF 		bl	xTaskResumeAll
- 547              	.LVL46:
- 249:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 548              		.loc 1 249 3 is_stmt 1 view .LVU207
- 118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 549              		.loc 1 118 7 is_stmt 0 view .LVU208
- 550 00d2 0026     		movs	r6, #0
- 551 00d4 B7E7     		b	.L26
- 552              	.LVL47:
- 553              	.L48:
+ 485              		.loc 1 226 36 is_stmt 0 view .LVU179
+ 486 00a2 154A     		ldr	r2, .L43+20
+ 487 00a4 1368     		ldr	r3, [r2]
+ 488 00a6 0133     		adds	r3, r3, #1
+ 489 00a8 1360     		str	r3, [r2]
+ 490 00aa 05E0     		b	.L25
+ 491              	.LVL39:
+ 492              	.L41:
  196:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 554              		.loc 1 196 7 is_stmt 1 discriminator 1 view .LVU209
- 555 00d6 C421     		movs	r1, #196
- 556 00d8 0D48     		ldr	r0, .L49+24
- 557 00da FFF7FEFF 		bl	vAssertCalled
- 558              	.LVL48:
+ 493              		.loc 1 196 7 is_stmt 1 discriminator 1 view .LVU180
+ 494 00ac C421     		movs	r1, #196
+ 495 00ae 1348     		ldr	r0, .L43+24
+ 496 00b0 FFF7FEFF 		bl	vAssertCalled
+ 497              	.LVL40:
  196:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 559              		.loc 1 196 7 is_stmt 0 discriminator 1 view .LVU210
- 560 00de D9E7     		b	.L35
- 561              	.LVL49:
- 562              	.L39:
+ 498              		.loc 1 196 7 is_stmt 0 discriminator 1 view .LVU181
+ 499 00b4 DDE7     		b	.L30
+ 500              	.LVL41:
+ 501              	.L33:
  118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 21
-
-
- 563              		.loc 1 118 7 view .LVU211
- 564 00e0 0026     		movs	r6, #0
- 565              	.LVL50:
- 566              	.L27:
+ 502              		.loc 1 118 7 view .LVU182
+ 503 00b6 0026     		movs	r6, #0
+ 504              	.LVL42:
+ 505              	.L25:
  240:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 567              		.loc 1 240 28 is_stmt 1 view .LVU212
+ 506              		.loc 1 240 28 is_stmt 1 view .LVU183
  243:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
- 568              		.loc 1 243 39 view .LVU213
+ 507              		.loc 1 243 39 view .LVU184
  245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 569              		.loc 1 245 2 view .LVU214
+ 508              		.loc 1 245 2 view .LVU185
  245:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 570              		.loc 1 245 11 is_stmt 0 view .LVU215
- 571 00e2 FFF7FEFF 		bl	xTaskResumeAll
- 572              	.LVL51:
- 249:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 573              		.loc 1 249 3 is_stmt 1 view .LVU216
- 249:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 574              		.loc 1 249 5 is_stmt 0 view .LVU217
- 575 00e6 002E     		cmp	r6, #0
- 576 00e8 AFD1     		bne	.L37
- 577 00ea ACE7     		b	.L26
- 578              	.LVL52:
- 579              	.L46:
+ 509              		.loc 1 245 11 is_stmt 0 view .LVU186
+ 510 00b8 FFF7FEFF 		bl	xTaskResumeAll
+ 511              	.LVL43:
  261:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return pvReturn;
- 580              		.loc 1 261 2 is_stmt 1 discriminator 1 view .LVU218
- 581 00ec 40F20511 		movw	r1, #261
- 582 00f0 0748     		ldr	r0, .L49+24
- 583 00f2 FFF7FEFF 		bl	vAssertCalled
- 584              	.LVL53:
- 261:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return pvReturn;
- 585              		.loc 1 261 87 discriminator 1 view .LVU219
- 262:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
- 586              		.loc 1 262 2 discriminator 1 view .LVU220
- 262:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
- 587              		.loc 1 262 9 is_stmt 0 discriminator 1 view .LVU221
- 588 00f6 ABE7     		b	.L23
- 589              	.L50:
- 590              		.align	2
- 591              	.L49:
- 592 00f8 00000000 		.word	pxEnd
- 593 00fc 00000000 		.word	xBlockAllocatedBit
- 594 0100 00000000 		.word	xFreeBytesRemaining
- 595 0104 00000000 		.word	xStart
- 596 0108 00000000 		.word	xMinimumEverFreeBytesRemaining
- 597 010c 00000000 		.word	xNumberOfSuccessfulAllocations
- 598 0110 00000000 		.word	.LC0
- 599              		.cfi_endproc
- 600              	.LFE4:
- 602              		.section	.text.vPortFree,"ax",%progbits
- 603              		.align	1
- 604              		.global	vPortFree
- 605              		.syntax unified
- 606              		.thumb
- 607              		.thumb_func
- 609              	vPortFree:
- 610              	.LVL54:
- 611              	.LFB5:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 22
+ 512              		.loc 1 261 2 is_stmt 1 view .LVU187
+ 513 00bc 16F0070F 		tst	r6, #7
+ 514 00c0 09D1     		bne	.L42
+ 515              	.L23:
+ 263:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
+ 516              		.loc 1 263 1 is_stmt 0 view .LVU188
+ 517 00c2 3046     		mov	r0, r6
+ 518 00c4 F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 519              	.LVL44:
+ 520              	.L34:
+ 118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
+ 521              		.loc 1 118 7 view .LVU189
+ 522 00c6 0026     		movs	r6, #0
+ 523 00c8 F6E7     		b	.L25
+ 524              	.LVL45:
+ 525              	.L35:
+ 118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
+ 526              		.loc 1 118 7 view .LVU190
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 20
 
 
+ 527 00ca 0026     		movs	r6, #0
+ 528 00cc F4E7     		b	.L25
+ 529              	.L36:
+ 530 00ce 0026     		movs	r6, #0
+ 531 00d0 F2E7     		b	.L25
+ 532              	.LVL46:
+ 533              	.L38:
+ 118:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
+ 534              		.loc 1 118 7 view .LVU191
+ 535 00d2 0026     		movs	r6, #0
+ 536 00d4 F0E7     		b	.L25
+ 537              	.LVL47:
+ 538              	.L42:
+ 261:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return pvReturn;
+ 539              		.loc 1 261 2 is_stmt 1 discriminator 1 view .LVU192
+ 540 00d6 40F20511 		movw	r1, #261
+ 541 00da 0848     		ldr	r0, .L43+24
+ 542 00dc FFF7FEFF 		bl	vAssertCalled
+ 543              	.LVL48:
+ 261:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return pvReturn;
+ 544              		.loc 1 261 87 discriminator 1 view .LVU193
+ 262:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
+ 545              		.loc 1 262 2 discriminator 1 view .LVU194
+ 262:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
+ 546              		.loc 1 262 9 is_stmt 0 discriminator 1 view .LVU195
+ 547 00e0 EFE7     		b	.L23
+ 548              	.L44:
+ 549 00e2 00BF     		.align	2
+ 550              	.L43:
+ 551 00e4 00000000 		.word	pxEnd
+ 552 00e8 00000000 		.word	xBlockAllocatedBit
+ 553 00ec 00000000 		.word	xFreeBytesRemaining
+ 554 00f0 00000000 		.word	xStart
+ 555 00f4 00000000 		.word	xMinimumEverFreeBytesRemaining
+ 556 00f8 00000000 		.word	xNumberOfSuccessfulAllocations
+ 557 00fc 00000000 		.word	.LC0
+ 558              		.cfi_endproc
+ 559              	.LFE4:
+ 561              		.section	.text.vPortFree,"ax",%progbits
+ 562              		.align	1
+ 563              		.global	vPortFree
+ 564              		.syntax unified
+ 565              		.thumb
+ 566              		.thumb_func
+ 568              	vPortFree:
+ 569              	.LVL49:
+ 570              	.LFB5:
  267:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** uint8_t *puc = ( uint8_t * ) pv;
- 612              		.loc 1 267 1 is_stmt 1 view -0
- 613              		.cfi_startproc
- 614              		@ args = 0, pretend = 0, frame = 0
- 615              		@ frame_needed = 0, uses_anonymous_args = 0
+ 571              		.loc 1 267 1 is_stmt 1 view -0
+ 572              		.cfi_startproc
+ 573              		@ args = 0, pretend = 0, frame = 0
+ 574              		@ frame_needed = 0, uses_anonymous_args = 0
  268:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** BlockLink_t *pxLink;
- 616              		.loc 1 268 1 view .LVU223
+ 575              		.loc 1 268 1 view .LVU197
  269:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 617              		.loc 1 269 1 view .LVU224
+ 576              		.loc 1 269 1 view .LVU198
  271:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	{
- 618              		.loc 1 271 2 view .LVU225
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 21
+
+
+ 577              		.loc 1 271 2 view .LVU199
  271:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	{
- 619              		.loc 1 271 4 is_stmt 0 view .LVU226
- 620 0000 0028     		cmp	r0, #0
- 621 0002 37D0     		beq	.L56
+ 578              		.loc 1 271 4 is_stmt 0 view .LVU200
+ 579 0000 0028     		cmp	r0, #0
+ 580 0002 37D0     		beq	.L50
  267:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** uint8_t *puc = ( uint8_t * ) pv;
- 622              		.loc 1 267 1 view .LVU227
- 623 0004 38B5     		push	{r3, r4, r5, lr}
- 624              	.LCFI5:
- 625              		.cfi_def_cfa_offset 16
- 626              		.cfi_offset 3, -16
- 627              		.cfi_offset 4, -12
- 628              		.cfi_offset 5, -8
- 629              		.cfi_offset 14, -4
- 630 0006 0446     		mov	r4, r0
+ 581              		.loc 1 267 1 view .LVU201
+ 582 0004 38B5     		push	{r3, r4, r5, lr}
+ 583              	.LCFI5:
+ 584              		.cfi_def_cfa_offset 16
+ 585              		.cfi_offset 3, -16
+ 586              		.cfi_offset 4, -12
+ 587              		.cfi_offset 5, -8
+ 588              		.cfi_offset 14, -4
+ 589 0006 0446     		mov	r4, r0
  275:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 631              		.loc 1 275 3 is_stmt 1 view .LVU228
+ 590              		.loc 1 275 3 is_stmt 1 view .LVU202
  275:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 632              		.loc 1 275 7 is_stmt 0 view .LVU229
- 633 0008 A0F10805 		sub	r5, r0, #8
- 634              	.LVL55:
+ 591              		.loc 1 275 7 is_stmt 0 view .LVU203
+ 592 0008 A0F10805 		sub	r5, r0, #8
+ 593              	.LVL50:
  278:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 635              		.loc 1 278 3 is_stmt 1 view .LVU230
+ 594              		.loc 1 278 3 is_stmt 1 view .LVU204
  281:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		configASSERT( pxLink->pxNextFreeBlock == NULL );
- 636              		.loc 1 281 3 view .LVU231
- 637 000c 50F8042C 		ldr	r2, [r0, #-4]
- 638 0010 194B     		ldr	r3, .L61
- 639 0012 1B68     		ldr	r3, [r3]
- 640 0014 1A42     		tst	r2, r3
- 641 0016 11D0     		beq	.L59
- 642              	.LVL56:
- 643              	.L53:
+ 595              		.loc 1 281 3 view .LVU205
+ 596 000c 50F8042C 		ldr	r2, [r0, #-4]
+ 597 0010 194B     		ldr	r3, .L55
+ 598 0012 1B68     		ldr	r3, [r3]
+ 599 0014 1A42     		tst	r2, r3
+ 600 0016 11D0     		beq	.L53
+ 601              	.LVL51:
+ 602              	.L47:
  281:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		configASSERT( pxLink->pxNextFreeBlock == NULL );
- 644              		.loc 1 281 67 discriminator 3 view .LVU232
+ 603              		.loc 1 281 67 discriminator 3 view .LVU206
  282:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 645              		.loc 1 282 3 discriminator 3 view .LVU233
- 646 0018 54F8083C 		ldr	r3, [r4, #-8]
- 647 001c 23B1     		cbz	r3, .L54
+ 604              		.loc 1 282 3 discriminator 3 view .LVU207
+ 605 0018 54F8083C 		ldr	r3, [r4, #-8]
+ 606 001c 23B1     		cbz	r3, .L48
  282:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 648              		.loc 1 282 3 discriminator 1 view .LVU234
- 649 001e 4FF48D71 		mov	r1, #282
- 650 0022 1648     		ldr	r0, .L61+4
- 651 0024 FFF7FEFF 		bl	vAssertCalled
- 652              	.LVL57:
- 653              	.L54:
+ 607              		.loc 1 282 3 discriminator 1 view .LVU208
+ 608 001e 4FF48D71 		mov	r1, #282
+ 609 0022 1648     		ldr	r0, .L55+4
+ 610 0024 FFF7FEFF 		bl	vAssertCalled
+ 611              	.LVL52:
+ 612              	.L48:
  282:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 654              		.loc 1 282 50 discriminator 3 view .LVU235
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 23
+ 613              		.loc 1 282 50 discriminator 3 view .LVU209
+ 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
+ 614              		.loc 1 284 3 discriminator 3 view .LVU210
+ 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
+ 615              		.loc 1 284 15 is_stmt 0 discriminator 3 view .LVU211
+ 616 0028 54F8043C 		ldr	r3, [r4, #-4]
+ 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
+ 617              		.loc 1 284 28 discriminator 3 view .LVU212
+ 618 002c 124A     		ldr	r2, .L55
+ 619 002e 1268     		ldr	r2, [r2]
+ 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 22
 
 
- 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 655              		.loc 1 284 3 discriminator 3 view .LVU236
- 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 656              		.loc 1 284 15 is_stmt 0 discriminator 3 view .LVU237
- 657 0028 54F8043C 		ldr	r3, [r4, #-4]
- 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 658              		.loc 1 284 28 discriminator 3 view .LVU238
- 659 002c 124A     		ldr	r2, .L61
- 660 002e 1268     		ldr	r2, [r2]
- 284:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
- 661              		.loc 1 284 5 discriminator 3 view .LVU239
- 662 0030 1342     		tst	r3, r2
- 663 0032 02D0     		beq	.L51
+ 620              		.loc 1 284 5 discriminator 3 view .LVU213
+ 621 0030 1342     		tst	r3, r2
+ 622 0032 02D0     		beq	.L45
  286:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
- 664              		.loc 1 286 4 is_stmt 1 view .LVU240
+ 623              		.loc 1 286 4 is_stmt 1 view .LVU214
  286:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
- 665              		.loc 1 286 14 is_stmt 0 view .LVU241
- 666 0034 54F8081C 		ldr	r1, [r4, #-8]
+ 624              		.loc 1 286 14 is_stmt 0 view .LVU215
+ 625 0034 54F8081C 		ldr	r1, [r4, #-8]
  286:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
- 667              		.loc 1 286 6 view .LVU242
- 668 0038 31B1     		cbz	r1, .L60
- 669              	.L51:
+ 626              		.loc 1 286 6 view .LVU216
+ 627 0038 31B1     		cbz	r1, .L54
+ 628              	.L45:
  312:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
- 670              		.loc 1 312 1 view .LVU243
- 671 003a 38BD     		pop	{r3, r4, r5, pc}
- 672              	.LVL58:
- 673              	.L59:
+ 629              		.loc 1 312 1 view .LVU217
+ 630 003a 38BD     		pop	{r3, r4, r5, pc}
+ 631              	.LVL53:
+ 632              	.L53:
  281:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		configASSERT( pxLink->pxNextFreeBlock == NULL );
- 674              		.loc 1 281 3 is_stmt 1 discriminator 1 view .LVU244
- 675 003c 40F21911 		movw	r1, #281
- 676 0040 0E48     		ldr	r0, .L61+4
- 677              	.LVL59:
+ 633              		.loc 1 281 3 is_stmt 1 discriminator 1 view .LVU218
+ 634 003c 40F21911 		movw	r1, #281
+ 635 0040 0E48     		ldr	r0, .L55+4
+ 636              	.LVL54:
  281:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		configASSERT( pxLink->pxNextFreeBlock == NULL );
- 678              		.loc 1 281 3 is_stmt 0 discriminator 1 view .LVU245
- 679 0042 FFF7FEFF 		bl	vAssertCalled
- 680              	.LVL60:
- 681 0046 E7E7     		b	.L53
- 682              	.L60:
+ 637              		.loc 1 281 3 is_stmt 0 discriminator 1 view .LVU219
+ 638 0042 FFF7FEFF 		bl	vAssertCalled
+ 639              	.LVL55:
+ 640 0046 E7E7     		b	.L47
+ 641              	.L54:
  290:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 683              		.loc 1 290 5 is_stmt 1 view .LVU246
+ 642              		.loc 1 290 5 is_stmt 1 view .LVU220
  290:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 684              		.loc 1 290 24 is_stmt 0 view .LVU247
- 685 0048 23EA0203 		bic	r3, r3, r2
- 686 004c 44F8043C 		str	r3, [r4, #-4]
+ 643              		.loc 1 290 24 is_stmt 0 view .LVU221
+ 644 0048 23EA0203 		bic	r3, r3, r2
+ 645 004c 44F8043C 		str	r3, [r4, #-4]
  292:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 687              		.loc 1 292 5 is_stmt 1 view .LVU248
- 688 0050 FFF7FEFF 		bl	vTaskSuspendAll
- 689              	.LVL61:
+ 646              		.loc 1 292 5 is_stmt 1 view .LVU222
+ 647 0050 FFF7FEFF 		bl	vTaskSuspendAll
+ 648              	.LVL56:
  295:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					traceFREE( pv, pxLink->xBlockSize );
- 690              		.loc 1 295 6 view .LVU249
+ 649              		.loc 1 295 6 view .LVU223
  295:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					traceFREE( pv, pxLink->xBlockSize );
- 691              		.loc 1 295 35 is_stmt 0 view .LVU250
- 692 0054 54F8041C 		ldr	r1, [r4, #-4]
+ 650              		.loc 1 295 35 is_stmt 0 view .LVU224
+ 651 0054 54F8041C 		ldr	r1, [r4, #-4]
  295:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					traceFREE( pv, pxLink->xBlockSize );
- 693              		.loc 1 295 26 view .LVU251
- 694 0058 094A     		ldr	r2, .L61+8
- 695 005a 1368     		ldr	r3, [r2]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 24
-
-
- 696 005c 0B44     		add	r3, r3, r1
- 697 005e 1360     		str	r3, [r2]
+ 652              		.loc 1 295 26 view .LVU225
+ 653 0058 094A     		ldr	r2, .L55+8
+ 654 005a 1368     		ldr	r3, [r2]
+ 655 005c 0B44     		add	r3, r3, r1
+ 656 005e 1360     		str	r3, [r2]
  296:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					prvInsertBlockIntoFreeList( ( ( BlockLink_t * ) pxLink ) );
- 698              		.loc 1 296 41 is_stmt 1 view .LVU252
+ 657              		.loc 1 296 41 is_stmt 1 view .LVU226
  297:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 					xNumberOfSuccessfulFrees++;
- 699              		.loc 1 297 6 view .LVU253
- 700 0060 2846     		mov	r0, r5
- 701 0062 FFF7FEFF 		bl	prvInsertBlockIntoFreeList
- 702              	.LVL62:
+ 658              		.loc 1 297 6 view .LVU227
+ 659 0060 2846     		mov	r0, r5
+ 660 0062 FFF7FEFF 		bl	prvInsertBlockIntoFreeList
+ 661              	.LVL57:
  298:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 703              		.loc 1 298 6 view .LVU254
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 23
+
+
+ 662              		.loc 1 298 6 view .LVU228
  298:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 704              		.loc 1 298 30 is_stmt 0 view .LVU255
- 705 0066 074A     		ldr	r2, .L61+12
- 706 0068 1368     		ldr	r3, [r2]
- 707 006a 0133     		adds	r3, r3, #1
- 708 006c 1360     		str	r3, [r2]
+ 663              		.loc 1 298 30 is_stmt 0 view .LVU229
+ 664 0066 074A     		ldr	r2, .L55+12
+ 665 0068 1368     		ldr	r3, [r2]
+ 666 006a 0133     		adds	r3, r3, #1
+ 667 006c 1360     		str	r3, [r2]
  300:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			}
- 709              		.loc 1 300 5 is_stmt 1 view .LVU256
+ 668              		.loc 1 300 5 is_stmt 1 view .LVU230
  300:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			}
- 710              		.loc 1 300 14 is_stmt 0 view .LVU257
- 711 006e FFF7FEFF 		bl	xTaskResumeAll
- 712              	.LVL63:
+ 669              		.loc 1 300 14 is_stmt 0 view .LVU231
+ 670 006e FFF7FEFF 		bl	xTaskResumeAll
+ 671              	.LVL58:
  309:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
- 713              		.loc 1 309 28 is_stmt 1 view .LVU258
+ 672              		.loc 1 309 28 is_stmt 1 view .LVU232
  312:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
- 714              		.loc 1 312 1 is_stmt 0 view .LVU259
- 715 0072 E2E7     		b	.L51
- 716              	.LVL64:
- 717              	.L56:
- 718              	.LCFI6:
- 719              		.cfi_def_cfa_offset 0
- 720              		.cfi_restore 3
- 721              		.cfi_restore 4
- 722              		.cfi_restore 5
- 723              		.cfi_restore 14
+ 673              		.loc 1 312 1 is_stmt 0 view .LVU233
+ 674 0072 E2E7     		b	.L45
+ 675              	.LVL59:
+ 676              	.L50:
+ 677              	.LCFI6:
+ 678              		.cfi_def_cfa_offset 0
+ 679              		.cfi_restore 3
+ 680              		.cfi_restore 4
+ 681              		.cfi_restore 5
+ 682              		.cfi_restore 14
  312:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
- 724              		.loc 1 312 1 view .LVU260
- 725 0074 7047     		bx	lr
- 726              	.L62:
- 727 0076 00BF     		.align	2
- 728              	.L61:
- 729 0078 00000000 		.word	xBlockAllocatedBit
- 730 007c 00000000 		.word	.LC0
- 731 0080 00000000 		.word	xFreeBytesRemaining
- 732 0084 00000000 		.word	xNumberOfSuccessfulFrees
- 733              		.cfi_endproc
- 734              	.LFE5:
- 736              		.section	.text.xPortGetFreeHeapSize,"ax",%progbits
- 737              		.align	1
- 738              		.global	xPortGetFreeHeapSize
- 739              		.syntax unified
- 740              		.thumb
- 741              		.thumb_func
- 743              	xPortGetFreeHeapSize:
- 744              	.LFB6:
+ 683              		.loc 1 312 1 view .LVU234
+ 684 0074 7047     		bx	lr
+ 685              	.L56:
+ 686 0076 00BF     		.align	2
+ 687              	.L55:
+ 688 0078 00000000 		.word	xBlockAllocatedBit
+ 689 007c 00000000 		.word	.LC0
+ 690 0080 00000000 		.word	xFreeBytesRemaining
+ 691 0084 00000000 		.word	xNumberOfSuccessfulFrees
+ 692              		.cfi_endproc
+ 693              	.LFE5:
+ 695              		.section	.text.xPortGetFreeHeapSize,"ax",%progbits
+ 696              		.align	1
+ 697              		.global	xPortGetFreeHeapSize
+ 698              		.syntax unified
+ 699              		.thumb
+ 700              		.thumb_func
+ 702              	xPortGetFreeHeapSize:
+ 703              	.LFB6:
  316:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return xFreeBytesRemaining;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 25
-
-
- 745              		.loc 1 316 1 is_stmt 1 view -0
- 746              		.cfi_startproc
- 747              		@ args = 0, pretend = 0, frame = 0
- 748              		@ frame_needed = 0, uses_anonymous_args = 0
- 749              		@ link register save eliminated.
+ 704              		.loc 1 316 1 is_stmt 1 view -0
+ 705              		.cfi_startproc
+ 706              		@ args = 0, pretend = 0, frame = 0
+ 707              		@ frame_needed = 0, uses_anonymous_args = 0
+ 708              		@ link register save eliminated.
  317:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
- 750              		.loc 1 317 2 view .LVU262
+ 709              		.loc 1 317 2 view .LVU236
  318:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
- 751              		.loc 1 318 1 is_stmt 0 view .LVU263
- 752 0000 014B     		ldr	r3, .L64
- 753 0002 1868     		ldr	r0, [r3]
- 754 0004 7047     		bx	lr
- 755              	.L65:
- 756 0006 00BF     		.align	2
- 757              	.L64:
- 758 0008 00000000 		.word	xFreeBytesRemaining
- 759              		.cfi_endproc
- 760              	.LFE6:
- 762              		.section	.text.xPortGetMinimumEverFreeHeapSize,"ax",%progbits
- 763              		.align	1
- 764              		.global	xPortGetMinimumEverFreeHeapSize
- 765              		.syntax unified
- 766              		.thumb
- 767              		.thumb_func
- 769              	xPortGetMinimumEverFreeHeapSize:
- 770              	.LFB7:
+ 710              		.loc 1 318 1 is_stmt 0 view .LVU237
+ 711 0000 014B     		ldr	r3, .L58
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 24
+
+
+ 712 0002 1868     		ldr	r0, [r3]
+ 713 0004 7047     		bx	lr
+ 714              	.L59:
+ 715 0006 00BF     		.align	2
+ 716              	.L58:
+ 717 0008 00000000 		.word	xFreeBytesRemaining
+ 718              		.cfi_endproc
+ 719              	.LFE6:
+ 721              		.section	.text.xPortGetMinimumEverFreeHeapSize,"ax",%progbits
+ 722              		.align	1
+ 723              		.global	xPortGetMinimumEverFreeHeapSize
+ 724              		.syntax unified
+ 725              		.thumb
+ 726              		.thumb_func
+ 728              	xPortGetMinimumEverFreeHeapSize:
+ 729              	.LFB7:
  322:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	return xMinimumEverFreeBytesRemaining;
- 771              		.loc 1 322 1 is_stmt 1 view -0
- 772              		.cfi_startproc
- 773              		@ args = 0, pretend = 0, frame = 0
- 774              		@ frame_needed = 0, uses_anonymous_args = 0
- 775              		@ link register save eliminated.
+ 730              		.loc 1 322 1 is_stmt 1 view -0
+ 731              		.cfi_startproc
+ 732              		@ args = 0, pretend = 0, frame = 0
+ 733              		@ frame_needed = 0, uses_anonymous_args = 0
+ 734              		@ link register save eliminated.
  323:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
- 776              		.loc 1 323 2 view .LVU265
+ 735              		.loc 1 323 2 view .LVU239
  324:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
- 777              		.loc 1 324 1 is_stmt 0 view .LVU266
- 778 0000 014B     		ldr	r3, .L67
- 779 0002 1868     		ldr	r0, [r3]
- 780 0004 7047     		bx	lr
- 781              	.L68:
- 782 0006 00BF     		.align	2
- 783              	.L67:
- 784 0008 00000000 		.word	xMinimumEverFreeBytesRemaining
- 785              		.cfi_endproc
- 786              	.LFE7:
- 788              		.section	.text.vPortInitialiseBlocks,"ax",%progbits
- 789              		.align	1
- 790              		.global	vPortInitialiseBlocks
- 791              		.syntax unified
- 792              		.thumb
- 793              		.thumb_func
- 795              	vPortInitialiseBlocks:
- 796              	.LFB8:
+ 736              		.loc 1 324 1 is_stmt 0 view .LVU240
+ 737 0000 014B     		ldr	r3, .L61
+ 738 0002 1868     		ldr	r0, [r3]
+ 739 0004 7047     		bx	lr
+ 740              	.L62:
+ 741 0006 00BF     		.align	2
+ 742              	.L61:
+ 743 0008 00000000 		.word	xMinimumEverFreeBytesRemaining
+ 744              		.cfi_endproc
+ 745              	.LFE7:
+ 747              		.section	.text.vPortInitialiseBlocks,"ax",%progbits
+ 748              		.align	1
+ 749              		.global	vPortInitialiseBlocks
+ 750              		.syntax unified
+ 751              		.thumb
+ 752              		.thumb_func
+ 754              	vPortInitialiseBlocks:
+ 755              	.LFB8:
  328:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	/* This just exists to keep the linker quiet. */
- 797              		.loc 1 328 1 is_stmt 1 view -0
- 798              		.cfi_startproc
- 799              		@ args = 0, pretend = 0, frame = 0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 26
-
-
- 800              		@ frame_needed = 0, uses_anonymous_args = 0
- 801              		@ link register save eliminated.
+ 756              		.loc 1 328 1 is_stmt 1 view -0
+ 757              		.cfi_startproc
+ 758              		@ args = 0, pretend = 0, frame = 0
+ 759              		@ frame_needed = 0, uses_anonymous_args = 0
+ 760              		@ link register save eliminated.
  330:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
- 802              		.loc 1 330 1 view .LVU268
- 803 0000 7047     		bx	lr
- 804              		.cfi_endproc
- 805              	.LFE8:
- 807              		.section	.text.vPortGetHeapStats,"ax",%progbits
- 808              		.align	1
- 809              		.global	vPortGetHeapStats
- 810              		.syntax unified
- 811              		.thumb
- 812              		.thumb_func
- 814              	vPortGetHeapStats:
- 815              	.LVL65:
- 816              	.LFB11:
+ 761              		.loc 1 330 1 view .LVU242
+ 762 0000 7047     		bx	lr
+ 763              		.cfi_endproc
+ 764              	.LFE8:
+ 766              		.section	.text.vPortGetHeapStats,"ax",%progbits
+ 767              		.align	1
+ 768              		.global	vPortGetHeapStats
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 25
+
+
+ 769              		.syntax unified
+ 770              		.thumb
+ 771              		.thumb_func
+ 773              	vPortGetHeapStats:
+ 774              	.LVL60:
+ 775              	.LFB11:
  440:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** /*-----------------------------------------------------------*/
  441:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
  442:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** void vPortGetHeapStats( HeapStats_t *pxHeapStats )
  443:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** {
- 817              		.loc 1 443 1 view -0
- 818              		.cfi_startproc
- 819              		@ args = 0, pretend = 0, frame = 0
- 820              		@ frame_needed = 0, uses_anonymous_args = 0
- 821              		.loc 1 443 1 is_stmt 0 view .LVU270
- 822 0000 F8B5     		push	{r3, r4, r5, r6, r7, lr}
- 823              	.LCFI7:
- 824              		.cfi_def_cfa_offset 24
- 825              		.cfi_offset 3, -24
- 826              		.cfi_offset 4, -20
- 827              		.cfi_offset 5, -16
- 828              		.cfi_offset 6, -12
- 829              		.cfi_offset 7, -8
- 830              		.cfi_offset 14, -4
- 831 0002 0746     		mov	r7, r0
+ 776              		.loc 1 443 1 view -0
+ 777              		.cfi_startproc
+ 778              		@ args = 0, pretend = 0, frame = 0
+ 779              		@ frame_needed = 0, uses_anonymous_args = 0
+ 780              		.loc 1 443 1 is_stmt 0 view .LVU244
+ 781 0000 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 782              	.LCFI7:
+ 783              		.cfi_def_cfa_offset 24
+ 784              		.cfi_offset 3, -24
+ 785              		.cfi_offset 4, -20
+ 786              		.cfi_offset 5, -16
+ 787              		.cfi_offset 6, -12
+ 788              		.cfi_offset 7, -8
+ 789              		.cfi_offset 14, -4
+ 790 0002 0746     		mov	r7, r0
  444:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** BlockLink_t *pxBlock;
- 832              		.loc 1 444 1 is_stmt 1 view .LVU271
+ 791              		.loc 1 444 1 is_stmt 1 view .LVU245
  445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** size_t xBlocks = 0, xMaxSize = 0, xMinSize = portMAX_DELAY; /* portMAX_DELAY used as a portable way
- 833              		.loc 1 445 1 view .LVU272
- 834              	.LVL66:
+ 792              		.loc 1 445 1 view .LVU246
+ 793              	.LVL61:
  446:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
  447:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	vTaskSuspendAll();
- 835              		.loc 1 447 2 view .LVU273
- 836 0004 FFF7FEFF 		bl	vTaskSuspendAll
- 837              	.LVL67:
+ 794              		.loc 1 447 2 view .LVU247
+ 795 0004 FFF7FEFF 		bl	vTaskSuspendAll
+ 796              	.LVL62:
  448:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	{
  449:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		pxBlock = xStart.pxNextFreeBlock;
- 838              		.loc 1 449 3 view .LVU274
- 839              		.loc 1 449 11 is_stmt 0 view .LVU275
- 840 0008 174B     		ldr	r3, .L79
- 841 000a 1B68     		ldr	r3, [r3]
- 842              	.LVL68:
+ 797              		.loc 1 449 3 view .LVU248
+ 798              		.loc 1 449 11 is_stmt 0 view .LVU249
+ 799 0008 174B     		ldr	r3, .L73
+ 800 000a 1B68     		ldr	r3, [r3]
+ 801              	.LVL63:
  450:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
  451:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		/* pxBlock will be NULL if the heap has not been initialised.  The heap
  452:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		is initialised automatically when the first allocation is made. */
  453:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		if( pxBlock != NULL )
- 843              		.loc 1 453 3 is_stmt 1 view .LVU276
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 27
+ 802              		.loc 1 453 3 is_stmt 1 view .LVU250
+ 803              		.loc 1 453 5 is_stmt 0 view .LVU251
+ 804 000c 93B1     		cbz	r3, .L69
+ 445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
+ 805              		.loc 1 445 35 view .LVU252
+ 806 000e 4FF0FF36 		mov	r6, #-1
+ 445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
+ 807              		.loc 1 445 21 view .LVU253
+ 808 0012 0025     		movs	r5, #0
+ 445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
+ 809              		.loc 1 445 8 view .LVU254
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 26
 
 
- 844              		.loc 1 453 5 is_stmt 0 view .LVU277
- 845 000c 93B1     		cbz	r3, .L75
- 445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 846              		.loc 1 445 35 view .LVU278
- 847 000e 4FF0FF36 		mov	r6, #-1
- 445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 848              		.loc 1 445 21 view .LVU279
- 849 0012 0025     		movs	r5, #0
- 445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 850              		.loc 1 445 8 view .LVU280
- 851 0014 2C46     		mov	r4, r5
- 852 0016 04E0     		b	.L74
- 853              	.LVL69:
- 854              	.L73:
+ 810 0014 2C46     		mov	r4, r5
+ 811 0016 04E0     		b	.L68
+ 812              	.LVL64:
+ 813              	.L67:
  454:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		{
  455:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			do
  456:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
@@ -1595,241 +1525,240 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 1
  471:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				/* Move to the next block in the chain until the last block is
  472:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				reached. */
  473:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				pxBlock = pxBlock->pxNextFreeBlock;
- 855              		.loc 1 473 5 is_stmt 1 view .LVU281
- 856              		.loc 1 473 13 is_stmt 0 view .LVU282
- 857 0018 1B68     		ldr	r3, [r3]
- 858              	.LVL70:
+ 814              		.loc 1 473 5 is_stmt 1 view .LVU255
+ 815              		.loc 1 473 13 is_stmt 0 view .LVU256
+ 816 0018 1B68     		ldr	r3, [r3]
+ 817              	.LVL65:
  474:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			} while( pxBlock != pxEnd );
- 859              		.loc 1 474 21 is_stmt 1 view .LVU283
- 860 001a 144A     		ldr	r2, .L79+4
- 861 001c 1268     		ldr	r2, [r2]
- 862 001e 9A42     		cmp	r2, r3
- 863 0020 0CD0     		beq	.L71
- 864              	.LVL71:
- 865              	.L74:
+ 818              		.loc 1 474 21 is_stmt 1 view .LVU257
+ 819 001a 144A     		ldr	r2, .L73+4
+ 820 001c 1268     		ldr	r2, [r2]
+ 821 001e 9A42     		cmp	r2, r3
+ 822 0020 0CD0     		beq	.L65
+ 823              	.LVL66:
+ 824              	.L68:
  455:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 			{
- 866              		.loc 1 455 4 view .LVU284
+ 825              		.loc 1 455 4 view .LVU258
  459:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 867              		.loc 1 459 5 view .LVU285
+ 826              		.loc 1 459 5 view .LVU259
  459:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 868              		.loc 1 459 12 is_stmt 0 view .LVU286
- 869 0022 0134     		adds	r4, r4, #1
- 870              	.LVL72:
+ 827              		.loc 1 459 12 is_stmt 0 view .LVU260
+ 828 0022 0134     		adds	r4, r4, #1
+ 829              	.LVL67:
  461:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 871              		.loc 1 461 5 is_stmt 1 view .LVU287
+ 830              		.loc 1 461 5 is_stmt 1 view .LVU261
  461:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 28
-
-
- 872              		.loc 1 461 16 is_stmt 0 view .LVU288
- 873 0024 5A68     		ldr	r2, [r3, #4]
+ 831              		.loc 1 461 16 is_stmt 0 view .LVU262
+ 832 0024 5A68     		ldr	r2, [r3, #4]
  461:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 874              		.loc 1 461 7 view .LVU289
- 875 0026 AA42     		cmp	r2, r5
- 876 0028 00D9     		bls	.L72
+ 833              		.loc 1 461 7 view .LVU263
+ 834 0026 AA42     		cmp	r2, r5
+ 835 0028 00D9     		bls	.L66
  463:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 877              		.loc 1 463 15 view .LVU290
- 878 002a 1546     		mov	r5, r2
- 879              	.LVL73:
- 880              	.L72:
+ 836              		.loc 1 463 15 view .LVU264
+ 837 002a 1546     		mov	r5, r2
+ 838              	.LVL68:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 27
+
+
+ 839              	.L66:
  466:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 881              		.loc 1 466 5 is_stmt 1 view .LVU291
+ 840              		.loc 1 466 5 is_stmt 1 view .LVU265
  466:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				{
- 882              		.loc 1 466 7 is_stmt 0 view .LVU292
- 883 002c B242     		cmp	r2, r6
- 884 002e F3D2     		bcs	.L73
+ 841              		.loc 1 466 7 is_stmt 0 view .LVU266
+ 842 002c B242     		cmp	r2, r6
+ 843 002e F3D2     		bcs	.L67
  468:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 885              		.loc 1 468 15 view .LVU293
- 886 0030 1646     		mov	r6, r2
- 887              	.LVL74:
+ 844              		.loc 1 468 15 view .LVU267
+ 845 0030 1646     		mov	r6, r2
+ 846              	.LVL69:
  468:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 				}
- 888              		.loc 1 468 15 view .LVU294
- 889 0032 F1E7     		b	.L73
- 890              	.LVL75:
- 891              	.L75:
+ 847              		.loc 1 468 15 view .LVU268
+ 848 0032 F1E7     		b	.L67
+ 849              	.LVL70:
+ 850              	.L69:
  445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 892              		.loc 1 445 35 view .LVU295
- 893 0034 4FF0FF36 		mov	r6, #-1
+ 851              		.loc 1 445 35 view .LVU269
+ 852 0034 4FF0FF36 		mov	r6, #-1
  445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 894              		.loc 1 445 21 view .LVU296
- 895 0038 0025     		movs	r5, #0
+ 853              		.loc 1 445 21 view .LVU270
+ 854 0038 0025     		movs	r5, #0
  445:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
- 896              		.loc 1 445 8 view .LVU297
- 897 003a 2C46     		mov	r4, r5
- 898              	.LVL76:
- 899              	.L71:
+ 855              		.loc 1 445 8 view .LVU271
+ 856 003a 2C46     		mov	r4, r5
+ 857              	.LVL71:
+ 858              	.L65:
  475:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		}
  476:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
  477:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	xTaskResumeAll();
- 900              		.loc 1 477 2 is_stmt 1 view .LVU298
- 901 003c FFF7FEFF 		bl	xTaskResumeAll
- 902              	.LVL77:
+ 859              		.loc 1 477 2 is_stmt 1 view .LVU272
+ 860 003c FFF7FEFF 		bl	xTaskResumeAll
+ 861              	.LVL72:
  478:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
  479:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	pxHeapStats->xSizeOfLargestFreeBlockInBytes = xMaxSize;
- 903              		.loc 1 479 2 view .LVU299
- 904              		.loc 1 479 46 is_stmt 0 view .LVU300
- 905 0040 7D60     		str	r5, [r7, #4]
+ 862              		.loc 1 479 2 view .LVU273
+ 863              		.loc 1 479 46 is_stmt 0 view .LVU274
+ 864 0040 7D60     		str	r5, [r7, #4]
  480:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	pxHeapStats->xSizeOfSmallestFreeBlockInBytes = xMinSize;
- 906              		.loc 1 480 2 is_stmt 1 view .LVU301
- 907              		.loc 1 480 47 is_stmt 0 view .LVU302
- 908 0042 BE60     		str	r6, [r7, #8]
+ 865              		.loc 1 480 2 is_stmt 1 view .LVU275
+ 866              		.loc 1 480 47 is_stmt 0 view .LVU276
+ 867 0042 BE60     		str	r6, [r7, #8]
  481:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	pxHeapStats->xNumberOfFreeBlocks = xBlocks;
- 909              		.loc 1 481 2 is_stmt 1 view .LVU303
- 910              		.loc 1 481 35 is_stmt 0 view .LVU304
- 911 0044 FC60     		str	r4, [r7, #12]
+ 868              		.loc 1 481 2 is_stmt 1 view .LVU277
+ 869              		.loc 1 481 35 is_stmt 0 view .LVU278
+ 870 0044 FC60     		str	r4, [r7, #12]
  482:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 29
-
-
  483:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	taskENTER_CRITICAL();
- 912              		.loc 1 483 2 is_stmt 1 view .LVU305
- 913 0046 FFF7FEFF 		bl	vPortEnterCritical
- 914              	.LVL78:
+ 871              		.loc 1 483 2 is_stmt 1 view .LVU279
+ 872 0046 FFF7FEFF 		bl	vPortEnterCritical
+ 873              	.LVL73:
  484:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	{
  485:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		pxHeapStats->xAvailableHeapSpaceInBytes = xFreeBytesRemaining;
- 915              		.loc 1 485 3 view .LVU306
- 916              		.loc 1 485 43 is_stmt 0 view .LVU307
- 917 004a 094B     		ldr	r3, .L79+8
- 918 004c 1B68     		ldr	r3, [r3]
- 919 004e 3B60     		str	r3, [r7]
+ 874              		.loc 1 485 3 view .LVU280
+ 875              		.loc 1 485 43 is_stmt 0 view .LVU281
+ 876 004a 094B     		ldr	r3, .L73+8
+ 877 004c 1B68     		ldr	r3, [r3]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 28
+
+
+ 878 004e 3B60     		str	r3, [r7]
  486:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		pxHeapStats->xNumberOfSuccessfulAllocations = xNumberOfSuccessfulAllocations;
- 920              		.loc 1 486 3 is_stmt 1 view .LVU308
- 921              		.loc 1 486 47 is_stmt 0 view .LVU309
- 922 0050 084B     		ldr	r3, .L79+12
- 923 0052 1B68     		ldr	r3, [r3]
- 924 0054 7B61     		str	r3, [r7, #20]
+ 879              		.loc 1 486 3 is_stmt 1 view .LVU282
+ 880              		.loc 1 486 47 is_stmt 0 view .LVU283
+ 881 0050 084B     		ldr	r3, .L73+12
+ 882 0052 1B68     		ldr	r3, [r3]
+ 883 0054 7B61     		str	r3, [r7, #20]
  487:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		pxHeapStats->xNumberOfSuccessfulFrees = xNumberOfSuccessfulFrees;
- 925              		.loc 1 487 3 is_stmt 1 view .LVU310
- 926              		.loc 1 487 41 is_stmt 0 view .LVU311
- 927 0056 084B     		ldr	r3, .L79+16
- 928 0058 1B68     		ldr	r3, [r3]
- 929 005a BB61     		str	r3, [r7, #24]
+ 884              		.loc 1 487 3 is_stmt 1 view .LVU284
+ 885              		.loc 1 487 41 is_stmt 0 view .LVU285
+ 886 0056 084B     		ldr	r3, .L73+16
+ 887 0058 1B68     		ldr	r3, [r3]
+ 888 005a BB61     		str	r3, [r7, #24]
  488:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 		pxHeapStats->xMinimumEverFreeBytesRemaining = xMinimumEverFreeBytesRemaining;
- 930              		.loc 1 488 3 is_stmt 1 view .LVU312
- 931              		.loc 1 488 47 is_stmt 0 view .LVU313
- 932 005c 074B     		ldr	r3, .L79+20
- 933 005e 1B68     		ldr	r3, [r3]
- 934 0060 3B61     		str	r3, [r7, #16]
+ 889              		.loc 1 488 3 is_stmt 1 view .LVU286
+ 890              		.loc 1 488 47 is_stmt 0 view .LVU287
+ 891 005c 074B     		ldr	r3, .L73+20
+ 892 005e 1B68     		ldr	r3, [r3]
+ 893 0060 3B61     		str	r3, [r7, #16]
  489:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	}
  490:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** 	taskEXIT_CRITICAL();
- 935              		.loc 1 490 2 is_stmt 1 view .LVU314
- 936 0062 FFF7FEFF 		bl	vPortExitCritical
- 937              	.LVL79:
+ 894              		.loc 1 490 2 is_stmt 1 view .LVU288
+ 895 0062 FFF7FEFF 		bl	vPortExitCritical
+ 896              	.LVL74:
  491:Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c **** }
- 938              		.loc 1 491 1 is_stmt 0 view .LVU315
- 939 0066 F8BD     		pop	{r3, r4, r5, r6, r7, pc}
- 940              	.LVL80:
- 941              	.L80:
- 942              		.loc 1 491 1 view .LVU316
- 943              		.align	2
- 944              	.L79:
- 945 0068 00000000 		.word	xStart
- 946 006c 00000000 		.word	pxEnd
- 947 0070 00000000 		.word	xFreeBytesRemaining
- 948 0074 00000000 		.word	xNumberOfSuccessfulAllocations
- 949 0078 00000000 		.word	xNumberOfSuccessfulFrees
- 950 007c 00000000 		.word	xMinimumEverFreeBytesRemaining
- 951              		.cfi_endproc
- 952              	.LFE11:
- 954              		.section	.bss.xBlockAllocatedBit,"aw",%nobits
- 955              		.align	2
- 958              	xBlockAllocatedBit:
- 959 0000 00000000 		.space	4
- 960              		.section	.bss.xNumberOfSuccessfulFrees,"aw",%nobits
- 961              		.align	2
- 964              	xNumberOfSuccessfulFrees:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 30
+ 897              		.loc 1 491 1 is_stmt 0 view .LVU289
+ 898 0066 F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 899              	.LVL75:
+ 900              	.L74:
+ 901              		.loc 1 491 1 view .LVU290
+ 902              		.align	2
+ 903              	.L73:
+ 904 0068 00000000 		.word	xStart
+ 905 006c 00000000 		.word	pxEnd
+ 906 0070 00000000 		.word	xFreeBytesRemaining
+ 907 0074 00000000 		.word	xNumberOfSuccessfulAllocations
+ 908 0078 00000000 		.word	xNumberOfSuccessfulFrees
+ 909 007c 00000000 		.word	xMinimumEverFreeBytesRemaining
+ 910              		.cfi_endproc
+ 911              	.LFE11:
+ 913              		.section	.bss.xBlockAllocatedBit,"aw",%nobits
+ 914              		.align	2
+ 917              	xBlockAllocatedBit:
+ 918 0000 00000000 		.space	4
+ 919              		.section	.bss.xNumberOfSuccessfulFrees,"aw",%nobits
+ 920              		.align	2
+ 923              	xNumberOfSuccessfulFrees:
+ 924 0000 00000000 		.space	4
+ 925              		.section	.bss.xNumberOfSuccessfulAllocations,"aw",%nobits
+ 926              		.align	2
+ 929              	xNumberOfSuccessfulAllocations:
+ 930 0000 00000000 		.space	4
+ 931              		.section	.bss.xMinimumEverFreeBytesRemaining,"aw",%nobits
+ 932              		.align	2
+ 935              	xMinimumEverFreeBytesRemaining:
+ 936 0000 00000000 		.space	4
+ 937              		.section	.bss.xFreeBytesRemaining,"aw",%nobits
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 29
 
 
- 965 0000 00000000 		.space	4
- 966              		.section	.bss.xNumberOfSuccessfulAllocations,"aw",%nobits
- 967              		.align	2
- 970              	xNumberOfSuccessfulAllocations:
- 971 0000 00000000 		.space	4
- 972              		.section	.bss.xMinimumEverFreeBytesRemaining,"aw",%nobits
- 973              		.align	2
- 976              	xMinimumEverFreeBytesRemaining:
- 977 0000 00000000 		.space	4
- 978              		.section	.bss.xFreeBytesRemaining,"aw",%nobits
- 979              		.align	2
- 982              	xFreeBytesRemaining:
- 983 0000 00000000 		.space	4
- 984              		.section	.bss.pxEnd,"aw",%nobits
- 985              		.align	2
- 988              	pxEnd:
- 989 0000 00000000 		.space	4
- 990              		.section	.bss.xStart,"aw",%nobits
- 991              		.align	2
- 994              	xStart:
- 995 0000 00000000 		.space	8
- 995      00000000 
- 996              		.section	.bss.ucHeap,"aw",%nobits
- 997              		.align	2
- 1000              	ucHeap:
- 1001 0000 00000000 		.space	16384
- 1001      00000000 
- 1001      00000000 
- 1001      00000000 
- 1001      00000000 
- 1002              		.text
- 1003              	.Letext0:
- 1004              		.file 2 "c:\\msys64\\mingw64\\lib\\gcc\\arm-none-eabi\\12.2.0\\include\\stddef.h"
- 1005              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
- 1006              		.file 4 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
- 1007              		.file 5 "Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/portmacro.h"
- 1008              		.file 6 "Middlewares/Third_Party/FreeRTOS/Source/include/portable.h"
- 1009              		.file 7 "Middlewares/Third_Party/FreeRTOS/Source/include/task.h"
- 1010              		.file 8 "Core/Inc/FreeRTOSConfig.h"
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s 			page 31
+ 938              		.align	2
+ 941              	xFreeBytesRemaining:
+ 942 0000 00000000 		.space	4
+ 943              		.section	.bss.pxEnd,"aw",%nobits
+ 944              		.align	2
+ 947              	pxEnd:
+ 948 0000 00000000 		.space	4
+ 949              		.section	.bss.xStart,"aw",%nobits
+ 950              		.align	2
+ 953              	xStart:
+ 954 0000 00000000 		.space	8
+ 954      00000000 
+ 955              		.section	.bss.ucHeap,"aw",%nobits
+ 956              		.align	2
+ 959              	ucHeap:
+ 960 0000 00000000 		.space	16384
+ 960      00000000 
+ 960      00000000 
+ 960      00000000 
+ 960      00000000 
+ 961              		.text
+ 962              	.Letext0:
+ 963              		.file 2 "c:\\msys64\\mingw64\\lib\\gcc\\arm-none-eabi\\12.2.0\\include\\stddef.h"
+ 964              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 965              		.file 4 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 966              		.file 5 "Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/portmacro.h"
+ 967              		.file 6 "Middlewares/Third_Party/FreeRTOS/Source/include/portable.h"
+ 968              		.file 7 "Middlewares/Third_Party/FreeRTOS/Source/include/task.h"
+ 969              		.file 8 "Core/Inc/FreeRTOSConfig.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s 			page 30
 
 
 DEFINED SYMBOLS
                             *ABS*:00000000 heap_4.c
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:20     .text.prvHeapInit:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:25     .text.prvHeapInit:00000000 prvHeapInit
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:130    .text.prvHeapInit:0000004c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:1000   .bss.ucHeap:00000000 ucHeap
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:994    .bss.xStart:00000000 xStart
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:988    .bss.pxEnd:00000000 pxEnd
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:976    .bss.xMinimumEverFreeBytesRemaining:00000000 xMinimumEverFreeBytesRemaining
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:982    .bss.xFreeBytesRemaining:00000000 xFreeBytesRemaining
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:958    .bss.xBlockAllocatedBit:00000000 xBlockAllocatedBit
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:140    .text.prvInsertBlockIntoFreeList:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:145    .text.prvInsertBlockIntoFreeList:00000000 prvInsertBlockIntoFreeList
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:276    .text.prvInsertBlockIntoFreeList:0000005c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:282    .rodata.pvPortMalloc.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:287    .text.pvPortMalloc:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:293    .text.pvPortMalloc:00000000 pvPortMalloc
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:592    .text.pvPortMalloc:000000f8 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:970    .bss.xNumberOfSuccessfulAllocations:00000000 xNumberOfSuccessfulAllocations
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:603    .text.vPortFree:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:609    .text.vPortFree:00000000 vPortFree
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:729    .text.vPortFree:00000078 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:964    .bss.xNumberOfSuccessfulFrees:00000000 xNumberOfSuccessfulFrees
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:737    .text.xPortGetFreeHeapSize:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:743    .text.xPortGetFreeHeapSize:00000000 xPortGetFreeHeapSize
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:758    .text.xPortGetFreeHeapSize:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:763    .text.xPortGetMinimumEverFreeHeapSize:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:769    .text.xPortGetMinimumEverFreeHeapSize:00000000 xPortGetMinimumEverFreeHeapSize
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:784    .text.xPortGetMinimumEverFreeHeapSize:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:789    .text.vPortInitialiseBlocks:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:795    .text.vPortInitialiseBlocks:00000000 vPortInitialiseBlocks
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:808    .text.vPortGetHeapStats:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:814    .text.vPortGetHeapStats:00000000 vPortGetHeapStats
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:945    .text.vPortGetHeapStats:00000068 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:955    .bss.xBlockAllocatedBit:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:961    .bss.xNumberOfSuccessfulFrees:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:967    .bss.xNumberOfSuccessfulAllocations:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:973    .bss.xMinimumEverFreeBytesRemaining:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:979    .bss.xFreeBytesRemaining:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:985    .bss.pxEnd:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:991    .bss.xStart:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccK17HOK.s:997    .bss.ucHeap:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:20     .text.prvHeapInit:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:25     .text.prvHeapInit:00000000 prvHeapInit
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:130    .text.prvHeapInit:0000004c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:959    .bss.ucHeap:00000000 ucHeap
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:953    .bss.xStart:00000000 xStart
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:947    .bss.pxEnd:00000000 pxEnd
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:935    .bss.xMinimumEverFreeBytesRemaining:00000000 xMinimumEverFreeBytesRemaining
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:941    .bss.xFreeBytesRemaining:00000000 xFreeBytesRemaining
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:917    .bss.xBlockAllocatedBit:00000000 xBlockAllocatedBit
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:140    .text.prvInsertBlockIntoFreeList:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:145    .text.prvInsertBlockIntoFreeList:00000000 prvInsertBlockIntoFreeList
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:276    .text.prvInsertBlockIntoFreeList:0000005c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:282    .rodata.pvPortMalloc.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:287    .text.pvPortMalloc:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:293    .text.pvPortMalloc:00000000 pvPortMalloc
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:551    .text.pvPortMalloc:000000e4 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:929    .bss.xNumberOfSuccessfulAllocations:00000000 xNumberOfSuccessfulAllocations
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:562    .text.vPortFree:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:568    .text.vPortFree:00000000 vPortFree
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:688    .text.vPortFree:00000078 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:923    .bss.xNumberOfSuccessfulFrees:00000000 xNumberOfSuccessfulFrees
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:696    .text.xPortGetFreeHeapSize:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:702    .text.xPortGetFreeHeapSize:00000000 xPortGetFreeHeapSize
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:717    .text.xPortGetFreeHeapSize:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:722    .text.xPortGetMinimumEverFreeHeapSize:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:728    .text.xPortGetMinimumEverFreeHeapSize:00000000 xPortGetMinimumEverFreeHeapSize
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:743    .text.xPortGetMinimumEverFreeHeapSize:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:748    .text.vPortInitialiseBlocks:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:754    .text.vPortInitialiseBlocks:00000000 vPortInitialiseBlocks
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:767    .text.vPortGetHeapStats:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:773    .text.vPortGetHeapStats:00000000 vPortGetHeapStats
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:904    .text.vPortGetHeapStats:00000068 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:914    .bss.xBlockAllocatedBit:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:920    .bss.xNumberOfSuccessfulFrees:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:926    .bss.xNumberOfSuccessfulAllocations:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:932    .bss.xMinimumEverFreeBytesRemaining:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:938    .bss.xFreeBytesRemaining:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:944    .bss.pxEnd:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:950    .bss.xStart:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccmzT3j3.s:956    .bss.ucHeap:00000000 $d
 
 UNDEFINED SYMBOLS
 vTaskSuspendAll
-xTaskResumeAll
-vApplicationMallocFailedHook
 vAssertCalled
+xTaskResumeAll
 vPortEnterCritical
 vPortExitCritical

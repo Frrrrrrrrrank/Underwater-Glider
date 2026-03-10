@@ -165,45 +165,26 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
-  /* Keep SysTick at the lowest priority so FreeRTOS ISR API usage stays valid. */
-  HAL_NVIC_SetPriority(SysTick_IRQn, 15U, 0U);
-
   /* USER CODE BEGIN SysInit */
   g_dbg_boot_stage = 3U;
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  g_dbg_boot_stage = 31U;
   MX_GPIO_Init();
-  g_dbg_boot_stage = 32U;
   MX_FDCAN1_Init();
-  g_dbg_boot_stage = 33U;
-  /* SDMMC is not needed for current UART7 bring-up; skip to avoid boot stop. */
-  /* MX_SDMMC1_MMC_Init(); */
-  g_dbg_boot_stage = 34U;
+  // MX_SDMMC1_MMC_Init();
   MX_UART4_Init();
-  g_dbg_boot_stage = 35U;
   MX_USART1_UART_Init();
-  g_dbg_boot_stage = 36U;
   MX_USART2_UART_Init();
-  g_dbg_boot_stage = 37U;
   MX_USART3_UART_Init();
-  g_dbg_boot_stage = 38U;
   MX_UART5_Init();
-  g_dbg_boot_stage = 39U;
   MX_UART7_Init();
-  g_dbg_boot_stage = 40U;
   MX_UART8_Init();
-  g_dbg_boot_stage = 41U;
   MX_ADC1_Init();
-  g_dbg_boot_stage = 42U;
   MX_SPI1_Init();
-  g_dbg_boot_stage = 43U;
   MX_TIM1_Init();
-  g_dbg_boot_stage = 44U;
   MX_TIM2_Init();
-  g_dbg_boot_stage = 45U;
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   g_dbg_boot_stage = 46U;
@@ -213,7 +194,6 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Init scheduler */
-  g_dbg_boot_stage = 5U;
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -253,7 +233,6 @@ int main(void)
   /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
-  g_dbg_boot_stage = 8U;
   osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
