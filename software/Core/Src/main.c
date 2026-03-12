@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "glider_core.h"
+#include "glider_rdss_codec.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -30,6 +31,64 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+
+typedef struct
+{
+  uint32_t boot_stage;            /* Boot marker from main() */
+  uint32_t alive_counter;         /* defaultTask loop counter */
+  uint32_t rtos_tick;             /* osKernelGetTickCount() snapshot */
+  uint32_t rx_line_count;         /* Decoded RX line counter */
+  uint32_t rx_overflow_count;     /* RX ring overflow counter */
+  uint32_t tx_attempt_count;      /* UART TX attempts */
+  uint32_t tx_ok_count;           /* UART TX success count */
+  uint32_t tx_fail_count;         /* UART TX fail count */
+  uint32_t tx_last_status;        /* Last HAL_UART_Transmit status */
+  uint32_t tx_last_uart_error;    /* Last UART error code */
+  uint32_t last_rx_update_count;  /* Incremented on each new RX callback update */
+  uint32_t last_rx_text_len;      /* Length of last text frame */
+  char last_rx_text[192];         /* Last text frame (null-terminated) */
+  uint32_t last_rx_bin_len;       /* Length of last binary frame */
+  uint8_t last_rx_bin[64];        /* Last binary frame bytes */
+  uint32_t is_rd_mode;            /* 1 when last decoded text is RD Mode! */
+  uint32_t is_bdpwi;              /* 1 when last decoded sentence is BDPWI */
+  char bdpwi_utc[16];             /* BDPWI UTC field string */
+  uint32_t bdpwi_field1;          /* BDPWI Field[2], compatibility mirror */
+  uint32_t bdpwi_field2;          /* BDPWI Field[3], compatibility mirror */
+  uint32_t bdpwi_field1_valid;    /* BDPWI Field[2] numeric-valid flag */
+  uint32_t bdpwi_field2_valid;    /* BDPWI Field[3] numeric-valid flag */
+  char bdpwi_latitude_raw[16];    /* BDPWI Field[4] raw text */
+  char bdpwi_longitude_raw[16];   /* BDPWI Field[5] raw text */
+  char bdpwi_heading_raw[16];     /* BDPWI Field[6] raw text */
+  int32_t bdpwi_latitude_x100;    /* BDPWI Field[4] fixed-point x100 */
+  int32_t bdpwi_longitude_x100;   /* BDPWI Field[5] fixed-point x100 */
+  int32_t bdpwi_heading_x100;     /* BDPWI Field[6] fixed-point x100 */
+  uint32_t bdpwi_latitude_valid;  /* BDPWI Field[4] decimal-valid flag */
+  uint32_t bdpwi_longitude_valid; /* BDPWI Field[5] decimal-valid flag */
+  uint32_t bdpwi_heading_valid;   /* BDPWI Field[6] decimal-valid flag */
+  uint32_t is_bdepi;              /* 1 when last decoded sentence is BDEPI */
+  char bdepi_sender_card[24];     /* BDEPI Field[1] */
+  char bdepi_receiver_card[24];   /* BDEPI Field[2] */
+  char bdepi_utc[16];             /* BDEPI Field[6] */
+  uint32_t bdepi_freq_code;       /* BDEPI Field[3] */
+  uint32_t bdepi_emergency_code;  /* BDEPI Field[4] */
+  uint32_t bdepi_report_mode;     /* BDEPI Field[5] */
+  uint32_t bdepi_freq_valid;      /* BDEPI Field[3] numeric-valid */
+  uint32_t bdepi_emergency_valid; /* BDEPI Field[4] numeric-valid */
+  uint32_t bdepi_report_mode_valid; /* BDEPI Field[5] numeric-valid */
+  char bdepi_longitude_dm[20];    /* BDEPI Field[7] raw dddmm.mmmmmm */
+  char bdepi_longitude_ew[4];     /* BDEPI Field[8] */
+  char bdepi_latitude_dm[20];     /* BDEPI Field[9] raw ddmm.mmmmmm */
+  char bdepi_latitude_ns[4];      /* BDEPI Field[10] */
+  int32_t bdepi_longitude_deg_e7; /* Converted decimal degree * 1e7 */
+  int32_t bdepi_latitude_deg_e7;  /* Converted decimal degree * 1e7 */
+  float bdepi_longitude_deg;      /* Map-ready longitude as decimal degree */
+  float bdepi_latitude_deg;       /* Map-ready latitude as decimal degree */
+  uint32_t bdepi_longitude_valid; /* BDEPI longitude conversion valid */
+  uint32_t bdepi_latitude_valid;  /* BDEPI latitude conversion valid */
+  char bdepi_altitude_raw[16];    /* BDEPI Field[11] raw altitude */
+  int32_t bdepi_altitude_x100;    /* BDEPI altitude * 100 */
+  uint32_t bdepi_altitude_valid;  /* BDEPI altitude conversion valid */
+} GliderDebugView;
 
 /* USER CODE END PTD */
 
@@ -75,7 +134,7 @@ const osThreadAttr_t defaultTask_attributes = {
 osThreadId_t uart7RxTaskHandle;
 const osThreadAttr_t uart7RxTask_attributes = {
   .name = "uart7RxTask",
-  .stack_size = 256 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal1,
 };
 /* Definitions for uartTxTask */
@@ -103,6 +162,19 @@ volatile uint32_t g_dbg_tx_ok_count = 0U;
 volatile uint32_t g_dbg_tx_fail_count = 0U;
 volatile uint32_t g_dbg_tx_last_status = 0U;
 volatile uint32_t g_dbg_tx_last_uart_error = 0U;
+volatile uint32_t g_dbg_last_rx_text_len = 0U;
+volatile char g_dbg_last_rx_text[192] = {0};
+volatile uint32_t g_dbg_last_rx_bin_len = 0U;
+volatile uint8_t g_dbg_last_rx_bin[64] = {0};
+volatile uint32_t g_dbg_last_rx_update_count = 0U;
+volatile uint32_t g_dbg_is_rd_mode = 0U;
+volatile uint32_t g_dbg_is_bdpwi = 0U;
+volatile char g_dbg_bdpwi_utc[16] = {0};
+volatile uint32_t g_dbg_bdpwi_field1 = 0U;
+volatile uint32_t g_dbg_bdpwi_field2 = 0U;
+volatile uint32_t g_dbg_bdpwi_field1_valid = 0U;
+volatile uint32_t g_dbg_bdpwi_field2_valid = 0U;
+volatile GliderDebugView g_dbg_view = {0};
 
 /* USER CODE END PV */
 
@@ -165,45 +237,26 @@ int main(void)
   /* Configure the system clock */
   SystemClock_Config();
 
-  /* Keep SysTick at the lowest priority so FreeRTOS ISR API usage stays valid. */
-  HAL_NVIC_SetPriority(SysTick_IRQn, 15U, 0U);
-
   /* USER CODE BEGIN SysInit */
   g_dbg_boot_stage = 3U;
 
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  g_dbg_boot_stage = 31U;
   MX_GPIO_Init();
-  g_dbg_boot_stage = 32U;
   MX_FDCAN1_Init();
-  g_dbg_boot_stage = 33U;
-  /* SDMMC is not needed for current UART7 bring-up; skip to avoid boot stop. */
-  /* MX_SDMMC1_MMC_Init(); */
-  g_dbg_boot_stage = 34U;
+  // MX_SDMMC1_MMC_Init();
   MX_UART4_Init();
-  g_dbg_boot_stage = 35U;
   MX_USART1_UART_Init();
-  g_dbg_boot_stage = 36U;
   MX_USART2_UART_Init();
-  g_dbg_boot_stage = 37U;
   MX_USART3_UART_Init();
-  g_dbg_boot_stage = 38U;
   MX_UART5_Init();
-  g_dbg_boot_stage = 39U;
   MX_UART7_Init();
-  g_dbg_boot_stage = 40U;
   MX_UART8_Init();
-  g_dbg_boot_stage = 41U;
   MX_ADC1_Init();
-  g_dbg_boot_stage = 42U;
   MX_SPI1_Init();
-  g_dbg_boot_stage = 43U;
   MX_TIM1_Init();
-  g_dbg_boot_stage = 44U;
   MX_TIM2_Init();
-  g_dbg_boot_stage = 45U;
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   g_dbg_boot_stage = 46U;
@@ -213,7 +266,6 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Init scheduler */
-  g_dbg_boot_stage = 5U;
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -253,7 +305,6 @@ int main(void)
   /* USER CODE END RTOS_EVENTS */
 
   /* Start scheduler */
-  g_dbg_boot_stage = 8U;
   osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
@@ -1086,6 +1137,244 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void GliderCore_OnTextFrame(const char *line)
+{
+  size_t i = 0U;
+  size_t len = 0U;
+
+  if (line == NULL)
+  {
+    g_dbg_last_rx_text_len = 0U;
+    g_dbg_last_rx_text[0] = '\0';
+    g_dbg_last_rx_update_count++;
+    g_dbg_view.last_rx_text_len = 0U;
+    g_dbg_view.last_rx_text[0] = '\0';
+    g_dbg_view.last_rx_update_count = g_dbg_last_rx_update_count;
+    return;
+  }
+
+  while (line[len] != '\0' && len < (sizeof(g_dbg_last_rx_text) - 1U))
+  {
+    len++;
+  }
+
+  for (i = 0U; i < len; i++)
+  {
+    g_dbg_last_rx_text[i] = line[i];
+  }
+  g_dbg_last_rx_text[len] = '\0';
+
+  for (i = len + 1U; i < sizeof(g_dbg_last_rx_text); i++)
+  {
+    g_dbg_last_rx_text[i] = '\0';
+  }
+
+  g_dbg_last_rx_text_len = (uint32_t)len;
+  g_dbg_last_rx_update_count++;
+  g_dbg_view.last_rx_text_len = g_dbg_last_rx_text_len;
+  for (i = 0U; i < sizeof(g_dbg_view.last_rx_text); i++)
+  {
+    g_dbg_view.last_rx_text[i] = g_dbg_last_rx_text[i];
+  }
+  g_dbg_view.last_rx_update_count = g_dbg_last_rx_update_count;
+}
+
+void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len)
+{
+  size_t i = 0U;
+  size_t copy_len = 0U;
+
+  if (payload == NULL)
+  {
+    g_dbg_last_rx_bin_len = 0U;
+    for (i = 0U; i < sizeof(g_dbg_last_rx_bin); i++)
+    {
+      g_dbg_last_rx_bin[i] = 0U;
+    }
+    g_dbg_last_rx_update_count++;
+    g_dbg_view.last_rx_bin_len = 0U;
+    for (i = 0U; i < sizeof(g_dbg_view.last_rx_bin); i++)
+    {
+      g_dbg_view.last_rx_bin[i] = 0U;
+    }
+    g_dbg_view.last_rx_update_count = g_dbg_last_rx_update_count;
+    return;
+  }
+
+  copy_len = (payload_len < sizeof(g_dbg_last_rx_bin)) ? payload_len : sizeof(g_dbg_last_rx_bin);
+  for (i = 0U; i < copy_len; i++)
+  {
+    g_dbg_last_rx_bin[i] = payload[i];
+  }
+  for (; i < sizeof(g_dbg_last_rx_bin); i++)
+  {
+    g_dbg_last_rx_bin[i] = 0U;
+  }
+
+  g_dbg_last_rx_bin_len = (uint32_t)copy_len;
+  g_dbg_last_rx_update_count++;
+  g_dbg_view.last_rx_bin_len = g_dbg_last_rx_bin_len;
+  for (i = 0U; i < sizeof(g_dbg_view.last_rx_bin); i++)
+  {
+    g_dbg_view.last_rx_bin[i] = g_dbg_last_rx_bin[i];
+  }
+  g_dbg_view.last_rx_update_count = g_dbg_last_rx_update_count;
+}
+
+void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
+{
+  size_t i = 0U;
+  size_t len = 0U;
+
+  if (frame == NULL)
+  {
+    g_dbg_is_rd_mode = 0U;
+    g_dbg_is_bdpwi = 0U;
+    g_dbg_bdpwi_utc[0] = '\0';
+    g_dbg_bdpwi_field1 = 0U;
+    g_dbg_bdpwi_field2 = 0U;
+    g_dbg_bdpwi_field1_valid = 0U;
+    g_dbg_bdpwi_field2_valid = 0U;
+    g_dbg_view.is_rd_mode = 0U;
+    g_dbg_view.is_bdpwi = 0U;
+    g_dbg_view.bdpwi_utc[0] = '\0';
+    g_dbg_view.bdpwi_field1 = 0U;
+    g_dbg_view.bdpwi_field2 = 0U;
+    g_dbg_view.bdpwi_field1_valid = 0U;
+    g_dbg_view.bdpwi_field2_valid = 0U;
+    g_dbg_view.bdpwi_latitude_raw[0] = '\0';
+    g_dbg_view.bdpwi_longitude_raw[0] = '\0';
+    g_dbg_view.bdpwi_heading_raw[0] = '\0';
+    g_dbg_view.bdpwi_latitude_x100 = 0;
+    g_dbg_view.bdpwi_longitude_x100 = 0;
+    g_dbg_view.bdpwi_heading_x100 = 0;
+    g_dbg_view.bdpwi_latitude_valid = 0U;
+    g_dbg_view.bdpwi_longitude_valid = 0U;
+    g_dbg_view.bdpwi_heading_valid = 0U;
+    g_dbg_view.is_bdepi = 0U;
+    g_dbg_view.bdepi_sender_card[0] = '\0';
+    g_dbg_view.bdepi_receiver_card[0] = '\0';
+    g_dbg_view.bdepi_utc[0] = '\0';
+    g_dbg_view.bdepi_freq_code = 0U;
+    g_dbg_view.bdepi_emergency_code = 0U;
+    g_dbg_view.bdepi_report_mode = 0U;
+    g_dbg_view.bdepi_freq_valid = 0U;
+    g_dbg_view.bdepi_emergency_valid = 0U;
+    g_dbg_view.bdepi_report_mode_valid = 0U;
+    g_dbg_view.bdepi_longitude_dm[0] = '\0';
+    g_dbg_view.bdepi_longitude_ew[0] = '\0';
+    g_dbg_view.bdepi_latitude_dm[0] = '\0';
+    g_dbg_view.bdepi_latitude_ns[0] = '\0';
+    g_dbg_view.bdepi_longitude_deg_e7 = 0;
+    g_dbg_view.bdepi_latitude_deg_e7 = 0;
+    g_dbg_view.bdepi_longitude_deg = 0.0f;
+    g_dbg_view.bdepi_latitude_deg = 0.0f;
+    g_dbg_view.bdepi_longitude_valid = 0U;
+    g_dbg_view.bdepi_latitude_valid = 0U;
+    g_dbg_view.bdepi_altitude_raw[0] = '\0';
+    g_dbg_view.bdepi_altitude_x100 = 0;
+    g_dbg_view.bdepi_altitude_valid = 0U;
+    return;
+  }
+
+  g_dbg_is_rd_mode = frame->is_rd_mode ? 1U : 0U;
+  g_dbg_is_bdpwi = frame->is_bdpwi ? 1U : 0U;
+
+  while (frame->bdpwi_utc[len] != '\0' && len < (sizeof(g_dbg_bdpwi_utc) - 1U))
+  {
+    len++;
+  }
+  for (i = 0U; i < len; i++)
+  {
+    g_dbg_bdpwi_utc[i] = frame->bdpwi_utc[i];
+  }
+  g_dbg_bdpwi_utc[len] = '\0';
+  for (i = len + 1U; i < sizeof(g_dbg_bdpwi_utc); i++)
+  {
+    g_dbg_bdpwi_utc[i] = '\0';
+  }
+
+  g_dbg_bdpwi_field1 = frame->bdpwi_field1;
+  g_dbg_bdpwi_field2 = frame->bdpwi_field2;
+  g_dbg_bdpwi_field1_valid = frame->bdpwi_field1_valid ? 1U : 0U;
+  g_dbg_bdpwi_field2_valid = frame->bdpwi_field2_valid ? 1U : 0U;
+  g_dbg_view.is_rd_mode = g_dbg_is_rd_mode;
+  g_dbg_view.is_bdpwi = g_dbg_is_bdpwi;
+  for (i = 0U; i < sizeof(g_dbg_view.bdpwi_utc); i++)
+  {
+    g_dbg_view.bdpwi_utc[i] = g_dbg_bdpwi_utc[i];
+  }
+  g_dbg_view.bdpwi_field1 = g_dbg_bdpwi_field1;
+  g_dbg_view.bdpwi_field2 = g_dbg_bdpwi_field2;
+  g_dbg_view.bdpwi_field1_valid = g_dbg_bdpwi_field1_valid;
+  g_dbg_view.bdpwi_field2_valid = g_dbg_bdpwi_field2_valid;
+
+  for (i = 0U; i < sizeof(g_dbg_view.bdpwi_latitude_raw); i++)
+  {
+    g_dbg_view.bdpwi_latitude_raw[i] = frame->bdpwi.latitude_raw[i];
+    g_dbg_view.bdpwi_longitude_raw[i] = frame->bdpwi.longitude_raw[i];
+    g_dbg_view.bdpwi_heading_raw[i] = frame->bdpwi.heading_raw[i];
+  }
+  g_dbg_view.bdpwi_latitude_x100 = frame->bdpwi.latitude_x100;
+  g_dbg_view.bdpwi_longitude_x100 = frame->bdpwi.longitude_x100;
+  g_dbg_view.bdpwi_heading_x100 = frame->bdpwi.heading_x100;
+  g_dbg_view.bdpwi_latitude_valid = frame->bdpwi.latitude_valid ? 1U : 0U;
+  g_dbg_view.bdpwi_longitude_valid = frame->bdpwi.longitude_valid ? 1U : 0U;
+  g_dbg_view.bdpwi_heading_valid = frame->bdpwi.heading_valid ? 1U : 0U;
+
+  g_dbg_view.is_bdepi = frame->is_bdepi ? 1U : 0U;
+  for (i = 0U; i < sizeof(g_dbg_view.bdepi_sender_card); i++)
+  {
+    g_dbg_view.bdepi_sender_card[i] = frame->bdepi.sender_card[i];
+    g_dbg_view.bdepi_receiver_card[i] = frame->bdepi.receiver_card[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.bdepi_utc); i++)
+  {
+    g_dbg_view.bdepi_utc[i] = frame->bdepi.utc[i];
+    g_dbg_view.bdepi_altitude_raw[i] = frame->bdepi.altitude_raw[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.bdepi_longitude_dm); i++)
+  {
+    g_dbg_view.bdepi_longitude_dm[i] = frame->bdepi.longitude_dm[i];
+    g_dbg_view.bdepi_latitude_dm[i] = frame->bdepi.latitude_dm[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.bdepi_longitude_ew); i++)
+  {
+    g_dbg_view.bdepi_longitude_ew[i] = frame->bdepi.longitude_ew[i];
+    g_dbg_view.bdepi_latitude_ns[i] = frame->bdepi.latitude_ns[i];
+  }
+
+  g_dbg_view.bdepi_freq_code = frame->bdepi.freq_code;
+  g_dbg_view.bdepi_emergency_code = frame->bdepi.emergency_code;
+  g_dbg_view.bdepi_report_mode = frame->bdepi.report_mode_code;
+  g_dbg_view.bdepi_freq_valid = frame->bdepi.freq_code_valid ? 1U : 0U;
+  g_dbg_view.bdepi_emergency_valid = frame->bdepi.emergency_code_valid ? 1U : 0U;
+  g_dbg_view.bdepi_report_mode_valid = frame->bdepi.report_mode_valid ? 1U : 0U;
+  g_dbg_view.bdepi_longitude_deg_e7 = frame->bdepi.longitude_deg_e7;
+  g_dbg_view.bdepi_latitude_deg_e7 = frame->bdepi.latitude_deg_e7;
+  if (frame->bdepi.longitude_valid)
+  {
+    g_dbg_view.bdepi_longitude_deg = ((float)frame->bdepi.longitude_deg_e7) / 10000000.0f;
+  }
+  else
+  {
+    g_dbg_view.bdepi_longitude_deg = 0.0f;
+  }
+
+  if (frame->bdepi.latitude_valid)
+  {
+    g_dbg_view.bdepi_latitude_deg = ((float)frame->bdepi.latitude_deg_e7) / 10000000.0f;
+  }
+  else
+  {
+    g_dbg_view.bdepi_latitude_deg = 0.0f;
+  }
+  g_dbg_view.bdepi_longitude_valid = frame->bdepi.longitude_valid ? 1U : 0U;
+  g_dbg_view.bdepi_latitude_valid = frame->bdepi.latitude_valid ? 1U : 0U;
+  g_dbg_view.bdepi_altitude_x100 = frame->bdepi.altitude_x100;
+  g_dbg_view.bdepi_altitude_valid = frame->bdepi.altitude_valid ? 1U : 0U;
+}
+
 void vAssertCalled(const char *file, int line)
 {
   (void)file;
@@ -1146,6 +1435,17 @@ void StartDefaultTask(void *argument)
     g_dbg_tx_last_status = GliderCore_GetLastTxHalStatus();
     g_dbg_tx_last_uart_error = GliderCore_GetLastUartErrorCode();
     g_dbg_default_task_tick = g_dbg_rtos_tick;
+
+    g_dbg_view.boot_stage = g_dbg_boot_stage;
+    g_dbg_view.alive_counter = g_dbg_alive_counter;
+    g_dbg_view.rtos_tick = g_dbg_rtos_tick;
+    g_dbg_view.rx_line_count = g_dbg_rx_line_count;
+    g_dbg_view.rx_overflow_count = g_dbg_rx_overflow_count;
+    g_dbg_view.tx_attempt_count = g_dbg_tx_attempt_count;
+    g_dbg_view.tx_ok_count = g_dbg_tx_ok_count;
+    g_dbg_view.tx_fail_count = g_dbg_tx_fail_count;
+    g_dbg_view.tx_last_status = g_dbg_tx_last_status;
+    g_dbg_view.tx_last_uart_error = g_dbg_tx_last_uart_error;
     osDelay(100);
   }
   /* USER CODE END 5 */

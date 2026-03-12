@@ -79,8 +79,6 @@ void vAssertCalled(const char *file, int line);
 #define configUSE_RECURSIVE_MUTEXES              1
 #define configUSE_COUNTING_SEMAPHORES            1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION  0
-#define configUSE_MALLOC_FAILED_HOOK             1
-#define configCHECK_FOR_STACK_OVERFLOW           2
 /* USER CODE BEGIN MESSAGE_BUFFER_LENGTH_TYPE */
 /* Defaults to size_t for backward compatibility, but can be changed
    if lengths will always be less than the number of bytes in a size_t. */

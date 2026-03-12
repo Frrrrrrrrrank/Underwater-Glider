@@ -24,6 +24,7 @@ static volatile uint32_t s_tx_last_uart_error = 0;
 
 static char s_line_buffer[GLIDER_RX_LINE_SIZE];
 static size_t s_line_len = 0;
+static GliderRdssDecodedFrame s_decoded_frame;
 
 static const char *s_boot_test_cmds[] = {
   "AT\r\n",
@@ -67,22 +68,21 @@ static void ring_push(const uint8_t data)
 
 static void process_line(const char *line)
 {
-  GliderRdssDecodedFrame frame;
-
-  if (!GliderRdssCodec_TryDecodeLine(line, &frame))
+  if (!GliderRdssCodec_TryDecodeLine(line, &s_decoded_frame))
   {
     return;
   }
 
   s_rx_line_count++;
+  GliderCore_OnDecodedFrame(&s_decoded_frame);
 
-  if (frame.type == GLIDER_RDSS_FRAME_HEX_BINARY)
+  if (s_decoded_frame.type == GLIDER_RDSS_FRAME_HEX_BINARY)
   {
-    GliderCore_OnBinaryFrame(frame.payload, frame.payload_len);
+    GliderCore_OnBinaryFrame(s_decoded_frame.payload, s_decoded_frame.payload_len);
     return;
   }
 
-  GliderCore_OnTextFrame(frame.text);
+  GliderCore_OnTextFrame(s_decoded_frame.text);
 }
 
 static void process_rx_byte(const uint8_t byte)
@@ -242,6 +242,11 @@ __weak void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len)
 {
   (void)payload;
   (void)payload_len;
+}
+
+__weak void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
+{
+  (void)frame;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)

@@ -2,6 +2,7 @@
 #define GLIDER_CORE_H
 
 #include "main.h"
+#include "glider_rdss_codec.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -22,5 +23,6 @@ uint32_t GliderCore_GetLastUartErrorCode(void);
 
 void GliderCore_OnTextFrame(const char *line);
 void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len);
+void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame);
 
 #endif
