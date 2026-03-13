@@ -1,6 +1,6 @@
 
 
-OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=176
+OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=276
 OpenDocument="glider_core.c", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/glider_core.c", Line=124
 OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=52
 OpenDocument="stm32h7xx_hal_uart.h", FilePath="D:/Projects/UnderwaterGlider/software/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h", Line=216
@@ -19,7 +19,7 @@ TableHeader="Data Sampling Table", SortCol="None", SortOrder="ASCENDING", Visibl
 TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;100;100;100;100;100;113;131;131]
 TableHeader="Power Sampling", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";"Ch 0"], ColWidths=[100;100;100]
 TableHeader="Registers 1", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Description"], ColWidths=[100;118;329]
-TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[231;238;238]
+TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[231;330;169]
 TableHeader="RegisterSelectionDialog", SortCol="None", SortOrder="ASCENDING", VisibleCols=[], ColWidths=[]
 TableHeader="TargetExceptionDialog", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Address";"Description"], ColWidths=[200;100;100;347]
 WatchedExpression="g_dbg_alive_counter", RefreshRate=5, Window=Watched Data 1
@@ -31,3 +31,4 @@ WatchedExpression="g_dbg_tx_attempt_count ", RefreshRate=5, Window=Watched Data 
 WatchedExpression="g_dbg_tx_ok_count ", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_dbg_rx_line_count ", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_dbg_view ", RefreshRate=5, Window=Watched Data 1
+WatchedExpression="g_dbg_quick ", RefreshRate=5, Window=Watched Data 1

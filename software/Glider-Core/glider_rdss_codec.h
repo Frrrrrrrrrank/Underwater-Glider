@@ -31,6 +31,20 @@ typedef struct
   bool latitude_valid;        /* Field[4] parsed as decimal */
   bool longitude_valid;       /* Field[5] parsed as decimal */
   bool heading_valid;         /* Field[6] parsed as decimal */
+  char latitude_dm[20];       /* Located latitude candidate in ddmm.mmmmmm form */
+  char latitude_ns[4];        /* Located latitude direction candidate */
+  char longitude_dm[20];      /* Located longitude candidate in dddmm.mmmmmm form */
+  char longitude_ew[4];       /* Located longitude direction candidate */
+  int32_t latitude_deg_e7;    /* Converted latitude in degree * 1e7 */
+  int32_t longitude_deg_e7;   /* Converted longitude in degree * 1e7 */
+  bool latitude_deg_valid;    /* Located latitude candidate converted successfully */
+  bool longitude_deg_valid;   /* Located longitude candidate converted successfully */
+  uint32_t old_beam_count;    /* Old-system locked beam count */
+  uint32_t new_beam_count;    /* New-system locked beam count */
+  uint32_t best_d_cnr;        /* Best D-branch CNR in this sentence */
+  uint32_t best_p_cnr;        /* Best P-branch CNR in this sentence */
+  uint32_t good_beam_count;   /* Count of beams with good D/P CNR */
+  bool signal_good;           /* True when beam quality passes threshold */
 } GliderRdssBdpwiInfo;
 
 typedef struct
@@ -56,14 +70,43 @@ typedef struct
   char altitude_raw[16];      /* Field[11], altitude text */
   int32_t altitude_x100;      /* Field[11] fixed-point value (x100 meters) */
   bool altitude_valid;        /* Field[11] parsed as decimal */
+  char altitude_unit[4];      /* Field[12], altitude unit */
+  char altitude_abnormal[8];  /* Field[13], altitude abnormal flag/value */
+  char altitude_abnormal_unit[4]; /* Field[14], altitude abnormal unit */
+  char precision_indicator[8]; /* Field[15], precision indicator */
+  char multi_solution[8];     /* Field[16], multi-solution indicator */
+  char rescue_subtype[8];     /* Field[17], rescue service subtype */
+  char rescue_center_type[8]; /* Field[18], rescue center indication type */
+  uint32_t data_len;          /* Field[19], rescue/status data length */
+  bool data_len_valid;        /* Field[19] is numeric */
+  char data_payload[48];      /* Field[20], rescue/status data payload */
 } GliderRdssBdepiInfo;
+
+typedef struct
+{
+  bool valid;                 /* True when sentence is GNRMC and parse path reached */
+  char utc[16];               /* Field[1], UTC time string */
+  char status[4];             /* Field[2], A/V */
+  char latitude_dm[20];       /* Field[3], ddmm.mmmm text */
+  char latitude_ns[4];        /* Field[4], N/S */
+  char longitude_dm[20];      /* Field[5], dddmm.mmmm text */
+  char longitude_ew[4];       /* Field[6], E/W */
+  int32_t latitude_deg_e7;    /* Converted latitude in degree * 1e7 */
+  int32_t longitude_deg_e7;   /* Converted longitude in degree * 1e7 */
+  bool latitude_valid;        /* Latitude converted successfully */
+  bool longitude_valid;       /* Longitude converted successfully */
+  char date[16];              /* Field[9], ddmmyy */
+  bool status_valid;          /* True when status is A */
+} GliderRdssGnrmcInfo;
 
 typedef struct
 {
   GliderRdssFrameType type;   /* High-level classification */
   bool is_rd_mode;            /* True when text exactly equals "RD Mode!" */
+  bool is_rn_mode;            /* True when text exactly equals RNMODE!/RN Mode! */
   bool is_bdpwi;              /* True when sentence id is BDPWI */
   bool is_bdepi;              /* True when sentence id is BDEPI */
+  bool is_gnrmc;              /* True when sentence id is GNRMC */
   bool has_checksum;          /* NMEA '*' checksum existed */
   bool checksum_valid;        /* XOR checksum result */
   uint8_t checksum_rx;        /* Checksum from sentence */
@@ -77,7 +120,8 @@ typedef struct
   bool bdpwi_field2_valid;    /* Backward-compatible Field[3] validity */
   GliderRdssBdpwiInfo bdpwi;  /* Detailed BDPWI decode */
   GliderRdssBdepiInfo bdepi;  /* Detailed BDEPI decode */
-  char text[192];             /* Full normalized text line */
+  GliderRdssGnrmcInfo gnrmc;  /* Detailed GNRMC decode */
+  char text[512];             /* Full normalized text line */
   uint8_t payload[128];       /* Raw payload bytes/text */
   size_t payload_len;         /* Payload length */
 } GliderRdssDecodedFrame;

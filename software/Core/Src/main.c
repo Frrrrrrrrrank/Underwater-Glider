@@ -44,9 +44,14 @@ typedef struct
   uint32_t tx_fail_count;         /* UART TX fail count */
   uint32_t tx_last_status;        /* Last HAL_UART_Transmit status */
   uint32_t tx_last_uart_error;    /* Last UART error code */
+  char last_tx_text[32];          /* Last transmitted command text */
+  char card_id[24];               /* Stored card id used by TESTTC send */
+  uint32_t card_id_known;         /* 1 when card id was parsed/queried */
+  uint32_t shortmsg_sent_count;   /* Number of sent coordinate short messages */
+  char last_shortmsg_payload[96]; /* Last sent coordinate payload */
   uint32_t last_rx_update_count;  /* Incremented on each new RX callback update */
   uint32_t last_rx_text_len;      /* Length of last text frame */
-  char last_rx_text[192];         /* Last text frame (null-terminated) */
+  char last_rx_text[512];         /* Last text frame (null-terminated) */
   uint32_t last_rx_bin_len;       /* Length of last binary frame */
   uint8_t last_rx_bin[64];        /* Last binary frame bytes */
   uint32_t is_rd_mode;            /* 1 when last decoded text is RD Mode! */
@@ -65,6 +70,38 @@ typedef struct
   uint32_t bdpwi_latitude_valid;  /* BDPWI Field[4] decimal-valid flag */
   uint32_t bdpwi_longitude_valid; /* BDPWI Field[5] decimal-valid flag */
   uint32_t bdpwi_heading_valid;   /* BDPWI Field[6] decimal-valid flag */
+  char bdpwi_latitude_dm[20];     /* Located BDPWI latitude candidate */
+  char bdpwi_latitude_ns[4];      /* Located BDPWI latitude direction */
+  char bdpwi_longitude_dm[20];    /* Located BDPWI longitude candidate */
+  char bdpwi_longitude_ew[4];     /* Located BDPWI longitude direction */
+  int32_t bdpwi_latitude_deg_e7;  /* Converted BDPWI latitude * 1e7 */
+  int32_t bdpwi_longitude_deg_e7; /* Converted BDPWI longitude * 1e7 */
+  float bdpwi_latitude_deg;       /* Map-ready BDPWI latitude */
+  float bdpwi_longitude_deg;      /* Map-ready BDPWI longitude */
+  uint32_t bdpwi_latitude_deg_valid;  /* Located latitude conversion valid */
+  uint32_t bdpwi_longitude_deg_valid; /* Located longitude conversion valid */
+  uint32_t bdpwi_old_beam_count;  /* Old-system locked beam count */
+  uint32_t bdpwi_new_beam_count;  /* New-system locked beam count */
+  uint32_t bdpwi_best_d_cnr;      /* Best D-branch CNR */
+  uint32_t bdpwi_best_p_cnr;      /* Best P-branch CNR */
+  uint32_t bdpwi_good_beam_count; /* Count of good beams */
+  uint32_t rd_signal_good;        /* 1 when signal is good enough */
+  uint32_t tx_mode;               /* 0 signal poll, 1 position test */
+  uint32_t is_gnrmc;              /* 1 when last decoded sentence is GNRMC */
+  char gnrmc_utc[16];             /* GNRMC UTC */
+  char gnrmc_status[4];           /* GNRMC A/V */
+  char gnrmc_date[16];            /* GNRMC date */
+  char gnrmc_latitude_dm[20];     /* GNRMC raw latitude */
+  char gnrmc_latitude_ns[4];      /* GNRMC latitude direction */
+  char gnrmc_longitude_dm[20];    /* GNRMC raw longitude */
+  char gnrmc_longitude_ew[4];     /* GNRMC longitude direction */
+  int32_t gnrmc_latitude_deg_e7;  /* GNRMC latitude * 1e7 */
+  int32_t gnrmc_longitude_deg_e7; /* GNRMC longitude * 1e7 */
+  float gnrmc_latitude_deg;       /* GNRMC decimal latitude */
+  float gnrmc_longitude_deg;      /* GNRMC decimal longitude */
+  uint32_t gnrmc_status_valid;    /* 1 when status is A */
+  uint32_t gnrmc_latitude_valid;  /* 1 when latitude is valid */
+  uint32_t gnrmc_longitude_valid; /* 1 when longitude is valid */
   uint32_t is_bdepi;              /* 1 when last decoded sentence is BDEPI */
   char bdepi_sender_card[24];     /* BDEPI Field[1] */
   char bdepi_receiver_card[24];   /* BDEPI Field[2] */
@@ -88,7 +125,45 @@ typedef struct
   char bdepi_altitude_raw[16];    /* BDEPI Field[11] raw altitude */
   int32_t bdepi_altitude_x100;    /* BDEPI altitude * 100 */
   uint32_t bdepi_altitude_valid;  /* BDEPI altitude conversion valid */
+  char bdepi_altitude_unit[4];    /* BDEPI Field[12] */
+  char bdepi_altitude_abnormal[8]; /* BDEPI Field[13] */
+  char bdepi_altitude_abn_unit[4]; /* BDEPI Field[14] */
+  char bdepi_precision_indicator[8]; /* BDEPI Field[15] */
+  char bdepi_multi_solution[8];   /* BDEPI Field[16] */
+  char bdepi_rescue_subtype[8];   /* BDEPI Field[17] */
+  char bdepi_rescue_center_type[8]; /* BDEPI Field[18] */
+  uint32_t bdepi_data_len;        /* BDEPI Field[19] */
+  uint32_t bdepi_data_len_valid;  /* BDEPI Field[19] numeric-valid */
+  char bdepi_data_payload[48];    /* BDEPI Field[20] */
 } GliderDebugView;
+
+typedef struct
+{
+  uint32_t update_count;          /* Increments on each decoded line */
+  uint32_t frame_type;            /* GliderRdssFrameType */
+  uint32_t checksum_valid;        /* 1 if checksum passed or absent */
+  uint32_t is_bdpwi;              /* 1 if BDPWI */
+  uint32_t is_bdepi;              /* 1 if BDEPI */
+  uint32_t is_gnrmc;              /* 1 if GNRMC */
+  char sentence[24];              /* Sentence id */
+  char utc[16];                   /* UTC string from decoded frame */
+  uint32_t mode_code;             /* BDPWI field1 or BDEPI report_mode */
+  uint32_t status_code;           /* BDPWI field2 or BDEPI emergency */
+  float longitude_deg;            /* Map-ready when available */
+  float latitude_deg;             /* Map-ready when available */
+  uint32_t position_valid;        /* 1 if longitude/latitude are valid */
+  uint32_t signal_good;           /* 1 if BDPWI signal is good */
+  uint32_t tx_mode;               /* 0 signal poll, 1 position test */
+  uint32_t card_id_known;         /* 1 when local card id is known */
+  uint32_t card_mismatch;         /* 1 when queried local card changed */
+  uint32_t has_cached_fix;        /* 1 when last valid RN/GNRMC is cached */
+  uint32_t shortmsg_pending;      /* 1 when payload queued for send */
+  uint32_t ready_to_send;         /* 1 when all last-send conditions are met */
+  char local_card_id[24];         /* Local queried card id */
+  char target_card_id[24];        /* Destination platform card id */
+  char last_tx_text[32];          /* Last transmitted command text */
+  char last_text[96];             /* Last text line snapshot */
+} GliderDebugQuickView;
 
 /* USER CODE END PTD */
 
@@ -162,6 +237,13 @@ volatile uint32_t g_dbg_tx_ok_count = 0U;
 volatile uint32_t g_dbg_tx_fail_count = 0U;
 volatile uint32_t g_dbg_tx_last_status = 0U;
 volatile uint32_t g_dbg_tx_last_uart_error = 0U;
+volatile uint32_t g_dbg_signal_good = 0U;
+volatile uint32_t g_dbg_tx_mode = 0U;
+volatile char g_dbg_last_tx_text[32] = {0};
+volatile char g_dbg_card_id[24] = {0};
+volatile uint32_t g_dbg_card_id_known = 0U;
+volatile uint32_t g_dbg_shortmsg_sent_count = 0U;
+volatile char g_dbg_last_shortmsg_payload[96] = {0};
 volatile uint32_t g_dbg_last_rx_text_len = 0U;
 volatile char g_dbg_last_rx_text[192] = {0};
 volatile uint32_t g_dbg_last_rx_bin_len = 0U;
@@ -175,6 +257,7 @@ volatile uint32_t g_dbg_bdpwi_field2 = 0U;
 volatile uint32_t g_dbg_bdpwi_field1_valid = 0U;
 volatile uint32_t g_dbg_bdpwi_field2_valid = 0U;
 volatile GliderDebugView g_dbg_view = {0};
+volatile GliderDebugQuickView g_dbg_quick = {0};
 
 /* USER CODE END PV */
 
@@ -1177,6 +1260,18 @@ void GliderCore_OnTextFrame(const char *line)
     g_dbg_view.last_rx_text[i] = g_dbg_last_rx_text[i];
   }
   g_dbg_view.last_rx_update_count = g_dbg_last_rx_update_count;
+
+  for (i = 0U; i < sizeof(g_dbg_quick.last_text); i++)
+  {
+    if (i < len)
+    {
+      g_dbg_quick.last_text[i] = line[i];
+    }
+    else
+    {
+      g_dbg_quick.last_text[i] = '\0';
+    }
+  }
 }
 
 void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len)
@@ -1230,6 +1325,8 @@ void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
   {
     g_dbg_is_rd_mode = 0U;
     g_dbg_is_bdpwi = 0U;
+    g_dbg_card_id[0] = '\0';
+    g_dbg_card_id_known = 0U;
     g_dbg_bdpwi_utc[0] = '\0';
     g_dbg_bdpwi_field1 = 0U;
     g_dbg_bdpwi_field2 = 0U;
@@ -1245,12 +1342,49 @@ void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
     g_dbg_view.bdpwi_latitude_raw[0] = '\0';
     g_dbg_view.bdpwi_longitude_raw[0] = '\0';
     g_dbg_view.bdpwi_heading_raw[0] = '\0';
+    g_dbg_view.bdpwi_latitude_dm[0] = '\0';
+    g_dbg_view.bdpwi_latitude_ns[0] = '\0';
+    g_dbg_view.bdpwi_longitude_dm[0] = '\0';
+    g_dbg_view.bdpwi_longitude_ew[0] = '\0';
     g_dbg_view.bdpwi_latitude_x100 = 0;
     g_dbg_view.bdpwi_longitude_x100 = 0;
     g_dbg_view.bdpwi_heading_x100 = 0;
+    g_dbg_view.bdpwi_latitude_deg_e7 = 0;
+    g_dbg_view.bdpwi_longitude_deg_e7 = 0;
+    g_dbg_view.bdpwi_latitude_deg = 0.0f;
+    g_dbg_view.bdpwi_longitude_deg = 0.0f;
     g_dbg_view.bdpwi_latitude_valid = 0U;
     g_dbg_view.bdpwi_longitude_valid = 0U;
     g_dbg_view.bdpwi_heading_valid = 0U;
+    g_dbg_view.bdpwi_latitude_deg_valid = 0U;
+    g_dbg_view.bdpwi_longitude_deg_valid = 0U;
+    g_dbg_view.bdpwi_old_beam_count = 0U;
+    g_dbg_view.bdpwi_new_beam_count = 0U;
+    g_dbg_view.bdpwi_best_d_cnr = 0U;
+    g_dbg_view.bdpwi_best_p_cnr = 0U;
+    g_dbg_view.bdpwi_good_beam_count = 0U;
+    g_dbg_view.rd_signal_good = 0U;
+    g_dbg_view.tx_mode = 0U;
+    g_dbg_view.last_tx_text[0] = '\0';
+    g_dbg_view.card_id[0] = '\0';
+    g_dbg_view.card_id_known = 0U;
+    g_dbg_view.shortmsg_sent_count = 0U;
+    g_dbg_view.last_shortmsg_payload[0] = '\0';
+    g_dbg_view.is_gnrmc = 0U;
+    g_dbg_view.gnrmc_utc[0] = '\0';
+    g_dbg_view.gnrmc_status[0] = '\0';
+    g_dbg_view.gnrmc_date[0] = '\0';
+    g_dbg_view.gnrmc_latitude_dm[0] = '\0';
+    g_dbg_view.gnrmc_latitude_ns[0] = '\0';
+    g_dbg_view.gnrmc_longitude_dm[0] = '\0';
+    g_dbg_view.gnrmc_longitude_ew[0] = '\0';
+    g_dbg_view.gnrmc_latitude_deg_e7 = 0;
+    g_dbg_view.gnrmc_longitude_deg_e7 = 0;
+    g_dbg_view.gnrmc_latitude_deg = 0.0f;
+    g_dbg_view.gnrmc_longitude_deg = 0.0f;
+    g_dbg_view.gnrmc_status_valid = 0U;
+    g_dbg_view.gnrmc_latitude_valid = 0U;
+    g_dbg_view.gnrmc_longitude_valid = 0U;
     g_dbg_view.is_bdepi = 0U;
     g_dbg_view.bdepi_sender_card[0] = '\0';
     g_dbg_view.bdepi_receiver_card[0] = '\0';
@@ -1274,7 +1408,55 @@ void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
     g_dbg_view.bdepi_altitude_raw[0] = '\0';
     g_dbg_view.bdepi_altitude_x100 = 0;
     g_dbg_view.bdepi_altitude_valid = 0U;
+    g_dbg_view.bdepi_altitude_unit[0] = '\0';
+    g_dbg_view.bdepi_altitude_abnormal[0] = '\0';
+    g_dbg_view.bdepi_altitude_abn_unit[0] = '\0';
+    g_dbg_view.bdepi_precision_indicator[0] = '\0';
+    g_dbg_view.bdepi_multi_solution[0] = '\0';
+    g_dbg_view.bdepi_rescue_subtype[0] = '\0';
+    g_dbg_view.bdepi_rescue_center_type[0] = '\0';
+    g_dbg_view.bdepi_data_len = 0U;
+    g_dbg_view.bdepi_data_len_valid = 0U;
+    g_dbg_view.bdepi_data_payload[0] = '\0';
+
+    g_dbg_quick.frame_type = 0U;
+    g_dbg_quick.checksum_valid = 0U;
+    g_dbg_quick.is_bdpwi = 0U;
+    g_dbg_quick.is_bdepi = 0U;
+    g_dbg_quick.is_gnrmc = 0U;
+    g_dbg_quick.sentence[0] = '\0';
+    g_dbg_quick.utc[0] = '\0';
+    g_dbg_quick.mode_code = 0U;
+    g_dbg_quick.status_code = 0U;
+    g_dbg_quick.longitude_deg = 0.0f;
+    g_dbg_quick.latitude_deg = 0.0f;
+    g_dbg_quick.position_valid = 0U;
+    g_dbg_quick.signal_good = 0U;
+    g_dbg_quick.tx_mode = 0U;
+    g_dbg_quick.card_id_known = 0U;
+    g_dbg_quick.card_mismatch = 0U;
+    g_dbg_quick.has_cached_fix = 0U;
+    g_dbg_quick.shortmsg_pending = 0U;
+    g_dbg_quick.ready_to_send = 0U;
+    g_dbg_quick.local_card_id[0] = '\0';
+    g_dbg_quick.target_card_id[0] = '\0';
+    g_dbg_quick.last_tx_text[0] = '\0';
     return;
+  }
+
+  g_dbg_quick.update_count++;
+  g_dbg_quick.frame_type = (uint32_t)frame->type;
+  g_dbg_quick.checksum_valid = frame->checksum_valid ? 1U : 0U;
+  g_dbg_quick.is_bdpwi = frame->is_bdpwi ? 1U : 0U;
+  g_dbg_quick.is_bdepi = frame->is_bdepi ? 1U : 0U;
+  g_dbg_quick.is_gnrmc = frame->is_gnrmc ? 1U : 0U;
+  for (i = 0U; i < sizeof(g_dbg_quick.sentence); i++)
+  {
+    g_dbg_quick.sentence[i] = frame->sentence[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_quick.last_tx_text); i++)
+  {
+    g_dbg_quick.last_tx_text[i] = g_dbg_last_tx_text[i];
   }
 
   g_dbg_is_rd_mode = frame->is_rd_mode ? 1U : 0U;
@@ -1315,12 +1497,76 @@ void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
     g_dbg_view.bdpwi_longitude_raw[i] = frame->bdpwi.longitude_raw[i];
     g_dbg_view.bdpwi_heading_raw[i] = frame->bdpwi.heading_raw[i];
   }
+  for (i = 0U; i < sizeof(g_dbg_view.bdpwi_latitude_dm); i++)
+  {
+    g_dbg_view.bdpwi_latitude_dm[i] = frame->bdpwi.latitude_dm[i];
+    g_dbg_view.bdpwi_longitude_dm[i] = frame->bdpwi.longitude_dm[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.bdpwi_latitude_ns); i++)
+  {
+    g_dbg_view.bdpwi_latitude_ns[i] = frame->bdpwi.latitude_ns[i];
+    g_dbg_view.bdpwi_longitude_ew[i] = frame->bdpwi.longitude_ew[i];
+  }
   g_dbg_view.bdpwi_latitude_x100 = frame->bdpwi.latitude_x100;
   g_dbg_view.bdpwi_longitude_x100 = frame->bdpwi.longitude_x100;
   g_dbg_view.bdpwi_heading_x100 = frame->bdpwi.heading_x100;
+  g_dbg_view.bdpwi_latitude_deg_e7 = frame->bdpwi.latitude_deg_e7;
+  g_dbg_view.bdpwi_longitude_deg_e7 = frame->bdpwi.longitude_deg_e7;
   g_dbg_view.bdpwi_latitude_valid = frame->bdpwi.latitude_valid ? 1U : 0U;
   g_dbg_view.bdpwi_longitude_valid = frame->bdpwi.longitude_valid ? 1U : 0U;
   g_dbg_view.bdpwi_heading_valid = frame->bdpwi.heading_valid ? 1U : 0U;
+  if (frame->bdpwi.latitude_deg_valid)
+  {
+    g_dbg_view.bdpwi_latitude_deg = ((float)frame->bdpwi.latitude_deg_e7) / 10000000.0f;
+  }
+  else
+  {
+    g_dbg_view.bdpwi_latitude_deg = 0.0f;
+  }
+  if (frame->bdpwi.longitude_deg_valid)
+  {
+    g_dbg_view.bdpwi_longitude_deg = ((float)frame->bdpwi.longitude_deg_e7) / 10000000.0f;
+  }
+  else
+  {
+    g_dbg_view.bdpwi_longitude_deg = 0.0f;
+  }
+  g_dbg_view.bdpwi_latitude_deg_valid = frame->bdpwi.latitude_deg_valid ? 1U : 0U;
+  g_dbg_view.bdpwi_longitude_deg_valid = frame->bdpwi.longitude_deg_valid ? 1U : 0U;
+  g_dbg_view.bdpwi_old_beam_count = frame->bdpwi.old_beam_count;
+  g_dbg_view.bdpwi_new_beam_count = frame->bdpwi.new_beam_count;
+  g_dbg_view.bdpwi_best_d_cnr = frame->bdpwi.best_d_cnr;
+  g_dbg_view.bdpwi_best_p_cnr = frame->bdpwi.best_p_cnr;
+  g_dbg_view.bdpwi_good_beam_count = frame->bdpwi.good_beam_count;
+  g_dbg_view.rd_signal_good = frame->bdpwi.signal_good ? 1U : 0U;
+  g_dbg_view.tx_mode = g_dbg_tx_mode;
+  g_dbg_view.is_gnrmc = frame->is_gnrmc ? 1U : 0U;
+  for (i = 0U; i < sizeof(g_dbg_view.gnrmc_utc); i++)
+  {
+    g_dbg_view.gnrmc_utc[i] = frame->gnrmc.utc[i];
+    g_dbg_view.gnrmc_date[i] = frame->gnrmc.date[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.gnrmc_status); i++)
+  {
+    g_dbg_view.gnrmc_status[i] = frame->gnrmc.status[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.gnrmc_latitude_dm); i++)
+  {
+    g_dbg_view.gnrmc_latitude_dm[i] = frame->gnrmc.latitude_dm[i];
+    g_dbg_view.gnrmc_longitude_dm[i] = frame->gnrmc.longitude_dm[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.gnrmc_latitude_ns); i++)
+  {
+    g_dbg_view.gnrmc_latitude_ns[i] = frame->gnrmc.latitude_ns[i];
+    g_dbg_view.gnrmc_longitude_ew[i] = frame->gnrmc.longitude_ew[i];
+  }
+  g_dbg_view.gnrmc_latitude_deg_e7 = frame->gnrmc.latitude_deg_e7;
+  g_dbg_view.gnrmc_longitude_deg_e7 = frame->gnrmc.longitude_deg_e7;
+  g_dbg_view.gnrmc_status_valid = frame->gnrmc.status_valid ? 1U : 0U;
+  g_dbg_view.gnrmc_latitude_valid = frame->gnrmc.latitude_valid ? 1U : 0U;
+  g_dbg_view.gnrmc_longitude_valid = frame->gnrmc.longitude_valid ? 1U : 0U;
+  g_dbg_view.gnrmc_latitude_deg = frame->gnrmc.latitude_valid ? ((float)frame->gnrmc.latitude_deg_e7) / 10000000.0f : 0.0f;
+  g_dbg_view.gnrmc_longitude_deg = frame->gnrmc.longitude_valid ? ((float)frame->gnrmc.longitude_deg_e7) / 10000000.0f : 0.0f;
 
   g_dbg_view.is_bdepi = frame->is_bdepi ? 1U : 0U;
   for (i = 0U; i < sizeof(g_dbg_view.bdepi_sender_card); i++)
@@ -1373,6 +1619,82 @@ void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
   g_dbg_view.bdepi_latitude_valid = frame->bdepi.latitude_valid ? 1U : 0U;
   g_dbg_view.bdepi_altitude_x100 = frame->bdepi.altitude_x100;
   g_dbg_view.bdepi_altitude_valid = frame->bdepi.altitude_valid ? 1U : 0U;
+  g_dbg_view.bdepi_data_len = frame->bdepi.data_len;
+  g_dbg_view.bdepi_data_len_valid = frame->bdepi.data_len_valid ? 1U : 0U;
+
+  for (i = 0U; i < sizeof(g_dbg_view.bdepi_altitude_unit); i++)
+  {
+    g_dbg_view.bdepi_altitude_unit[i] = frame->bdepi.altitude_unit[i];
+    g_dbg_view.bdepi_altitude_abn_unit[i] = frame->bdepi.altitude_abnormal_unit[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.bdepi_altitude_abnormal); i++)
+  {
+    g_dbg_view.bdepi_altitude_abnormal[i] = frame->bdepi.altitude_abnormal[i];
+    g_dbg_view.bdepi_precision_indicator[i] = frame->bdepi.precision_indicator[i];
+    g_dbg_view.bdepi_multi_solution[i] = frame->bdepi.multi_solution[i];
+    g_dbg_view.bdepi_rescue_subtype[i] = frame->bdepi.rescue_subtype[i];
+    g_dbg_view.bdepi_rescue_center_type[i] = frame->bdepi.rescue_center_type[i];
+  }
+  for (i = 0U; i < sizeof(g_dbg_view.bdepi_data_payload); i++)
+  {
+    g_dbg_view.bdepi_data_payload[i] = frame->bdepi.data_payload[i];
+  }
+
+  if (frame->is_bdepi)
+  {
+    for (i = 0U; i < sizeof(g_dbg_quick.utc); i++)
+    {
+      g_dbg_quick.utc[i] = frame->bdepi.utc[i];
+    }
+    g_dbg_quick.mode_code = frame->bdepi.report_mode_code;
+    g_dbg_quick.status_code = frame->bdepi.emergency_code;
+    if (frame->bdepi.longitude_valid && frame->bdepi.latitude_valid)
+    {
+      g_dbg_quick.longitude_deg = g_dbg_view.bdepi_longitude_deg;
+      g_dbg_quick.latitude_deg = g_dbg_view.bdepi_latitude_deg;
+      g_dbg_quick.position_valid = 1U;
+    }
+    g_dbg_quick.tx_mode = g_dbg_tx_mode;
+  }
+  else if (frame->is_gnrmc)
+  {
+    for (i = 0U; i < sizeof(g_dbg_quick.utc); i++)
+    {
+      g_dbg_quick.utc[i] = frame->gnrmc.utc[i];
+    }
+    g_dbg_quick.mode_code = 0U;
+    g_dbg_quick.status_code = frame->gnrmc.status_valid ? 1U : 0U;
+    if (frame->gnrmc.status_valid && frame->gnrmc.longitude_valid && frame->gnrmc.latitude_valid)
+    {
+      g_dbg_quick.longitude_deg = g_dbg_view.gnrmc_longitude_deg;
+      g_dbg_quick.latitude_deg = g_dbg_view.gnrmc_latitude_deg;
+      g_dbg_quick.position_valid = 1U;
+    }
+    g_dbg_quick.tx_mode = g_dbg_tx_mode;
+  }
+  else if (frame->is_bdpwi)
+  {
+    for (i = 0U; i < sizeof(g_dbg_quick.utc); i++)
+    {
+      g_dbg_quick.utc[i] = frame->bdpwi.utc[i];
+    }
+    g_dbg_quick.mode_code = frame->bdpwi.mode_code;
+    g_dbg_quick.status_code = frame->bdpwi.status_code;
+    if (frame->bdpwi.longitude_deg_valid && frame->bdpwi.latitude_deg_valid)
+    {
+      g_dbg_quick.longitude_deg = g_dbg_view.bdpwi_longitude_deg;
+      g_dbg_quick.latitude_deg = g_dbg_view.bdpwi_latitude_deg;
+      g_dbg_quick.position_valid = 1U;
+    }
+    g_dbg_quick.tx_mode = g_dbg_tx_mode;
+  }
+  else
+  {
+    g_dbg_quick.utc[0] = '\0';
+    g_dbg_quick.mode_code = 0U;
+    g_dbg_quick.status_code = 0U;
+    g_dbg_quick.tx_mode = g_dbg_tx_mode;
+  }
 }
 
 void vAssertCalled(const char *file, int line)
@@ -1434,6 +1756,10 @@ void StartDefaultTask(void *argument)
     g_dbg_tx_fail_count = GliderCore_GetTxFailCount();
     g_dbg_tx_last_status = GliderCore_GetLastTxHalStatus();
     g_dbg_tx_last_uart_error = GliderCore_GetLastUartErrorCode();
+    g_dbg_signal_good = GliderCore_GetSignalGood();
+    g_dbg_tx_mode = GliderCore_GetTxMode();
+    g_dbg_shortmsg_sent_count = GliderCore_GetShortMsgSentCount();
+    g_dbg_card_id_known = GliderCore_GetCardIdKnown();
     g_dbg_default_task_tick = g_dbg_rtos_tick;
 
     g_dbg_view.boot_stage = g_dbg_boot_stage;
@@ -1446,6 +1772,93 @@ void StartDefaultTask(void *argument)
     g_dbg_view.tx_fail_count = g_dbg_tx_fail_count;
     g_dbg_view.tx_last_status = g_dbg_tx_last_status;
     g_dbg_view.tx_last_uart_error = g_dbg_tx_last_uart_error;
+    g_dbg_view.rd_signal_good = g_dbg_signal_good;
+    g_dbg_view.tx_mode = g_dbg_tx_mode;
+    for (size_t tx_i = 0U; tx_i < sizeof(g_dbg_last_tx_text); tx_i++)
+    {
+      g_dbg_last_tx_text[tx_i] = '\0';
+    }
+    {
+      const char *last_tx = GliderCore_GetLastTxText();
+      size_t tx_i = 0U;
+      while (last_tx != NULL && last_tx[tx_i] != '\0' && tx_i < (sizeof(g_dbg_last_tx_text) - 1U))
+      {
+        g_dbg_last_tx_text[tx_i] = last_tx[tx_i];
+        tx_i++;
+      }
+      g_dbg_last_tx_text[tx_i] = '\0';
+    }
+    for (size_t tx_i = 0U; tx_i < sizeof(g_dbg_view.last_tx_text); tx_i++)
+    {
+      g_dbg_view.last_tx_text[tx_i] = g_dbg_last_tx_text[tx_i];
+    }
+    for (size_t card_i = 0U; card_i < sizeof(g_dbg_card_id); card_i++)
+    {
+      g_dbg_card_id[card_i] = '\0';
+    }
+    {
+      const char *card_id = GliderCore_GetCardId();
+      size_t card_i = 0U;
+      while (card_id != NULL && card_id[card_i] != '\0' && card_i < (sizeof(g_dbg_card_id) - 1U))
+      {
+        g_dbg_card_id[card_i] = card_id[card_i];
+        card_i++;
+      }
+      g_dbg_card_id[card_i] = '\0';
+    }
+    for (size_t card_i = 0U; card_i < sizeof(g_dbg_view.card_id); card_i++)
+    {
+      g_dbg_view.card_id[card_i] = g_dbg_card_id[card_i];
+    }
+    g_dbg_view.card_id_known = g_dbg_card_id_known;
+    for (size_t sm_i = 0U; sm_i < sizeof(g_dbg_last_shortmsg_payload); sm_i++)
+    {
+      g_dbg_last_shortmsg_payload[sm_i] = '\0';
+    }
+    {
+      const char *last_sm = GliderCore_GetLastShortMsgPayload();
+      size_t sm_i = 0U;
+      while (last_sm != NULL && last_sm[sm_i] != '\0' && sm_i < (sizeof(g_dbg_last_shortmsg_payload) - 1U))
+      {
+        g_dbg_last_shortmsg_payload[sm_i] = last_sm[sm_i];
+        sm_i++;
+      }
+      g_dbg_last_shortmsg_payload[sm_i] = '\0';
+    }
+    g_dbg_view.shortmsg_sent_count = g_dbg_shortmsg_sent_count;
+    for (size_t sm_i = 0U; sm_i < sizeof(g_dbg_view.last_shortmsg_payload); sm_i++)
+    {
+      g_dbg_view.last_shortmsg_payload[sm_i] = g_dbg_last_shortmsg_payload[sm_i];
+    }
+
+    g_dbg_quick.signal_good = g_dbg_signal_good;
+    g_dbg_quick.tx_mode = g_dbg_tx_mode;
+    g_dbg_quick.card_id_known = g_dbg_card_id_known;
+    g_dbg_quick.card_mismatch = GliderCore_GetCardMismatch();
+    g_dbg_quick.has_cached_fix = GliderCore_GetHasCachedFix();
+    g_dbg_quick.shortmsg_pending = GliderCore_GetShortMsgPending();
+    g_dbg_quick.ready_to_send = GliderCore_GetReadyToSend();
+
+    for (size_t card_i = 0U; card_i < sizeof(g_dbg_quick.local_card_id); card_i++)
+    {
+      g_dbg_quick.local_card_id[card_i] = g_dbg_card_id[card_i];
+    }
+    {
+      const char *target_card = GliderCore_GetPlatformCardId();
+      size_t card_i = 0U;
+      for (card_i = 0U; card_i < sizeof(g_dbg_quick.target_card_id); card_i++)
+      {
+        g_dbg_quick.target_card_id[card_i] = '\0';
+      }
+      card_i = 0U;
+      while (target_card != NULL && target_card[card_i] != '\0' && card_i < (sizeof(g_dbg_quick.target_card_id) - 1U))
+      {
+        g_dbg_quick.target_card_id[card_i] = target_card[card_i];
+        card_i++;
+      }
+      g_dbg_quick.target_card_id[card_i] = '\0';
+    }
+
     osDelay(100);
   }
   /* USER CODE END 5 */

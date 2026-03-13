@@ -20,6 +20,18 @@ uint32_t GliderCore_GetTxOkCount(void);
 uint32_t GliderCore_GetTxFailCount(void);
 uint32_t GliderCore_GetLastTxHalStatus(void);
 uint32_t GliderCore_GetLastUartErrorCode(void);
+uint32_t GliderCore_GetSignalGood(void);
+uint32_t GliderCore_GetTxMode(void);
+const char *GliderCore_GetLastTxText(void);
+uint32_t GliderCore_GetShortMsgSentCount(void);
+const char *GliderCore_GetLastShortMsgPayload(void);
+const char *GliderCore_GetCardId(void);
+uint32_t GliderCore_GetCardIdKnown(void);
+const char *GliderCore_GetPlatformCardId(void);
+uint32_t GliderCore_GetCardMismatch(void);
+uint32_t GliderCore_GetHasCachedFix(void);
+uint32_t GliderCore_GetShortMsgPending(void);
+uint32_t GliderCore_GetReadyToSend(void);
 
 void GliderCore_OnTextFrame(const char *line);
 void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len);
