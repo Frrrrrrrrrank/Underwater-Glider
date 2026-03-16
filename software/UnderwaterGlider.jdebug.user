@@ -1,7 +1,7 @@
 
 
 OpenDocument="stm32h7xx_it.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/stm32h7xx_it.c", Line=83
-OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=208
+OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=291
 OpenDocument="glider_core.c", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/glider_core.c", Line=124
 OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=52
 OpenDocument="stm32h7xx_hal_uart.h", FilePath="D:/Projects/UnderwaterGlider/software/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h", Line=216

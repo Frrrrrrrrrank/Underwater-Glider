@@ -25,6 +25,7 @@
 #define GLIDER_MODE_SWITCH_COOLDOWN_LINES 3U
 #define GLIDER_CARD_QUERY_COOLDOWN_LOOPS 6U
 #define GLIDER_RN_REFRESH_INTERVAL_MS 30000U
+#define GLIDER_RELOCATE_INTERVAL_MS 180000U
 #define GLIDER_SHORTMSG_SEND_INTERVAL_MS 2000U
 #define GLIDER_TC_REQUEST_RETRY_MS 3000U
 #define GLIDER_TC_ENTER_GRACE_MS 1200U
@@ -459,8 +460,41 @@ static bool cache_coordinate_shortmsg(const GliderRdssDecodedFrame *frame)
   return true;
 }
 
+static bool cached_fix_expired(uint32_t now)
+{
+  if (s_has_cached_fix == 0U || s_last_valid_fix_tick == 0U)
+  {
+    return false;
+  }
+
+  return ((now - s_last_valid_fix_tick) >= GLIDER_RELOCATE_INTERVAL_MS);
+}
+
+static void invalidate_cached_fix_and_request_relocate(void)
+{
+  s_has_cached_fix = 0U;
+  s_cached_shortmsg_payload[0] = '\0';
+  s_pending_shortmsg_payload[0] = '\0';
+  s_shortmsg_pending = 0U;
+  s_transparent_mode_ready = 0U;
+  s_tc_mode_active = 0U;
+  s_tc_mode_requested = 0U;
+  s_last_rn_request_tick = 0U;
+}
+
 static void try_queue_cached_shortmsg(void)
 {
+  uint32_t now = HAL_GetTick();
+
+  if (cached_fix_expired(now))
+  {
+    if (s_shortmsg_waiting_ack == 0U)
+    {
+      invalidate_cached_fix_and_request_relocate();
+    }
+    return;
+  }
+
   if (s_shortmsg_pending != 0U || s_has_cached_fix == 0U)
   {
     return;
@@ -724,6 +758,10 @@ static void process_line(const char *line)
       s_shortmsg_pending = 0U;
       s_shortmsg_waiting_ack = 0U;
       s_shortmsg_sent_count++;
+      if (cached_fix_expired(HAL_GetTick()))
+      {
+        invalidate_cached_fix_and_request_relocate();
+      }
     }
     else if (text_contains_token(s_decoded_frame.text, "BDFKI") && text_contains_token(s_decoded_frame.text, "TXA"))
     {
@@ -734,6 +772,10 @@ static void process_line(const char *line)
         s_last_shortmsg_payload[sizeof(s_last_shortmsg_payload) - 1U] = '\0';
         s_shortmsg_pending = 0U;
         s_shortmsg_sent_count++;
+        if (cached_fix_expired(HAL_GetTick()))
+        {
+          invalidate_cached_fix_and_request_relocate();
+        }
       }
       else
       {
