@@ -125,6 +125,7 @@ static GliderLastState s_last = {
 #define s_card_query_cooldown s_last.card_query_cooldown
 
 static volatile uint32_t s_last_valid_fix_tick = 0U;
+static volatile uint32_t s_last_rn_request_tick = 0U;
 static volatile uint32_t s_last_shortmsg_try_tick = 0U;
 static volatile uint32_t s_last_tc_request_tick = 0U;
 static volatile uint32_t s_last_rd_request_tick = 0U;
@@ -904,6 +905,7 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_mode_switch_cooldown = 0U;
   s_card_query_cooldown = 0U;
   s_last_valid_fix_tick = 0U;
+  s_last_rn_request_tick = 0U;
   s_last_shortmsg_try_tick = 0U;
   s_last_tc_request_tick = 0U;
   s_last_rd_request_tick = 0U;
@@ -988,13 +990,10 @@ void GliderCore_RunTxTask(void)
 
     if (s_tx_mode == GLIDER_TX_MODE_POSITION_TEST)
     {
-      if (s_has_cached_fix == 0U || (now - s_last_valid_fix_tick) >= GLIDER_RN_REFRESH_INTERVAL_MS)
+      if (s_last_rn_request_tick == 0U || (now - s_last_rn_request_tick) >= GLIDER_RN_REFRESH_INTERVAL_MS)
       {
         (void)GliderCore_SendText(GLIDER_POSITION_TEST_CMD);
-        if (s_has_cached_fix != 0U)
-        {
-          s_last_valid_fix_tick = now;
-        }
+        s_last_rn_request_tick = now;
       }
     }
     else
