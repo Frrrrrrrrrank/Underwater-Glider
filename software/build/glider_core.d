@@ -49,7 +49,8 @@ build/glider_core.o: Glider-Core/glider_core.c Glider-Core/glider_core.h \
  Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h \
  Middlewares/Third_Party/FreeRTOS/Source/include/task.h \
  Middlewares/Third_Party/FreeRTOS/Source/include/list.h \
- Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h
+ Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h \
+ Glider-Core/imu_core.h
 Glider-Core/glider_core.h:
 Core/Inc/main.h:
 Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h:
@@ -105,3 +106,4 @@ Middlewares/Third_Party/FreeRTOS/Source/include/mpu_wrappers.h:
 Middlewares/Third_Party/FreeRTOS/Source/include/task.h:
 Middlewares/Third_Party/FreeRTOS/Source/include/list.h:
 Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h:
+Glider-Core/imu_core.h:

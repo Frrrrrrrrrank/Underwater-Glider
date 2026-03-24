@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "glider_core.h"
 #include "glider_rdss_codec.h"
+#include "imu_core.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -139,6 +140,54 @@ typedef struct
 
 typedef struct
 {
+  uint32_t frame_count;           /* Total IMU frames received */
+  uint32_t crc_error_count;       /* CRC checksum failures */
+  uint32_t rx_overflow_count;     /* Ring buffer overflow count */
+  uint32_t rx_irq_count;          /* UART4 RX IRQ callback count */
+  uint32_t rx_byte_count;         /* Raw received byte count */
+  uint32_t rx_poll_byte_count;    /* Bytes captured by polling fallback */
+  uint32_t rx_rearm_ok_count;     /* RX IT re-arm successful count */
+  uint32_t rx_rearm_fail_count;   /* RX IT re-arm failed count */
+  uint32_t rx_init_status;        /* Initial RX IT arm status */
+  uint32_t uart4_irq_count;       /* UART4 IRQ entry count */
+  uint32_t uart4_error_count;     /* UART4 HAL error callback count */
+  uint32_t uart4_last_error;      /* UART4 last HAL error code */
+  uint32_t uart_rxne_flag;        /* Current RXNE flag state (1=data ready, 0=no data) */
+  uint32_t uart_error_flags;      /* Current error flags (bit0=ORE, bit1=NE, bit2=FE, bit3=PE) */
+  uint32_t recent_rx_len;         /* Number of valid bytes in recent_rx_bytes */
+  uint8_t recent_rx_bytes[16];    /* Recent raw bytes from IMU RX stream */
+  uint32_t task_loop_count;       /* IMU task loop count */
+  uint32_t last_function_code;    /* Last received function code (0x40, 0x41, etc) */
+  uint32_t last_rx_function;      /* Return-state frame field[0] */
+  int32_t last_rx_state;          /* Return-state frame field[1] */
+  
+  /* Raw 9-axis data */
+  float ax, ay, az;               /* Accelerometer (m/s²) */
+  float gx, gy, gz;               /* Gyroscope (rad/s) */
+  float mx, my, mz;               /* Magnetometer (µT) */
+  uint32_t raw_updated;           /* Flag: raw data was updated */
+  
+  /* Euler angles */
+  float roll, pitch, yaw;         /* Degrees */
+  uint32_t euler_updated;         /* Flag: euler data was updated */
+  
+  /* Quaternion */
+  float q0, q1, q2, q3;
+  uint32_t quat_updated;          /* Flag: quaternion data was updated */
+  
+  /* Barometer */
+  float height, temperature;
+  float pressure, pressure_contrast;
+  uint32_t baro_updated;          /* Flag: baro data was updated */
+  
+  /* Version */
+  uint8_t version_high;
+  uint8_t version_mid;
+  uint8_t version_low;
+} IMUDebugView;
+
+typedef struct
+{
   uint32_t update_count;          /* Increments on each decoded line */
   uint32_t frame_type;            /* GliderRdssFrameType */
   uint32_t checksum_valid;        /* 1 if checksum passed or absent */
@@ -219,6 +268,13 @@ const osThreadAttr_t uartTxTask_attributes = {
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityBelowNormal7,
 };
+/* Definitions for imuRxTask */
+osThreadId_t imuRxTaskHandle;
+const osThreadAttr_t imuRxTask_attributes = {
+  .name = "imuRxTask",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityNormal2,
+};
 /* USER CODE BEGIN PV */
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
@@ -256,8 +312,13 @@ volatile uint32_t g_dbg_bdpwi_field1 = 0U;
 volatile uint32_t g_dbg_bdpwi_field2 = 0U;
 volatile uint32_t g_dbg_bdpwi_field1_valid = 0U;
 volatile uint32_t g_dbg_bdpwi_field2_valid = 0U;
+volatile uint32_t g_dbg_uart4_irq_count = 0U;
+volatile uint32_t g_dbg_uart4_error_count = 0U;
+volatile uint32_t g_dbg_uart4_last_error = 0U;
+volatile uint32_t g_dbg_imu_task_loop_count = 0U;
 volatile GliderDebugView g_dbg_view = {0};
 volatile GliderDebugQuickView g_dbg_quick = {0};
+volatile IMUDebugView g_imu_debug = {0};
 
 /* USER CODE END PV */
 
@@ -282,6 +343,7 @@ static void MX_TIM4_Init(void);
 void StartDefaultTask(void *argument);
 void StartUartRxTask(void *argument);
 void StartUartTxTask(void *argument);
+void Start_IMU_Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -345,6 +407,9 @@ int main(void)
   g_dbg_boot_stage = 46U;
   GliderCore_Init(&huart7);
   g_dbg_boot_stage = 4U;
+  
+  /* Initialize IMU module on UART4 */
+  IMU_Core_Init(&huart4);
 
   /* USER CODE END 2 */
 
@@ -376,6 +441,9 @@ int main(void)
 
   /* creation of uartTxTask */
   uartTxTaskHandle = osThreadNew(StartUartTxTask, NULL, &uartTxTask_attributes);
+
+  /* creation of imuRxTask */
+  imuRxTaskHandle = osThreadNew(Start_IMU_Task, NULL, &imuRxTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -872,7 +940,7 @@ static void MX_UART4_Init(void)
   huart4.Init.StopBits = UART_STOPBITS_1;
   huart4.Init.Parity = UART_PARITY_NONE;
   huart4.Init.Mode = UART_MODE_TX_RX;
-  huart4.Init.HwFlowCtl = UART_HWCONTROL_RTS_CTS;
+  huart4.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart4.Init.OverSampling = UART_OVERSAMPLING_16;
   huart4.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   huart4.Init.ClockPrescaler = UART_PRESCALER_DIV1;
@@ -889,7 +957,7 @@ static void MX_UART4_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_DisableFifoMode(&huart4) != HAL_OK)
+  if (HAL_UARTEx_EnableFifoMode(&huart4) != HAL_OK)
   {
     Error_Handler();
   }
@@ -1697,6 +1765,29 @@ void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
   }
 }
 
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if (huart == NULL)
+  {
+    return;
+  }
+
+  if (huart->Instance == UART4)
+  {
+    g_dbg_uart4_error_count++;
+    g_dbg_uart4_last_error = huart->ErrorCode;
+    
+    /* Clear error flags so UART can resume receiving */
+    __HAL_UART_CLEAR_OREFLAG(huart);
+    __HAL_UART_CLEAR_NEFLAG(huart);
+    __HAL_UART_CLEAR_FEFLAG(huart);
+    __HAL_UART_CLEAR_PEFLAG(huart);
+    
+    /* Optionally clear the DMA/reception state to allow recovery */
+    huart->RxState = HAL_UART_STATE_READY;
+  }
+}
+
 void vAssertCalled(const char *file, int line)
 {
   (void)file;
@@ -1892,6 +1983,112 @@ void StartUartTxTask(void *argument)
   (void)argument;
   GliderCore_RunTxTask();
   /* USER CODE END StartUartTxTask */
+}
+
+/* USER CODE BEGIN Header_Start_IMU_Task */
+/**
+* @brief Function implementing the imuRxTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_Start_IMU_Task */
+void Start_IMU_Task(void *argument)
+{
+  /* USER CODE BEGIN Start_IMU_Task */
+  uint32_t i;
+  uint8_t recent_buf[16];
+  IMU_RawData raw;
+  IMU_EulerAngle euler;
+  IMU_Quaternion quat;
+  IMU_BaroData baro;
+  IMU_Version ver;
+
+  /* Infinite loop */
+  for(;;)
+  {
+    g_dbg_imu_task_loop_count++;
+
+    /* Update statistics */
+    g_imu_debug.frame_count = IMU_Core_GetFrameCount();
+    g_imu_debug.crc_error_count = IMU_Core_GetCrcErrorCount();
+    g_imu_debug.rx_overflow_count = IMU_Core_GetRxOverflowCount();
+    g_imu_debug.rx_irq_count = IMU_Core_GetRxIrqCount();
+    g_imu_debug.rx_byte_count = IMU_Core_GetRxByteCount();
+    g_imu_debug.rx_poll_byte_count = IMU_Core_GetRxPollByteCount();
+    g_imu_debug.rx_rearm_ok_count = IMU_Core_GetRxRearmOkCount();
+    g_imu_debug.rx_rearm_fail_count = IMU_Core_GetRxRearmFailCount();
+    g_imu_debug.rx_init_status = IMU_Core_GetRxInitStatus();
+    g_imu_debug.uart4_irq_count = g_dbg_uart4_irq_count;
+    g_imu_debug.uart4_error_count = g_dbg_uart4_error_count;
+    g_imu_debug.uart4_last_error = g_dbg_uart4_last_error;
+    g_imu_debug.uart_rxne_flag = IMU_Core_GetUartRxneFlag();
+    g_imu_debug.uart_error_flags = IMU_Core_GetUartErrorFlags();
+    g_imu_debug.recent_rx_len = IMU_Core_GetRecentRxBytes(recent_buf, sizeof(recent_buf));
+    for (i = 0U; i < sizeof(g_imu_debug.recent_rx_bytes); i++)
+    {
+      g_imu_debug.recent_rx_bytes[i] = (i < g_imu_debug.recent_rx_len) ? recent_buf[i] : 0U;
+    }
+    g_imu_debug.task_loop_count = g_dbg_imu_task_loop_count;
+    g_imu_debug.last_function_code = IMU_Core_GetLastFunctionCode();
+    g_imu_debug.last_rx_function = IMU_Core_GetLastRxFunction();
+    g_imu_debug.last_rx_state = IMU_Core_GetLastRxState();
+
+    /* Read raw 9-axis data if available */
+    if (IMU_Core_GetRawData(&raw))
+    {
+      g_imu_debug.ax = raw.accel.ax;
+      g_imu_debug.ay = raw.accel.ay;
+      g_imu_debug.az = raw.accel.az;
+      g_imu_debug.gx = raw.gyro.gx;
+      g_imu_debug.gy = raw.gyro.gy;
+      g_imu_debug.gz = raw.gyro.gz;
+      g_imu_debug.mx = raw.mag.mx;
+      g_imu_debug.my = raw.mag.my;
+      g_imu_debug.mz = raw.mag.mz;
+      g_imu_debug.raw_updated = raw.updated;
+    }
+
+    /* Read Euler angles if available */
+    if (IMU_Core_GetEulerAngle(&euler))
+    {
+      g_imu_debug.roll = euler.roll;
+      g_imu_debug.pitch = euler.pitch;
+      g_imu_debug.yaw = euler.yaw;
+      g_imu_debug.euler_updated = euler.updated;
+    }
+
+    /* Read quaternion if available */
+    if (IMU_Core_GetQuaternion(&quat))
+    {
+      g_imu_debug.q0 = quat.q0;
+      g_imu_debug.q1 = quat.q1;
+      g_imu_debug.q2 = quat.q2;
+      g_imu_debug.q3 = quat.q3;
+      g_imu_debug.quat_updated = quat.updated;
+    }
+
+    /* Read barometer data if available */
+    if (IMU_Core_GetBaroData(&baro))
+    {
+      g_imu_debug.height = baro.height;
+      g_imu_debug.temperature = baro.temperature;
+      g_imu_debug.pressure = baro.pressure;
+      g_imu_debug.pressure_contrast = baro.pressure_contrast;
+      g_imu_debug.baro_updated = baro.updated;
+    }
+
+    /* Read version info if available */
+    if (IMU_Core_GetVersion(&ver))
+    {
+      g_imu_debug.version_high = ver.version_high;
+      g_imu_debug.version_mid = ver.version_mid;
+      g_imu_debug.version_low = ver.version_low;
+    }
+
+    /* Process RX data (runs the frame parser state machine) */
+    IMU_Core_RunRxTask();
+  }
+  /* USER CODE END Start_IMU_Task */
 }
 
  /* MPU Configuration */
