@@ -1,6 +1,7 @@
 
 
-OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=344
+OpenDocument="tasks.c", FilePath="D:/Projects/UnderwaterGlider/software/Middlewares/Third_Party/FreeRTOS/Source/tasks.c", Line=3423
+OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=437
 OpenDocument="glider_core.c", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/glider_core.c", Line=124
 OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=52
 OpenDocument="stm32h7xx_it.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/stm32h7xx_it.c", Line=199
@@ -13,7 +14,7 @@ OpenWindow="Watched Data 1", DockArea=LEFT, x=0, y=0, w=730, h=722, FilterBarSho
 OpenWindow="Data Sampling", DockArea=BOTTOM, x=0, y=0, w=662, h=305, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0, VisibleTab=0, UniformSampleSpacing=0
 OpenWindow="Timeline", DockArea=BOTTOM, x=1, y=0, w=1257, h=305, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=1, DataPaneShown=1, PowerPaneShown=1, CodePaneShown=1, PinCursor="Cursor Movable", TimePerDiv="1 ns / Div", TimeStampFormat="Time", DataGraphDrawAsPoints=0, DataGraphLegendShown=1, DataGraphUniformSampleSpacing=0, DataGraphLegendPosition="1012;-69", DataGraphShowNamesAtCursor=0, PowerGraphDrawAsPoints=0, PowerGraphLegendShown=1, PowerGraphAvgFilterTime=Off, PowerGraphAvgFilterLen=Off, PowerGraphUniformSampleSpacing=0, PowerGraphLegendPosition="1012;-69", CodeGraphLegendShown=1, CodeGraphLegendPosition="948;0"
 SmartViewPlugin="", Page="", Toolbar="Hidden", Window="SmartView 1"
-TableHeader="Local Data", SortCol="Name", SortOrder="DESCENDING", VisibleCols=["Name";"Value";"Location";"Size";"Type";"Scope"], ColWidths=[100;100;100;100;190;100]
+TableHeader="Local Data", SortCol="Name", SortOrder="DESCENDING", VisibleCols=["Name";"Value";"Location";"Size";"Type";"Scope"], ColWidths=[100;100;100;100;190;194]
 TableHeader="Call Stack", SortCol="Function", SortOrder="ASCENDING", VisibleCols=["Function";"Stack Frame";"Source";"PC";"Return Address";"Stack Used"], ColWidths=[227;179;185;113;256;106]
 TableHeader="Data Sampling Table", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time"], ColWidths=[100;100]
 TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;100;100;100;100;100;113;131;131]
@@ -31,5 +32,6 @@ WatchedExpression="g_dbg_tx_attempt_count ", RefreshRate=5, Window=Watched Data 
 WatchedExpression="g_dbg_tx_ok_count ", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_dbg_rx_line_count ", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_dbg_view ", RefreshRate=5, Window=Watched Data 1
-WatchedExpression="g_dbg_quick ", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_imu_debug", RefreshRate=5, Window=Watched Data 1
+WatchedExpression="g_dbg_quick ", RefreshRate=5, Window=Watched Data 1
+WatchedExpression="g_servo_debug", RefreshRate=5, Window=Watched Data 1
