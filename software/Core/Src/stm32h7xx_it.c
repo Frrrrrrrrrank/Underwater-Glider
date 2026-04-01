@@ -59,6 +59,7 @@
 /* External variables --------------------------------------------------------*/
 extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart7;
+extern UART_HandleTypeDef huart3;
 /* USER CODE BEGIN EV */
 extern volatile uint32_t g_dbg_systick_count;
 extern volatile uint32_t g_dbg_fault_code;
@@ -195,6 +196,20 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32h7xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles USART3 global interrupt.
+  */
+void USART3_IRQHandler(void)
+{
+  /* USER CODE BEGIN USART3_IRQn 0 */
+
+  /* USER CODE END USART3_IRQn 0 */
+  HAL_UART_IRQHandler(&huart3);
+  /* USER CODE BEGIN USART3_IRQn 1 */
+
+  /* USER CODE END USART3_IRQn 1 */
+}
 
 /**
   * @brief This function handles UART4 global interrupt.

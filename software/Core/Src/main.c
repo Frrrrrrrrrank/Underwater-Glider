@@ -25,6 +25,8 @@
 #include "glider_core.h"
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
+#include "servo_driver.h"
+#include "displacement_sensor.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -214,26 +216,6 @@ typedef struct
   char last_text[96];             /* Last text line snapshot */
 } GliderDebugQuickView;
 
-typedef struct
-{
-  uint32_t pwm_started;           /* 1 when HAL_TIM_PWM_Start succeeded */
-  uint32_t mode;                  /* 0: sweep test, 1: manual angle input */
-  float cmd_angle_deg;            /* Input angle from debugger, unit: degree */
-  float current_angle_deg;        /* Current applied angle, unit: degree */
-  float min_angle_deg;            /* Sweep minimum angle in mode 0 */
-  float max_angle_deg;            /* Sweep maximum angle in mode 0 */
-  uint16_t current_pulse_us;      /* Current CCR pulse width, unit: us */
-  uint16_t min_pulse_us;          /* Pulse at physical 0 degree */
-  uint16_t center_pulse_us;       /* Mid reference pulse for debug */
-  uint16_t max_pulse_us;          /* Pulse at physical 270 degree */
-  float sweep_speed_deg_s;        /* Auto mode angular speed, unit: deg/s */
-  uint16_t sweep_step_us;         /* Sweep delta pulse per update in auto mode */
-  uint16_t update_period_ms;      /* Update period in ms */
-  int32_t sweep_direction;        /* +1/-1 pulse direction in auto mode */
-  uint32_t move_count;            /* Increment when output pulse changes */
-  uint32_t step_count;            /* Task loop counter for servo task */
-} ServoDebugView;
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -302,6 +284,13 @@ const osThreadAttr_t servoTask_attributes = {
   .stack_size = 256 * 4,
   .priority = (osPriority_t) osPriorityNormal3,
 };
+/* Definitions for Usart3Task */
+osThreadId_t Usart3TaskHandle;
+const osThreadAttr_t Usart3Task_attributes = {
+  .name = "Usart3Task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
+};
 /* USER CODE BEGIN PV */
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
@@ -349,24 +338,6 @@ volatile uint32_t g_dbg_servo_pulse_us = 1500U;
 volatile GliderDebugView g_dbg_view = {0};
 volatile GliderDebugQuickView g_dbg_quick = {0};
 volatile IMUDebugView g_imu_debug = {0};
-volatile ServoDebugView g_servo_debug = {
-  0U,     /* pwm_started */
-  0U,     /* mode: default sweep test */
-  135.0f, /* cmd_angle_deg */
-  135.0f, /* current_angle_deg */
-  0.0f,   /* min_angle_deg (actual angle: 0°) */
-  270.0f, /* max_angle_deg (actual angle: 270°) */
-  908U,   /* current_pulse_us (actual 135° with calibrated range) */
-  500U,   /* min_pulse_us (calibrated actual 0°) */
-  908U,   /* center_pulse_us (display/reference only) */
-  1315U,  /* max_pulse_us (calibrated actual 270° from test) */
-  60.0f,  /* sweep_speed_deg_s */
-  10U,    /* sweep_step_us */
-  20U,    /* update_period_ms */
-  1,      /* sweep_direction */
-  0U,     /* move_count */
-  0U      /* step_count */
-};
 
 /* USER CODE END PV */
 
@@ -393,6 +364,7 @@ void StartUartRxTask(void *argument);
 void StartUartTxTask(void *argument);
 void Start_IMU_Task(void *argument);
 void StartServoTask(void *argument);
+void StartUsart3Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -400,46 +372,6 @@ void StartServoTask(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-static float servo_clamp_angle(float angle_deg)
-{
-  const float k_map_min_deg = 0.0f;
-  const float k_map_max_deg = 270.0f;
-
-  if (angle_deg < k_map_min_deg)
-  {
-    return k_map_min_deg;
-  }
-  if (angle_deg > k_map_max_deg)
-  {
-    return k_map_max_deg;
-  }
-  return angle_deg;
-}
-
-static uint16_t servo_angle_to_pulse(float angle_deg)
-{
-  const float k_map_min_deg = 0.0f;
-  const float k_map_max_deg = 270.0f;
-  float clamped = servo_clamp_angle(angle_deg);
-  float angle_range = k_map_max_deg - k_map_min_deg;
-  if (angle_range < 0.1f) angle_range = 0.1f;
-  
-  float pulse_range = (float)(g_servo_debug.max_pulse_us - g_servo_debug.min_pulse_us);
-  float scale = pulse_range / angle_range;
-  float pulse_f = (float)g_servo_debug.min_pulse_us + (clamped - k_map_min_deg) * scale;
-
-  if (pulse_f < (float)g_servo_debug.min_pulse_us)
-  {
-    pulse_f = (float)g_servo_debug.min_pulse_us;
-  }
-  if (pulse_f > (float)g_servo_debug.max_pulse_us)
-  {
-    pulse_f = (float)g_servo_debug.max_pulse_us;
-  }
-
-  return (uint16_t)(pulse_f + 0.5f);
-}
 
 /* USER CODE END 0 */
 
@@ -536,6 +468,9 @@ int main(void)
 
   /* creation of servoTask */
   servoTaskHandle = osThreadNew(StartServoTask, NULL, &servoTask_attributes);
+
+  /* creation of Usart3Task */
+  Usart3TaskHandle = osThreadNew(StartUsart3Task, NULL, &Usart3Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -2196,110 +2131,26 @@ void Start_IMU_Task(void *argument)
 void StartServoTask(void *argument)
 {
   /* USER CODE BEGIN StartServoTask */
-  uint16_t last_pulse = g_servo_debug.current_pulse_us;
-
-  (void)argument;
-
-  if (HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3) == HAL_OK)
-  {
-    g_dbg_servo_start_ok = 1U;
-    g_servo_debug.pwm_started = 1U;
-    __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, last_pulse);
-  }
-  else
-  {
-    g_dbg_servo_start_ok = 0U;
-    g_servo_debug.pwm_started = 0U;
-  }
-
   /* Infinite loop */
   for(;;)
   {
-    uint16_t out_pulse;
-    float out_angle;
-    uint16_t period_ms;
-    float effective_speed;
-    float angle_step;
-
-    g_servo_debug.step_count++;
-
-    period_ms = g_servo_debug.update_period_ms;
-    if (period_ms == 0U)
-    {
-      period_ms = 20U;
-    }
-
-    if (g_servo_debug.mode == 0U)
-    {
-      float sweep_min;
-      float sweep_max;
-      float next_angle;
-
-      sweep_min = servo_clamp_angle(g_servo_debug.min_angle_deg);
-      sweep_max = servo_clamp_angle(g_servo_debug.max_angle_deg);
-      if (sweep_min > sweep_max)
-      {
-        float tmp = sweep_min;
-        sweep_min = sweep_max;
-        sweep_max = tmp;
-      }
-
-      effective_speed = g_servo_debug.sweep_speed_deg_s;
-      if (effective_speed < 1.0f)
-      {
-        effective_speed = 1.0f;
-      }
-
-      angle_step = effective_speed * ((float)period_ms / 1000.0f);
-      if (angle_step < 0.1f)
-      {
-        angle_step = 0.1f;
-      }
-
-      if (g_servo_debug.sweep_direction >= 0)
-      {
-        next_angle = g_servo_debug.current_angle_deg + angle_step;
-      }
-      else
-      {
-        next_angle = g_servo_debug.current_angle_deg - angle_step;
-      }
-
-      if (next_angle >= sweep_max)
-      {
-        next_angle = sweep_max;
-        g_servo_debug.sweep_direction = -1;
-      }
-      else if (next_angle <= sweep_min)
-      {
-        next_angle = sweep_min;
-        g_servo_debug.sweep_direction = 1;
-      }
-
-      out_angle = next_angle;
-      out_pulse = servo_angle_to_pulse(out_angle);
-    }
-    else
-    {
-      out_angle = servo_clamp_angle(g_servo_debug.cmd_angle_deg);
-      out_pulse = servo_angle_to_pulse(out_angle);
-    }
-
-    g_dbg_servo_pulse_us = out_pulse;
-    __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, out_pulse);
-    g_dbg_servo_step_count++;
-
-    if (out_pulse != last_pulse)
-    {
-      g_servo_debug.move_count++;
-      last_pulse = out_pulse;
-    }
-
-    g_servo_debug.current_pulse_us = out_pulse;
-    g_servo_debug.current_angle_deg = out_angle;
-    osDelay(period_ms);
+    osDelay(1);
   }
   /* USER CODE END StartServoTask */
+}
+
+/* USER CODE BEGIN Header_StartUsart3Task */
+/**
+* @brief Function implementing the Usart3Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartUsart3Task */
+void StartUsart3Task(void *argument)
+{
+  /* USER CODE BEGIN StartUsart3Task */
+  Displacement_StartTask(argument);
+  /* USER CODE END StartUsart3Task */
 }
 
  /* MPU Configuration */
