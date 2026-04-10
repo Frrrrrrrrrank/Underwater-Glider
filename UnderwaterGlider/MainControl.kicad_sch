@@ -10907,6 +10907,19 @@
 		)
 		(uuid "4e919eba-02d6-48ff-82c0-c231e3b30cf3")
 	)
+	(text "迭代意见:\n接口用竖插的\n电源分少一些别再这块板上画了\nUART2-485 A layout少一根线\n板载imu不一定要了 IMU封装有问题阻焊层没去掉\n把其他引脚也引出来\nSD卡测试完再迭代还是直接迭\nUART3有个丝印反了\n舵机pwm接口丝印反了"
+		(exclude_from_sim no)
+		(at -165.354 58.674 0)
+		(effects
+			(font
+				(size 5 5)
+				(thickness 1)
+				(bold yes)
+			)
+			(justify left)
+		)
+		(uuid "4ff83eca-6b9c-40f9-b9e9-22ec209b00fb")
+	)
 	(text "卫星通信模块需要隔离3.3v和5v供电 需要用1.5A DCDC和电源管理小信号供电\n"
 		(exclude_from_sim no)
 		(at 345.44 219.71 0)

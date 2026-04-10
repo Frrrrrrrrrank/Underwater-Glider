@@ -27,6 +27,7 @@
 #include "imu_core.h"
 #include "servo_driver.h"
 #include "displacement_sensor.h"
+#include "motor_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -291,6 +292,13 @@ const osThreadAttr_t Usart3Task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal1,
 };
+/* Definitions for Usart2Task */
+osThreadId_t Usart2TaskHandle;
+const osThreadAttr_t Usart2Task_attributes = {
+  .name = "Usart2Task",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal3,
+};
 /* USER CODE BEGIN PV */
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
@@ -365,6 +373,7 @@ void StartUartTxTask(void *argument);
 void Start_IMU_Task(void *argument);
 void StartServoTask(void *argument);
 void StartUsart3Task(void *argument);
+void StartUsart2Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -471,6 +480,9 @@ int main(void)
 
   /* creation of Usart3Task */
   Usart3TaskHandle = osThreadNew(StartUsart3Task, NULL, &Usart3Task_attributes);
+
+  /* creation of Usart2Task */
+  Usart2TaskHandle = osThreadNew(StartUsart2Task, NULL, &Usart2Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -2151,6 +2163,20 @@ void StartUsart3Task(void *argument)
   /* USER CODE BEGIN StartUsart3Task */
   Displacement_StartTask(argument);
   /* USER CODE END StartUsart3Task */
+}
+
+/* USER CODE BEGIN Header_StartUsart2Task */
+/**
+* @brief Function implementing the Usart2Task thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartUsart2Task */
+void StartUsart2Task(void *argument)
+{
+  /* USER CODE BEGIN StartUsart2Task */
+  UMotor_StartTask(argument);
+  /* USER CODE END StartUsart2Task */
 }
 
  /* MPU Configuration */

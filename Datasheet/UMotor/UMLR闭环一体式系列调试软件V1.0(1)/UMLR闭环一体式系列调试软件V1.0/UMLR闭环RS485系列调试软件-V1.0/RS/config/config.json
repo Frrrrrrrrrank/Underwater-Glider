@@ -1,0 +1,473 @@
+{
+    "VPC_line_edit": {
+        "leEtStartVelVPC": {
+            "type": "OBJ_INT16",
+            "index0": "0X0030"
+        },
+        "leEtAccTimVPC": {
+            "type": "OBJ_INT16",
+            "index0": "0X0031"
+        },
+        "leEtDecTimVPC": {
+            "type": "OBJ_INT16",
+            "index0": "0X0032"
+        },
+        "LeEtMaxVelVPC": {
+            "type": "OBJ_INT16",
+            "index0": "0X0033"
+        },
+        "leEtAllPulseVPC": {
+            "type": "OBJ_INT32",
+            "index0": "0X0034",
+            "index1": "0X0035"
+        },
+        "leEtOpenCurVPC": {
+            "type": "OBJ_INT16",
+            "index0": "0X001e"
+        }
+    },
+    "HMC_line_edit":{
+        "leEtHmVel1HMC": {
+            "type": "OBJ_INT16",
+             "index0": "0X003C"
+        },
+        "leEtHmVel2HMC": {
+            "type": "OBJ_INT16",
+            "index0": "0X003D"
+        },
+        "leEtHmAccTimHMC": {
+            "type": "OBJ_INT16",
+            "index0": "0X003E"
+        },
+        "LedtHmDecTimHMC": {
+            "type": "OBJ_INT16",
+            "index0": "0X003F"
+        },
+        "LeDtHmOffsetHMC": {
+            "type": "OBJ_INT32",
+            "index0": "0X0040",
+            "index1": "0X0041"
+        }
+        
+    },
+    "HMC_comb_box": {
+        "combHmModeHMC": {
+            "type": "OBJ_INT16",
+            "index0": "0X003B"
+        }
+    },
+    "cmd_push_btn": {
+        "pBtnCleanAlarmVPC": {
+            "value": "1",
+            "index": "0X0019"
+        },
+        "pBtnCleanPosVPC": {
+            "value": "1",
+            "index": "0X003A"
+        },
+        "pBtnEnableVPC": {
+            "value": "1",
+            "index": "0X0039"
+        },
+        "pBtnDisableVPC": {
+            "value": "0",
+            "index": "0X0039"
+        },
+        "pBtnRelaPosStartVPC": {
+            "value": "2",
+            "index": "0X0037"
+        },
+        "pBtnAsbPosStartVPC": {
+            "value": "4",
+            "index": "0X0037"
+        },
+        "pBtnVelStartVPC": {
+            "value": "1",
+            "index": "0X0037"
+        },
+        "pBtnStopVPC": {
+            "value": "0",
+            "index": "0X0038"
+        },
+        "pBtnEmcyStopVPC": {
+            "value": "1",
+            "index": "0X0038"
+        },
+        "pBtnHmStopHMC": {
+            "value": "0",
+            "index": "0X0038"
+        },
+        "pBtnHmStartHMC": {
+            "value": "8",
+            "index": "0X0037"
+        },
+        "pBtnSaveParam": {
+            "value": "32768",
+            "index": "0X0017"
+        },
+        "pBtnRecover": {
+            "value": "1",
+            "index": "0X001A"
+        }
+    },
+    "jog_push_btn": {
+        "pBtnJogPosVPC": {
+            "p_value": "64",
+            "r_value": "1",
+            "p_index": "0X0037",
+            "r_index": "0X0038"
+        },
+        "pBtnJogNegVPC": {
+            "p_value": "128",
+            "r_value": "1",
+            "p_index": "0X0037",
+            "r_index": "0X0038"
+        }
+    },
+    "show_table_weidget": {
+        "当前位置": {
+            "type": "OBJ_INT32",
+            "index0": "0X000B",
+            "index1": "0X000C",
+            "unit" : "p"
+        },
+        "给定速度":{
+            "type": "OBJ_UINT16",
+            "index0": "0X0005",
+            "unit" : "rev/min"
+        },
+        "实际速度":{
+            "type": "OBJ_UINT16",
+            "index0": "0X0006",
+            "unit" : "rev/min"
+        },
+        "当前电流": {
+            "type": "OBJ_UINT16",
+            "index0": "0X000D",
+            "unit" : "mA"
+        },
+        "A相电流": {
+            "type": "OBJ_INT16",
+            "index0": "0X000E",
+            "unit" : "mA"
+        },
+        "B相电流": {
+            "type": "OBJ_INT16",
+            "index0": "0X000F",
+            "unit" : "mA"
+        },
+        "闭环给定电流": {
+            "type": "OBJ_INT16",
+            "index0": "0X0010",
+            "unit" : "mA"
+        },
+        "拨码状态": {
+            "type": "OBJ_UINT16",
+            "index0": "0X0011",
+            "unit" : "-"
+        },
+        "PT段号": {
+            "type": "OBJ_UINT16",
+            "index0": "0X0012",
+            "unit" : "-"
+        },
+        "电机单次运行时间":{
+            "type": "OBJ_UINT32",
+            "index0": "0X01a0",
+            "index1": "0X01a1",
+            "unit" : "us"
+        },
+        "位置模式给定起始速度":{
+            "type": "OBJ_UINT16",
+            "index0": "0X01a2",
+            "unit" : "rev/min"
+        },
+        "位置模式给定加速时间":{
+            "type": "OBJ_UINT16",
+            "index0": "0X01a3",
+            "unit" : "us"
+        },
+        "位置模式给定减速时间":{
+            "type": "OBJ_UINT16",
+            "index0": "0X01a4",
+            "unit" : "us"
+        },
+        "位置模式给定最大速度":{
+            "type": "OBJ_UINT16",
+            "index0": "0X01a5",
+            "unit" : "rev/min"
+        }
+    },
+    "show_push_btn": {
+        "pBtnStRUN": {
+            "type": "OBJ_BIT",
+            "index": "0X0004",
+            "bit": "1",
+            "compare": "1"
+        },
+        "pBtnStLock": {
+            "type": "OBJ_BIT",
+            "index": "0X0004",
+            "bit": "0",
+            "compare": "1"
+        },
+        "pBtnStMovePos": {
+            "type": "OBJ_BIT",
+            "index": "0X0004",
+            "bit": "5",
+            "compare": "1"
+        },
+        "pBtnStMoveNeg": {
+            "type": "OBJ_BIT",
+            "index": "0X0004",
+            "bit": "4",
+            "compare": "1"
+        },
+        "pBtnStAbsMode": {
+            "type": "OBJ_BIT",
+            "index": "0X0003",
+            "bit": "2",
+            "compare": "1"
+        },
+        "pBtnStMultVelMode": {
+            "type": "OBJ_BIT",
+            "index": "0X0003",
+            "bit": "5",
+            "compare": "1"
+        },
+        "pBtnStAlarm": {
+            "type": "OBJ_BIT",
+            "index": "0X0004",
+            "bit": "6",
+            "compare": "1"
+        },
+        "pBtnStRelaMode": {
+            "type": "OBJ_BIT",
+            "index": "0X0003",
+            "bit": "1",
+            "compare": "1"
+        },
+        "pBtnStMultPosMode": {
+            "type": "OBJ_BIT",
+            "index": "0X0003",
+            "bit": "4",
+            "compare": "1"
+        },
+        "pBtnStJogPosMode": {
+            "type": "OBJ_BIT",
+            "index": "0X0003",
+            "bit": "6",
+            "compare": "1"
+        },
+        "pBtnSVelMode": {
+            "type": "OBJ_BIT",
+            "index": "0X0003",
+            "bit": "0",
+            "compare": "1"
+        },
+        "pBtnStHmFinish": {
+            "type": "OBJ_BIT",
+            "index": "0X0004",
+            "bit": "3",
+            "compare": "1"
+        },
+        "pBtnStHming":{
+            "type": "OBJ_BIT",
+            "index": "0X0004",
+            "bit": "2",
+            "compare": "1"
+        },
+        "pBtnStJogNeg": {
+            "type": "OBJ_BIT",
+            "index": "0X0003",
+            "bit": "7",
+            "compare": "1"
+        },
+        "pBtnIoX0": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "0",
+            "compare": "1"
+        },
+        "pBtnIoX1": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "1",
+            "compare": "1"
+        },
+        "pBtnIoX2": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "2",
+            "compare": "1"
+        },
+        "pBtnIoX3": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "3",
+            "compare": "1"
+        },
+        "pBtnIoX4": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "4",
+            "compare": "1"
+        },
+        "pBtnIoX5": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "5",
+            "compare": "1"
+        },
+        "pBtnIoX6": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "6",
+            "compare": "1"
+        },
+        "pBtnIoX7": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "7",
+            "compare": "1"
+        },
+        "pBtnIoX8": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "8",
+            "compare": "1"
+        },
+        "pBtnIoX9": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "9",
+            "compare": "1"
+        },
+        "pBtnIoX10": {
+            "type": "OBJ_BIT",
+            "index": "0X0009",
+            "bit": "10",
+            "compare": "1"
+        },
+        "pBtnIoY0": {
+            "type": "OBJ_BIT",
+            "index": "0X000A",
+            "bit": "0",
+            "compare": "1"
+        },
+        "pBtnIoY1": {
+            "type": "OBJ_BIT",
+            "index": "0X000A",
+            "bit": "1",
+            "compare": "1"
+        },
+        "pBtnIoY2": {
+            "type": "OBJ_BIT",
+            "index": "0X000A",
+            "bit": "2",
+            "compare": "1"
+        },
+        "pBtnIoY3": {
+            "type": "OBJ_BIT",
+            "index": "0X000A",
+            "bit": "3",
+            "compare": "1"
+        },
+        "pBtnIoY4": {
+            "type": "OBJ_BIT",
+            "index": "0X000A",
+            "bit": "4",
+            "compare": "1"
+        },
+        "pBtnAlmOverCur": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "16"
+        },
+        "pBtnAlmOverVol": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "32"
+        },
+        "pBtnAlmEepRead": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "57"
+        },
+        "pBtnAlmFuncErr": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "82"
+        },
+        "pBtnAlmCrc": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "81"
+        },
+        "pBtnAlmEepWrite": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "58"
+        },
+        "pBtnAlmReadIlle": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "83"
+        },
+        "pBtnAlmWriteAddrOver": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "84"
+        },
+        "pBtnAlmReadNumOver": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "85"
+        },
+        "pBtnAlmFuncIlle": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "86"
+        },
+        "pBtnAlmWriteOutLmt": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "87"
+        },
+        "pBtnAlmLossAB": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "96"
+        },
+        "pBtnAlmLossA": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "97"
+        },
+        "pBtnAlmLossB": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "98"
+        },
+        "pBtnAlmNorOutErr": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "112"
+        },
+        "pBtnAlmVolOutErr": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "113"
+        },
+        "pBtnAlmLowVolErr": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "114"
+        },
+        "pBtnAlmHmTimeout": {
+            "type": "OBJ_U16",
+            "index": "0X0008",
+            "compare": "126"
+        }
+    }
+}
