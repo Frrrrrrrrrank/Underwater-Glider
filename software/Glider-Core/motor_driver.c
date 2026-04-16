@@ -148,7 +148,7 @@ volatile UMotor g_umotor = {
     }
   },
   .bus_diag = {0},
-  .enable_write_cmd = 0U
+  .enable_write_cmd = 1U
 };
 
 #define g_motor_nodes g_umotor.nodes
@@ -162,10 +162,11 @@ typedef struct
   int32_t last_sent_speed_rpm[MOTOR_BUS_MAX_NODES];
   uint32_t last_cmd_tick[MOTOR_BUS_MAX_NODES];
   uint32_t last_poll_tick[MOTOR_BUS_MAX_NODES];
+  uint8_t last_motor_enable[MOTOR_BUS_MAX_NODES];
 } MotorInternal;
 
 static MotorInternal g_motor_internal = {
-  0U, 0U, {0}, {0U}, {0U}
+  0U, 0U, {0}, {0U}, {0U}, {0U}
 };
 
 static uint16_t Motor_Crc16(const uint8_t *data, uint16_t len)
@@ -193,7 +194,7 @@ static uint16_t Motor_Crc16(const uint8_t *data, uint16_t len)
   return crc;
 }
 
-static uint16_t Motor_BuildWriteSingleRegFrame(uint8_t node_id,
+static uint8_t Motor_BuildWriteSingleRegFrame(uint8_t node_id,
                                                uint16_t reg_addr,
                                                uint16_t reg_value,
                                                uint8_t *frame)
@@ -309,6 +310,10 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   if ((header[1] & 0x80U) != 0U)
   {
     expected_len = 5U;
+  }
+  else if (header[1] == 0x06U)
+  {
+    expected_len = 8U;
   }
   else
   {
@@ -559,7 +564,7 @@ static uint8_t Motor_ParseExceptionResponse(uint8_t node_id,
     return 0U;
   }
 
-  *exception_func = rx_frame[1];
+  *exception_func = rx_frame[1] & 0x7FU;
   *exception_code = rx_frame[2];
   return 1U;
 }
@@ -685,6 +690,79 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
   node = &g_motor_nodes[index];
   dbg = &node->debug;
   node_id = node->node_id;
+
+  if (g_motor_enable_write_cmd != 0U)
+  {
+    /* Handle Manual Enable/Disable */
+    if (node->motor_enable != g_motor_internal.last_motor_enable[index])
+    {
+      if ((now_tick - g_motor_internal.last_cmd_tick[index]) >= MOTOR_CMD_MIN_INTERVAL_MS)
+      {
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, MOTOR_REG_ENABLE, node->motor_enable ? 0x0001U : 0x0000U, tx_frame);
+        if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
+        {
+          g_motor_internal.last_motor_enable[index] = node->motor_enable;
+          g_motor_internal.last_cmd_tick[index] = now_tick;
+        }
+      }
+    }
+  }
+
+  if (g_motor_enable_write_cmd != 0U)
+  {
+    /* Handle Stop Command */
+    if (node->trigger_stop_cmd != 0U)
+    {
+      if ((now_tick - g_motor_internal.last_cmd_tick[index]) >= MOTOR_CMD_MIN_INTERVAL_MS)
+      {
+        node->trigger_stop_cmd = 0U; /* Clear trigger */
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, MOTOR_REG_STOP, node->stop_mode, tx_frame);
+        if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
+        {
+          /* Stopped. Set target speed to 0 to prevent automatic speed resume */
+          node->target_speed_rpm = 0;
+          g_motor_internal.last_sent_speed_rpm[index] = 0;
+          g_motor_internal.last_cmd_tick[index] = now_tick;
+        }
+      }
+    }
+  }
+
+  if (g_motor_enable_write_cmd != 0U)
+  {
+    /* Handle specific Position Run Trigger */
+    if (node->trigger_pos_cmd != 0U)
+    {
+      if ((now_tick - g_motor_internal.last_cmd_tick[index]) >= MOTOR_CMD_MIN_INTERVAL_MS)
+      {
+        node->trigger_pos_cmd = 0U; /* Clear trigger */
+        
+        /* 1. Send total pulses low 16-bit */
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, MOTOR_REG_POS_PULSE_LOW, (uint16_t)((uint32_t)node->pos_cmd_pulses & 0xFFFFU), tx_frame);
+        Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len);
+
+        /* 2. Send total pulses high 16-bit */
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, MOTOR_REG_POS_PULSE_HIGH, (uint16_t)(((uint32_t)node->pos_cmd_pulses >> 16) & 0xFFFFU), tx_frame);
+        Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len);
+
+        /* 3. Send speed */
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, node->reg_map.reg_cmd_speed_rpm, node->pos_cmd_speed_rpm, tx_frame);
+        Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len);
+
+        /* 4. Send position mode (0=Relative, 1=Absolute) */
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, MOTOR_REG_POS_MODE, node->pos_cmd_is_absolute, tx_frame);
+        Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len);
+
+        /* 5. Send start position command */
+        uint16_t pos_start_cmd = node->pos_cmd_is_absolute ? MOTOR_CMD_START_ABS_POS : MOTOR_CMD_START_REL_POS;
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, node->reg_map.reg_cmd_start, pos_start_cmd, tx_frame);
+        if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
+        {
+          g_motor_internal.last_cmd_tick[index] = now_tick;
+        }
+      }
+    }
+  }
 
   if ((g_motor_enable_write_cmd != 0U) &&
       (node->enable_speed_ctrl != 0U) &&
@@ -941,10 +1019,39 @@ void UMotor_StartTask(void *argument)
   g_motor_internal.initialized = 1U;
   g_motor_bus_diag.initialized = 1U;
 
+  /* ====== 测试代码：启动自动使能 ====== */
+  /* 取消注释以下代码可开机自动转动测试 */
+  /*
+  g_umotor.enable_write_cmd = 1U; 
+  UMotor_SetMotorEnable(0, 1U);   
+  
+  uint32_t last_test_tick = osKernelGetTickCount();
+  uint8_t test_direction = 0U;
+  */
+  /* ===================================================== */
+
   for (;;)
   {
     now_tick = osKernelGetTickCount();
     g_motor_bus_diag.loop_count++;
+
+    /* 测试：每8秒来回以100RPM转10圈 */
+    /*
+    if (now_tick - last_test_tick > 8000U)
+    {
+      last_test_tick = now_tick;
+      if (test_direction == 0U)
+      {
+        UMotor_RunPosition(0, 100000, 100U, 1U); 
+        test_direction = 1U;
+      }
+      else
+      {
+        UMotor_RunPosition(0, 0, 100U, 1U);     
+        test_direction = 0U;
+      }
+    }
+    */
 
     Motor_UpdateActiveNodeCount();
     Motor_ProcessOneNode(g_motor_internal.rr_index, now_tick);
@@ -956,5 +1063,36 @@ void UMotor_StartTask(void *argument)
     }
 
     osDelay(MOTOR_TASK_PERIOD_MS);
+  }
+}
+
+/* Set enable state manually */
+void UMotor_SetMotorEnable(uint8_t index, uint8_t enable)
+{
+  if (index < MOTOR_BUS_MAX_NODES)
+  {
+    g_umotor.nodes[index].motor_enable = (enable != 0U) ? 1U : 0U;
+  }
+}
+
+/* Stop motor manually */
+void UMotor_StopMotor(uint8_t index, uint16_t stop_mode)
+{
+  if (index < MOTOR_BUS_MAX_NODES)
+  {
+    g_umotor.nodes[index].stop_mode = stop_mode;
+    g_umotor.nodes[index].trigger_stop_cmd = 1U;
+  }
+}
+
+/* Trigger position run */
+void UMotor_RunPosition(uint8_t index, int32_t pulses, uint16_t rpm, uint8_t is_absolute)
+{
+  if (index < MOTOR_BUS_MAX_NODES)
+  {
+    g_umotor.nodes[index].pos_cmd_pulses = pulses;
+    g_umotor.nodes[index].pos_cmd_speed_rpm = rpm;
+    g_umotor.nodes[index].pos_cmd_is_absolute = (is_absolute != 0U) ? 1U : 0U;
+    g_umotor.nodes[index].trigger_pos_cmd = 1U;
   }
 }

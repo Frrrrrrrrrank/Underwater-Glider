@@ -1,13 +1,14 @@
 
 
 GraphedExpression="(g_displacement_sensor).displacement_mm", Color=#e56a6f
+OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=383
 OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=52
 OpenDocument="stm32h7xx_hal_uart.h", FilePath="D:/Projects/UnderwaterGlider/software/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h", Line=224
 OpenDocument="tasks.c", FilePath="D:/Projects/UnderwaterGlider/software/Middlewares/Third_Party/FreeRTOS/Source/tasks.c", Line=3423
-OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=374
+OpenDocument="motor_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/motor_driver.h", Line=113
 OpenDocument="glider_core.c", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/glider_core.c", Line=124
 OpenDocument="displacement_sensor.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/displacement_sensor.h", Line=42
-OpenDocument="stm32h7xx_it.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/stm32h7xx_it.c", Line=199
+OpenDocument="stm32h7xx_it.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/stm32h7xx_it.c", Line=88
 OpenToolbar="Debug", Floating=0, x=0, y=0
 OpenWindow="Call Stack", DockArea=RIGHT, x=0, y=2, w=459, h=181, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
 OpenWindow="Registers 1", DockArea=RIGHT, x=0, y=3, w=459, h=181, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0, FilteredItems=[], RefreshRate=1
@@ -15,7 +16,7 @@ OpenWindow="Disassembly", DockArea=RIGHT, x=0, y=0, w=459, h=178, FilterBarShown
 OpenWindow="Local Data", DockArea=RIGHT, x=0, y=1, w=459, h=179, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
 OpenWindow="Watched Data 1", DockArea=LEFT, x=0, y=0, w=730, h=722, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
 OpenWindow="Data Sampling", DockArea=BOTTOM, x=0, y=0, w=662, h=305, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0, VisibleTab=0, UniformSampleSpacing=0
-OpenWindow="Timeline", DockArea=BOTTOM, x=1, y=0, w=1257, h=305, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=1, DataPaneShown=1, PowerPaneShown=0, CodePaneShown=0, PinCursor="Cursor Movable", TimePerDiv="10 s / Div", TimeStampFormat="Time", DataGraphDrawAsPoints=0, DataGraphLegendShown=1, DataGraphUniformSampleSpacing=0, DataGraphLegendPosition="0;49", DataGraphShowNamesAtCursor=0, PowerGraphDrawAsPoints=0, PowerGraphLegendShown=0, PowerGraphAvgFilterTime=Off, PowerGraphAvgFilterLen=Off, PowerGraphUniformSampleSpacing=0, PowerGraphLegendPosition="1012;-69", CodeGraphLegendShown=0, CodeGraphLegendPosition="1030;0"
+OpenWindow="Timeline", DockArea=BOTTOM, x=1, y=0, w=1257, h=305, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=1, DataPaneShown=1, PowerPaneShown=0, CodePaneShown=0, PinCursor="Cursor Movable", TimePerDiv="10 s / Div", TimeStampFormat="Time", DataGraphDrawAsPoints=0, DataGraphLegendShown=1, DataGraphUniformSampleSpacing=0, DataGraphLegendPosition="0;49", DataGraphShowNamesAtCursor=0, PowerGraphDrawAsPoints=0, PowerGraphLegendShown=0, PowerGraphAvgFilterTime=Off, PowerGraphAvgFilterLen=Off, PowerGraphUniformSampleSpacing=0, PowerGraphLegendPosition="1015;-69", CodeGraphLegendShown=0, CodeGraphLegendPosition="1033;0"
 SmartViewPlugin="", Page="", Toolbar="Hidden", Window="SmartView 1"
 TableHeader="Local Data", SortCol="Name", SortOrder="DESCENDING", VisibleCols=["Name";"Value";"Location";"Size";"Type";"Scope"], ColWidths=[100;100;100;100;190;100]
 TableHeader="Call Stack", SortCol="Function", SortOrder="ASCENDING", VisibleCols=["Function";"Stack Frame";"Source";"PC";"Return Address";"Stack Used"], ColWidths=[227;179;185;113;256;106]
@@ -23,7 +24,7 @@ TableHeader="Data Sampling Table", SortCol="None", SortOrder="ASCENDING", Visibl
 TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;100;100;100;100;100;113;131;131]
 TableHeader="Power Sampling", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";"Ch 0"], ColWidths=[100;100;100]
 TableHeader="Registers 1", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Description"], ColWidths=[100;118;329]
-TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[231;330;146]
+TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[330;330;146]
 TableHeader="RegisterSelectionDialog", SortCol="None", SortOrder="ASCENDING", VisibleCols=[], ColWidths=[]
 TableHeader="TargetExceptionDialog", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Address";"Description"], ColWidths=[200;100;100;347]
 WatchedExpression="g_dbg_alive_counter", RefreshRate=5, Window=Watched Data 1
@@ -37,5 +38,4 @@ WatchedExpression="g_imu_debug", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_dbg_quick ", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_servo_debug", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_displacement_sensor", RefreshRate=5, Window=Watched Data 1
-WatchedExpression="g_motor_nodes", RefreshRate=5, Window=Watched Data 1
-WatchedExpression="g_motor_bus_diag", RefreshRate=5, Window=Watched Data 1
+WatchedExpression="g_umotor", RefreshRate=5, Window=Watched Data 1

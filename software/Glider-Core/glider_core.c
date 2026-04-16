@@ -501,7 +501,7 @@ static void try_queue_cached_shortmsg(void)
     return;
   }
 
-  if (s_signal_good == 0U || s_local_card_id_known == 0U || s_local_card_mismatch != 0U)
+  if (s_signal_good == 0U)
   {
     return;
   }
@@ -550,6 +550,8 @@ static bool try_send_pending_shortmsg(void)
     {
       uint32_t now = HAL_GetTick();
 
+      /* Fallback: some modules do not print a stable TC prompt immediately.
+       * Keep timed promotion to avoid being stuck forever in requested state. */
       if ((now - s_last_tc_request_tick) >= GLIDER_TC_ENTER_GRACE_MS)
       {
         s_tc_mode_active = 1U;
@@ -615,6 +617,9 @@ static bool try_send_pending_shortmsg(void)
     {
       s_shortmsg_waiting_ack = 0U;
       s_transparent_mode_ready = 0U;
+      s_tc_mode_active = 0U;
+      s_tc_mode_requested = 0U;
+      s_target_card_query_attempted = 0U;
     }
     return false;
   }
@@ -841,14 +846,21 @@ static void process_line(const char *line)
 
   if (s_decoded_frame.is_rn_mode || s_decoded_frame.is_gnrmc)
   {
-    if (s_decoded_frame.is_rn_mode)
+    /* Treat RN text OR continuous GNRMC stream as RN evidence.
+     * This prevents stale TC flags from blocking re-entry/retry. */
+    s_rn_mode_active = 1U;
+    s_rd_mode_active = 0U;
+    if (s_tc_mode_active != 0U || s_tc_mode_requested != 0U)
     {
-      s_rn_mode_active = 1U;
-      s_rd_mode_active = 0U;
-      if (s_tx_mode == GLIDER_TX_MODE_SIGNAL_POLL)
-      {
-        s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
-      }
+      s_tc_mode_active = 0U;
+      s_tc_mode_requested = 0U;
+      s_transparent_mode_ready = 0U;
+      s_shortmsg_waiting_ack = 0U;
+      s_target_card_query_attempted = 0U;
+    }
+    if (s_decoded_frame.is_rn_mode && s_tx_mode == GLIDER_TX_MODE_SIGNAL_POLL)
+    {
+      s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
     }
 
     if (s_decoded_frame.is_gnrmc)
@@ -1017,10 +1029,7 @@ void GliderCore_RunTxTask(void)
 
     if (s_shortmsg_pending != 0U || s_tc_mode_requested != 0U || s_tc_mode_active != 0U)
     {
-      if ((now - s_last_shortmsg_try_tick) >= GLIDER_SHORTMSG_SEND_INTERVAL_MS)
-      {
-        (void)try_send_pending_shortmsg();
-      }
+      (void)try_send_pending_shortmsg();
       osDelay(500U);
       continue;
     }
