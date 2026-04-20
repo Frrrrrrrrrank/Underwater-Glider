@@ -1,4 +1,4 @@
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 1
 
 
    1              		.cpu cortex-m7
@@ -58,7 +58,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
   29:Glider-Core/glider_core.c **** #define GLIDER_RN_REFRESH_INTERVAL_MS 30000U
   30:Glider-Core/glider_core.c **** #define GLIDER_RELOCATE_INTERVAL_MS 180000U
   31:Glider-Core/glider_core.c **** #define GLIDER_SHORTMSG_SEND_INTERVAL_MS 2000U
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 2
 
 
   32:Glider-Core/glider_core.c **** #define GLIDER_TC_REQUEST_RETRY_MS 3000U
@@ -118,7 +118,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
   86:Glider-Core/glider_core.c ****     0U,
   87:Glider-Core/glider_core.c ****     0U,
   88:Glider-Core/glider_core.c ****     0U,
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 3
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 3
 
 
   89:Glider-Core/glider_core.c ****     0U,
@@ -178,7 +178,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  143:Glider-Core/glider_core.c ****   "AT+CSQ\r\n"
  144:Glider-Core/glider_core.c **** };
  145:Glider-Core/glider_core.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 4
 
 
  146:Glider-Core/glider_core.c **** static void update_local_card_id(const char *parsed);
@@ -238,7 +238,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
   51 000e C0B2     		uxtb	r0, r0
   52 0010 FBE7     		b	.L2
   53              		.cfi_endproc
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 5
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 5
 
 
   54              	.LFE343:
@@ -298,7 +298,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  185:Glider-Core/glider_core.c ****   for (i = 0U; text[i] != '\0'; i++)
   99              		.loc 1 185 10 view .LVU16
  100 001e 0027     		movs	r7, #0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 6
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 6
 
 
  101 0020 01E0     		b	.L6
@@ -358,7 +358,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  189:Glider-Core/glider_core.c ****       {
  131              		.loc 1 189 10 view .LVU30
  132 003c 58B1     		cbz	r0, .L5
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 7
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 7
 
 
  193:Glider-Core/glider_core.c ****       {
@@ -418,7 +418,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  174              	.LVL15:
  175              	.LFB345:
  206:Glider-Core/glider_core.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 8
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 8
 
 
  207:Glider-Core/glider_core.c **** static bool raw_extract_csv_field(const char *text, uint32_t index, const char **field_start, size_
@@ -478,7 +478,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  221:Glider-Core/glider_core.c ****     cursor++;
  215              		.loc 1 221 5 is_stmt 1 view .LVU54
  216              		.loc 1 221 11 is_stmt 0 view .LVU55
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 9
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 9
 
 
  217 001e 0CF1010C 		add	ip, ip, #1
@@ -538,7 +538,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  251              	.LVL23:
  252              	.L32:
  231:Glider-Core/glider_core.c ****   }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 10
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 10
 
 
  253              		.loc 1 231 5 is_stmt 1 view .LVU70
@@ -598,7 +598,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  288 0060 0020     		moveq	r0, #0
  289 0062 0AD0     		beq	.L34
  237:Glider-Core/glider_core.c ****     {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 11
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 11
 
 
  290              		.loc 1 237 5 is_stmt 1 view .LVU85
@@ -658,7 +658,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  321              		.loc 1 255 5 is_stmt 1 view .LVU99
  255:Glider-Core/glider_core.c ****     *field_len = (size_t)(cursor - field);
  322              		.loc 1 255 18 is_stmt 0 view .LVU100
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 12
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 12
 
 
  323 007e 2C60     		str	r4, [r5]
@@ -718,7 +718,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  272:Glider-Core/glider_core.c ****     return false;
  273:Glider-Core/glider_core.c ****   }
  274:Glider-Core/glider_core.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 13
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 13
 
 
  275:Glider-Core/glider_core.c ****   if (!raw_extract_csv_field(line, 0U, &field, &field_len) || field_len < 6U || field_len > 8U || f
@@ -778,7 +778,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  387              	.LVL37:
  304:Glider-Core/glider_core.c ****   uint32_t beam_value = 0U;
  388              		.loc 1 304 3 view .LVU115
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 14
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 14
 
 
  305:Glider-Core/glider_core.c ****   uint32_t strong_beam_count = 0U;
@@ -838,7 +838,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  426 002c 6B46     		mov	r3, sp
  427 002e 01AA     		add	r2, sp, #4
  428 0030 2146     		mov	r1, r4
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 15
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 15
 
 
  429 0032 2846     		mov	r0, r5
@@ -898,7 +898,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  466              		.loc 1 337 3 is_stmt 1 view .LVU146
  467              		.loc 1 337 52 is_stmt 0 view .LVU147
  468 005a 06B1     		cbz	r6, .L41
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 16
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 16
 
 
  469 005c 0126     		movs	r6, #1
@@ -958,7 +958,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  349:Glider-Core/glider_core.c **** 
  350:Glider-Core/glider_core.c ****   if (line == NULL || !text_contains_token(line, "SENDTO"))
  351:Glider-Core/glider_core.c ****   {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 17
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 17
 
 
  352:Glider-Core/glider_core.c ****     return false;
@@ -1018,7 +1018,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  406:Glider-Core/glider_core.c ****     s_local_card_id_known = 1U;
  407:Glider-Core/glider_core.c ****     s_local_card_mismatch = 0U;
  408:Glider-Core/glider_core.c ****     return;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 18
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 18
 
 
  409:Glider-Core/glider_core.c ****   }
@@ -1078,7 +1078,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  463:Glider-Core/glider_core.c **** }
  464:Glider-Core/glider_core.c **** 
  465:Glider-Core/glider_core.c **** static bool cached_fix_expired(uint32_t now)
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 19
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 19
 
 
  466:Glider-Core/glider_core.c **** {
@@ -1138,7 +1138,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  555              	.L54:
  556              		.align	2
  557              	.L53:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 20
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 20
 
 
  558 0028 00000000 		.word	s_last
@@ -1198,7 +1198,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  603 001a 1360     		str	r3, [r2]
  485:Glider-Core/glider_core.c **** }
  604              		.loc 1 485 1 view .LVU183
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 21
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 21
 
 
  605 001c 7047     		bx	lr
@@ -1258,7 +1258,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  524:Glider-Core/glider_core.c **** 
  525:Glider-Core/glider_core.c ****   if (s_signal_good == 0U || s_local_card_id_known == 0U || s_local_card_mismatch != 0U)
  526:Glider-Core/glider_core.c ****   {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 22
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 22
 
 
  527:Glider-Core/glider_core.c ****     if (s_local_card_id_known == 0U)
@@ -1318,7 +1318,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  581:Glider-Core/glider_core.c ****       if (GliderCore_SendText(GLIDER_QUERY_TARGET_CARD_CMD) != HAL_OK)
  582:Glider-Core/glider_core.c ****       {
  583:Glider-Core/glider_core.c ****         return false;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 23
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 23
 
 
  584:Glider-Core/glider_core.c ****       }
@@ -1378,7 +1378,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  638:Glider-Core/glider_core.c **** static bool is_valid_gnrmc_fix(const GliderRdssDecodedFrame *frame)
  639:Glider-Core/glider_core.c **** {
  623              		.loc 1 639 1 is_stmt 1 view -0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 24
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 24
 
 
  624              		.cfi_startproc
@@ -1438,7 +1438,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  662 0022 0A4B     		ldr	r3, .L63
  663              	.LVL59:
  664              		.loc 1 655 24 view .LVU204
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 25
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 25
 
 
  665 0024 1344     		add	r3, r3, r2
@@ -1498,7 +1498,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  710              	.LFE355:
  712              		.section	.text.ring_pop,"ax",%progbits
  713              		.align	1
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 26
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 26
 
 
  714              		.syntax unified
@@ -1558,7 +1558,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  752              		.loc 1 678 19 view .LVU225
  753 001c C05C     		ldrb	r0, [r0, r3]	@ zero_extendqisi2
  754              		.loc 1 678 8 view .LVU226
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 27
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 27
 
 
  755 001e 0870     		strb	r0, [r1]
@@ -1618,7 +1618,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  802              		.cfi_startproc
  803              		@ args = 0, pretend = 0, frame = 0
  804              		@ frame_needed = 0, uses_anonymous_args = 0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 28
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 28
 
 
  805              		@ link register save eliminated.
@@ -1678,7 +1678,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  846              		.loc 1 689 5 is_stmt 1 view .LVU251
  689:Glider-Core/glider_core.c ****     return;
  847              		.loc 1 689 24 is_stmt 0 view .LVU252
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 29
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 29
 
 
  848 002a 054A     		ldr	r2, .L78+12
@@ -1738,7 +1738,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  894              		.loc 1 500 7 is_stmt 0 view .LVU262
  895 000c 0F4B     		ldr	r3, .L87
  896 000e DB6B     		ldr	r3, [r3, #60]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 30
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 30
 
 
  500:Glider-Core/glider_core.c ****   {
@@ -1798,7 +1798,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  936              	.L86:
  495:Glider-Core/glider_core.c ****     }
  937              		.loc 1 495 7 is_stmt 1 view .LVU278
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 31
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 31
 
 
  938 0044 FFF7FEFF 		bl	invalidate_cached_fix_and_request_relocate
@@ -1858,7 +1858,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  985              		.loc 1 346 3 view .LVU285
  347:Glider-Core/glider_core.c ****   char parsed[24] = {0};
  986              		.loc 1 347 3 view .LVU286
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 32
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 32
 
 
  348:Glider-Core/glider_core.c **** 
@@ -1918,7 +1918,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1027 0030 303B     		subs	r3, r3, #48
  1028 0032 DBB2     		uxtb	r3, r3
  1029 0034 092B     		cmp	r3, #9
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 33
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 33
 
 
  1030 0036 F9D9     		bls	.L94
@@ -1978,7 +1978,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1068              		.loc 1 368 18 view .LVU316
  1069 005a 1846     		mov	r0, r3
  1070              	.LVL90:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 34
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 34
 
 
  367:Glider-Core/glider_core.c ****         best_len = len;
@@ -2038,7 +2038,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1110 0082 00F11803 		add	r3, r0, #24
  1111              	.LVL96:
  386:Glider-Core/glider_core.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 35
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 35
 
 
  1112              		.loc 1 386 20 view .LVU332
@@ -2098,7 +2098,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1153              	.LCFI12:
  1154              		.cfi_remember_state
  1155              		.cfi_def_cfa_offset 16
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 36
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 36
 
 
  1156              		@ sp needed
@@ -2158,7 +2158,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1204 0004 E2B1     		cbz	r2, .L117
  396:Glider-Core/glider_core.c ****   if (parsed == NULL || parsed[0] == '\0')
  1205              		.loc 1 396 1 view .LVU354
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 37
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 37
 
 
  1206 0006 10B5     		push	{r4, lr}
@@ -2218,7 +2218,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1247 002e E375     		strb	r3, [r4, #23]
  406:Glider-Core/glider_core.c ****     s_local_card_mismatch = 0U;
  1248              		.loc 1 406 5 is_stmt 1 view .LVU368
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 38
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 38
 
 
  406:Glider-Core/glider_core.c ****     s_local_card_mismatch = 0U;
@@ -2278,7 +2278,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  264:Glider-Core/glider_core.c ****   const char *field = NULL;
  1296              		.loc 1 264 1 is_stmt 1 view -0
  1297              		.cfi_startproc
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 39
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 39
 
 
  1298              		@ args = 0, pretend = 0, frame = 32
@@ -2338,7 +2338,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1340              	.L124:
  297:Glider-Core/glider_core.c **** 
  1341              		.loc 1 297 1 view .LVU389
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 40
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 40
 
 
  1342 0026 2046     		mov	r0, r4
@@ -2398,7 +2398,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1385 0052 079A     		ldr	r2, [sp, #28]
  1386 0054 D15C     		ldrb	r1, [r2, r3]	@ zero_extendqisi2
  282:Glider-Core/glider_core.c ****     {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 41
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 41
 
 
  1387              		.loc 1 282 24 view .LVU401
@@ -2458,7 +2458,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  296:Glider-Core/glider_core.c **** }
  1428              		.loc 1 296 3 view .LVU415
  296:Glider-Core/glider_core.c **** }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 42
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 42
 
 
  1429              		.loc 1 296 10 is_stmt 0 view .LVU416
@@ -2518,7 +2518,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1477              		@ frame_needed = 0, uses_anonymous_args = 0
  422:Glider-Core/glider_core.c ****   char payload[96] = {0};
  1478              		.loc 1 422 1 is_stmt 0 view .LVU421
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 43
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 43
 
 
  1479 0000 70B5     		push	{r4, r5, r6, lr}
@@ -2578,7 +2578,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  436:Glider-Core/glider_core.c ****   abs_lat = (uint32_t)((sign_lat > 0) ? frame->gnrmc.latitude_deg_e7 : -frame->gnrmc.latitude_deg_e
  1519              		.loc 1 436 27 is_stmt 0 discriminator 4 view .LVU436
  1520 0020 D4F86802 		ldr	r0, [r4, #616]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 44
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 44
 
 
  436:Glider-Core/glider_core.c ****   abs_lat = (uint32_t)((sign_lat > 0) ? frame->gnrmc.latitude_deg_e7 : -frame->gnrmc.latitude_deg_e
@@ -2638,7 +2638,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1562              		.loc 1 451 19 discriminator 8 view .LVU449
  1563 0056 04F26E24 		addw	r4, r4, #622
  1564              	.LVL134:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 45
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 45
 
 
  440:Glider-Core/glider_core.c ****       payload,
@@ -2698,7 +2698,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1610 008c 4FF0FF33 		mov	r3, #-1
  1611 0090 C6E7     		b	.L141
  1612              	.LVL141:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 46
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 46
 
 
  1613              	.L151:
@@ -2758,7 +2758,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1655              		.loc 1 460 20 is_stmt 0 view .LVU470
  1656 00be 0124     		movs	r4, #1
  1657 00c0 C3F8C840 		str	r4, [r3, #200]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 47
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 47
 
 
  461:Glider-Core/glider_core.c ****   return true;
@@ -2818,7 +2818,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  709:Glider-Core/glider_core.c ****   }
  710:Glider-Core/glider_core.c **** 
  711:Glider-Core/glider_core.c ****   s_rx_line_count++;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 48
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 48
 
 
  712:Glider-Core/glider_core.c ****   if (s_mode_switch_cooldown > 0U)
@@ -2878,7 +2878,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  766:Glider-Core/glider_core.c ****       s_shortmsg_waiting_ack = 0U;
  767:Glider-Core/glider_core.c ****       s_shortmsg_sent_count++;
  768:Glider-Core/glider_core.c ****       if (cached_fix_expired(HAL_GetTick()))
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 49
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 49
 
 
  769:Glider-Core/glider_core.c ****       {
@@ -2938,7 +2938,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  823:Glider-Core/glider_core.c **** 
  824:Glider-Core/glider_core.c ****     if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT)
  825:Glider-Core/glider_core.c ****     {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 50
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 50
 
 
  826:Glider-Core/glider_core.c ****       s_signal_good = 1U;
@@ -2998,7 +2998,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  880:Glider-Core/glider_core.c ****   GliderCore_OnDecodedFrame(&s_decoded_frame);
  881:Glider-Core/glider_core.c **** 
  882:Glider-Core/glider_core.c ****   if (s_decoded_frame.type == GLIDER_RDSS_FRAME_HEX_BINARY)
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 51
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 51
 
 
  883:Glider-Core/glider_core.c ****   {
@@ -3058,7 +3058,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1701              	.LCFI24:
  1702              		.cfi_def_cfa_offset 8
  1703              		.cfi_offset 3, -8
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 52
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 52
 
 
  1704              		.cfi_offset 14, -4
@@ -3118,7 +3118,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1747              		.loc 1 941 24 is_stmt 0 view .LVU500
  1748 002c 264A     		ldr	r2, .L164+40
  1749 002e 1360     		str	r3, [r2]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 53
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 53
 
 
  942:Glider-Core/glider_core.c ****   s_tx_last_uart_error = 0;
@@ -3178,7 +3178,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1791 004e 1364     		str	r3, [r2, #64]
  955:Glider-Core/glider_core.c ****   s_current_target_card_known = 0U;
  1792              		.loc 1 955 3 is_stmt 1 view .LVU527
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 54
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 54
 
 
  1793              		.loc 1 955 31 is_stmt 0 view .LVU528
@@ -3238,7 +3238,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1835 007c 0B60     		str	r3, [r1]
  968:Glider-Core/glider_core.c ****   s_last_tx_text[0] = '\0';
  1836              		.loc 1 968 3 is_stmt 1 view .LVU553
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 55
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 55
 
 
  1837              		.loc 1 968 21 is_stmt 0 view .LVU554
@@ -3298,7 +3298,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1880 00c4 00000000 		.word	s_tx_fail_count
  1881 00c8 00000000 		.word	s_tx_last_hal_status
  1882 00cc 00000000 		.word	s_tx_last_uart_error
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 56
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 56
 
 
  1883 00d0 00000000 		.word	s_last
@@ -3358,7 +3358,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
 1013:Glider-Core/glider_core.c ****     now = HAL_GetTick();
 1014:Glider-Core/glider_core.c **** 
 1015:Glider-Core/glider_core.c ****     if (s_card_query_cooldown > 0U)
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 57
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 57
 
 
 1016:Glider-Core/glider_core.c ****     {
@@ -3418,7 +3418,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1913              		.cfi_def_cfa_offset 16
  1914              		.cfi_offset 3, -16
  1915              		.cfi_offset 4, -12
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 58
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 58
 
 
  1916              		.cfi_offset 5, -8
@@ -3478,7 +3478,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  1950              	.LVL157:
  1951              	.L170:
  1952              		.loc 1 1082 18 is_stmt 1 discriminator 1 view .LVU588
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 59
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 59
 
 
  1953 001e 8342     		cmp	r3, r0
@@ -3538,7 +3538,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
 1092:Glider-Core/glider_core.c ****   s_tx_attempt_count++;
 1093:Glider-Core/glider_core.c ****   ret = HAL_UART_Transmit(s_uart, (uint8_t *)text, (uint16_t)len, 200U);
 1094:Glider-Core/glider_core.c ****   s_tx_last_hal_status = (uint32_t)ret;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 60
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 60
 
 
 1095:Glider-Core/glider_core.c ****   s_tx_last_uart_error = (uint32_t)s_uart->ErrorCode;
@@ -3598,7 +3598,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2020              		.loc 1 1094 24 is_stmt 0 view .LVU613
  2021 0066 0D4B     		ldr	r3, .L176+12
  2022 0068 1860     		str	r0, [r3]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 61
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 61
 
 
 1095:Glider-Core/glider_core.c **** 
@@ -3658,7 +3658,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2066              		.cfi_endproc
  2067              	.LFE363:
  2069              		.section	.rodata.request_rd_mode_soft.str1.4,"aMS",%progbits,1
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 62
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 62
 
 
  2070              		.align	2
@@ -3718,7 +3718,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2113              	.L180:
  160:Glider-Core/glider_core.c ****   {
  2114              		.loc 1 160 3 is_stmt 1 view .LVU635
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 63
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 63
 
 
  160:Glider-Core/glider_core.c ****   {
@@ -3778,7 +3778,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2156      454E4454 
  2156      4F3F0D0A 
  2156      00
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 64
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 64
 
 
  2157 002d 000000   		.align	2
@@ -3838,7 +3838,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  525:Glider-Core/glider_core.c ****   {
  2200              		.loc 1 525 6 view .LVU652
  2201 001e F3B1     		cbz	r3, .L189
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 65
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 65
 
 
  525:Glider-Core/glider_core.c ****   {
@@ -3898,7 +3898,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2240              		.loc 1 558 9 is_stmt 1 view .LVU668
  558:Glider-Core/glider_core.c ****         s_rn_mode_active = 0U;
  2241              		.loc 1 558 26 is_stmt 0 view .LVU669
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 66
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 66
 
 
  2242 004c 4D4B     		ldr	r3, .L215
@@ -3958,7 +3958,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2278 006a 13B1     		cbz	r3, .L209
  2279              	.L191:
  537:Glider-Core/glider_core.c ****   }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 67
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 67
 
 
  2280              		.loc 1 537 5 is_stmt 1 view .LVU688
@@ -4018,7 +4018,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2322 008c FFF7FEFF 		bl	GliderCore_SendText
  2323              	.LVL184:
  544:Glider-Core/glider_core.c ****       {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 68
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 68
 
 
  2324              		.loc 1 544 10 view .LVU701
@@ -4078,7 +4078,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2364              		.loc 1 568 12 view .LVU715
  2365 00ba 0028     		cmp	r0, #0
  2366 00bc E9D1     		bne	.L194
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 69
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 69
 
 
  570:Glider-Core/glider_core.c ****         }
@@ -4138,7 +4138,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2405 00e2 1BBB     		cbnz	r3, .L199
  2406              	.L198:
  591:Glider-Core/glider_core.c ****       if (written <= 0 || (size_t)written >= sizeof(cmd))
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 70
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 70
 
 
  2407              		.loc 1 591 7 is_stmt 1 view .LVU732
@@ -4198,7 +4198,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2447 010e 244C     		ldr	r4, .L215+28
  2448 0110 1722     		movs	r2, #23
  2449 0112 2049     		ldr	r1, .L215+16
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 71
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 71
 
 
  2450 0114 2046     		mov	r0, r4
@@ -4258,7 +4258,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2486 0136 9AE7     		b	.L188
  2487              	.L196:
  614:Glider-Core/glider_core.c ****   {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 72
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 72
 
 
  2488              		.loc 1 614 3 is_stmt 1 view .LVU765
@@ -4318,7 +4318,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  621:Glider-Core/glider_core.c ****       s_tc_mode_requested = 0U;
  2527              		.loc 1 621 7 is_stmt 1 view .LVU781
  621:Glider-Core/glider_core.c ****       s_tc_mode_requested = 0U;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 73
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 73
 
 
  2528              		.loc 1 621 24 is_stmt 0 view .LVU782
@@ -4378,7 +4378,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2566 0180 0020     		movs	r0, #0
  2567 0182 74E7     		b	.L188
  2568              	.L216:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 74
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 74
 
 
  2569              		.align	2
@@ -4438,7 +4438,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2614 0002 0024     		movs	r4, #0
 1001:Glider-Core/glider_core.c ****   {
  2615              		.loc 1 1001 3 view .LVU804
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 75
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 75
 
 
  2616 0004 09E0     		b	.L218
@@ -4498,7 +4498,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
 1031:Glider-Core/glider_core.c ****     {
  2658              		.loc 1 1031 5 view .LVU817
 1031:Glider-Core/glider_core.c ****     {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 76
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 76
 
 
  2659              		.loc 1 1031 9 is_stmt 0 view .LVU818
@@ -4558,7 +4558,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
 1046:Glider-Core/glider_core.c ****       {
  2698              		.loc 1 1046 40 discriminator 1 view .LVU834
  2699 0068 47F22F52 		movw	r2, #29999
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 77
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 77
 
 
  2700 006c 9342     		cmp	r3, r2
@@ -4618,7 +4618,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2739 0098 D2F83831 		ldr	r3, [r2, #312]
 1017:Glider-Core/glider_core.c ****     }
  2740              		.loc 1 1017 28 is_stmt 0 view .LVU850
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 78
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 78
 
 
  2741 009c 013B     		subs	r3, r3, #1
@@ -4678,7 +4678,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2781 00d2 FFF7FEFF 		bl	osDelay
  2782              	.LVL220:
 1026:Glider-Core/glider_core.c ****     }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 79
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 79
 
 
  2783              		.loc 1 1026 7 discriminator 4 view .LVU865
@@ -4738,7 +4738,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
 1110:Glider-Core/glider_core.c **** {
  2831              		.loc 1 1110 1 view -0
  2832              		.cfi_startproc
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 80
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 80
 
 
  2833              		@ args = 0, pretend = 0, frame = 0
@@ -4798,7 +4798,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2884              	.LFB366:
 1118:Glider-Core/glider_core.c **** 
 1119:Glider-Core/glider_core.c **** uint32_t GliderCore_GetTxAttemptCount(void)
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 81
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 81
 
 
 1120:Glider-Core/glider_core.c **** {
@@ -4858,7 +4858,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2934              		.thumb
  2935              		.thumb_func
  2937              	GliderCore_GetTxFailCount:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 82
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 82
 
 
  2938              	.LFB368:
@@ -4918,7 +4918,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  2985              		.align	1
  2986              		.global	GliderCore_GetLastUartErrorCode
  2987              		.syntax unified
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 83
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 83
 
 
  2988              		.thumb
@@ -4978,7 +4978,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3035              		.cfi_endproc
  3036              	.LFE371:
  3038              		.section	.text.GliderCore_GetTxMode,"ax",%progbits
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 84
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 84
 
 
  3039              		.align	1
@@ -5038,7 +5038,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3086 0004 00000000 		.word	s_last_tx_text
  3087              		.cfi_endproc
  3088              	.LFE373:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 85
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 85
 
 
  3090              		.section	.text.GliderCore_GetShortMsgSentCount,"ax",%progbits
@@ -5098,7 +5098,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3137              	.L269:
  3138 0004 00000000 		.word	s_last_shortmsg_payload
  3139              		.cfi_endproc
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 86
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 86
 
 
  3140              	.LFE375:
@@ -5158,7 +5158,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3188 0006 00BF     		.align	2
  3189              	.L275:
  3190 0008 00000000 		.word	s_last
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 87
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 87
 
 
  3191              		.cfi_endproc
@@ -5218,7 +5218,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3239              	.L282:
  3240 0006 00BF     		.align	2
  3241              	.L281:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 88
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 88
 
 
  3242 0008 00000000 		.word	s_last
@@ -5278,7 +5278,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
 1197:Glider-Core/glider_core.c **** }
  3291              		.loc 1 1197 1 view .LVU939
  3292 0004 7047     		bx	lr
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 89
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 89
 
 
  3293              	.L288:
@@ -5338,7 +5338,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3345 0026 0020     		movs	r0, #0
  3346 0028 7047     		bx	lr
  3347              	.L294:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 90
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 90
 
 
  3348 002a 0120     		movs	r0, #1
@@ -5398,7 +5398,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3395              		.loc 1 1212 3 view .LVU957
 1213:Glider-Core/glider_core.c **** }
  3396              		.loc 1 1213 1 is_stmt 0 view .LVU958
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 91
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 91
 
 
  3397 0000 7047     		bx	lr
@@ -5458,7 +5458,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3444              		.align	2
  3445              	.LC20:
  3446 0030 2C592C59 		.ascii	",Y,Y,\000"
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 92
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 92
 
 
  3446      2C00
@@ -5518,7 +5518,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  711:Glider-Core/glider_core.c ****   if (s_mode_switch_cooldown > 0U)
  3490              		.loc 1 711 18 is_stmt 0 view .LVU972
  3491 001a 494A     		ldr	r2, .L332+4
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 93
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 93
 
 
  3492 001c 1368     		ldr	r3, [r2]
@@ -5578,7 +5578,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3529              		.loc 1 723 5 is_stmt 1 view .LVU989
  723:Glider-Core/glider_core.c ****   }
  3530              		.loc 1 723 30 is_stmt 0 view .LVU990
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 94
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 94
 
 
  3531 004a 9A62     		str	r2, [r3, #40]
@@ -5638,7 +5638,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3568              		.loc 1 733 35 is_stmt 0 view .LVU1007
  3569 0070 5A66     		str	r2, [r3, #100]
  3570              	.L305:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 95
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 95
 
 
  736:Glider-Core/glider_core.c ****   {
@@ -5698,7 +5698,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3607              		.loc 1 743 5 is_stmt 1 view .LVU1025
  743:Glider-Core/glider_core.c ****   }
  3608              		.loc 1 743 35 is_stmt 0 view .LVU1026
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 96
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 96
 
 
  3609 0098 5A66     		str	r2, [r3, #100]
@@ -5758,7 +5758,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  759:Glider-Core/glider_core.c ****   {
  3647              		.loc 1 759 3 is_stmt 1 view .LVU1043
  759:Glider-Core/glider_core.c ****   {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 97
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 97
 
 
  3648              		.loc 1 759 7 is_stmt 0 view .LVU1044
@@ -5818,7 +5818,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3689 00f4 FFF7FEFF 		bl	text_contains_token
  3690              	.LVL238:
  776:Glider-Core/glider_core.c ****       {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 98
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 98
 
 
  3691              		.loc 1 776 10 view .LVU1058
@@ -5878,7 +5878,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3732              		.loc 1 784 11 is_stmt 1 view .LVU1071
  3733 0134 FFF7FEFF 		bl	invalidate_cached_fix_and_request_relocate
  3734              	.LVL243:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 99
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 99
 
 
  3735 0138 39E0     		b	.L309
@@ -5938,7 +5938,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  768:Glider-Core/glider_core.c ****       {
  3780              		.loc 1 768 7 is_stmt 1 view .LVU1081
  768:Glider-Core/glider_core.c ****       {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 100
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 100
 
 
  3781              		.loc 1 768 11 is_stmt 0 view .LVU1082
@@ -5998,7 +5998,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3821              		.loc 1 803 5 is_stmt 1 view .LVU1096
  803:Glider-Core/glider_core.c **** 
  3822              		.loc 1 803 22 is_stmt 0 view .LVU1097
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 101
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 101
 
 
  3823 01d2 0022     		movs	r2, #0
@@ -6058,7 +6058,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  826:Glider-Core/glider_core.c ****     }
  3861              		.loc 1 826 21 is_stmt 0 view .LVU1114
  3862 0208 4C4B     		ldr	r3, .L334+16
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 102
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 102
 
 
  3863 020a 0122     		movs	r2, #1
@@ -6118,7 +6118,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3901              		.loc 1 837 19 is_stmt 0 view .LVU1130
  3902 023a 404B     		ldr	r3, .L334+16
  3903 023c 0122     		movs	r2, #1
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 103
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 103
 
 
  3904 023e 5A60     		str	r2, [r3, #4]
@@ -6178,7 +6178,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3941              		.loc 1 856 7 is_stmt 1 view .LVU1147
  856:Glider-Core/glider_core.c ****       s_tc_mode_requested = 0U;
  3942              		.loc 1 856 24 is_stmt 0 view .LVU1148
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 104
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 104
 
 
  3943 0264 354B     		ldr	r3, .L334+16
@@ -6238,7 +6238,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  3979              		.loc 1 869 7 is_stmt 1 view .LVU1166
  869:Glider-Core/glider_core.c ****       {
  3980              		.loc 1 869 11 is_stmt 0 view .LVU1167
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 105
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 105
 
 
  3981 0286 2E48     		ldr	r0, .L334+20
@@ -6298,7 +6298,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4024 02b4 7BE7     		b	.L309
  4025              	.L312:
  789:Glider-Core/glider_core.c ****       }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 106
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 106
 
 
  4026              		.loc 1 789 9 view .LVU1179
@@ -6358,7 +6358,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4065 02ec 134B     		ldr	r3, .L334+16
  4066 02ee 0022     		movs	r2, #0
  4067 02f0 1A60     		str	r2, [r3]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 107
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 107
 
 
  4068 02f2 8CE7     		b	.L318
@@ -6418,7 +6418,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4109 032a 00BF     		.align	2
  4110              	.L334:
  4111 032c 68000000 		.word	s_last+104
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 108
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 108
 
 
  4112 0330 00000000 		.word	s_last_shortmsg_payload
@@ -6478,7 +6478,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4155              		.loc 1 926 27 is_stmt 0 view .LVU1220
  4156 0018 591C     		adds	r1, r3, #1
  4157 001a 124A     		ldr	r2, .L351+4
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 109
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 109
 
 
  4158 001c 1160     		str	r1, [r2]
@@ -6538,7 +6538,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4198 0040 0948     		ldr	r0, .L351+8
  4199              	.LVL258:
  912:Glider-Core/glider_core.c ****       process_line(s_line_buffer);
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 110
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 110
 
 
  4200              		.loc 1 912 33 view .LVU1235
@@ -6598,7 +6598,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4245              		.thumb_func
  4247              	GliderCore_RunRxTask:
  4248              	.LFB361:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 111
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 111
 
 
  982:Glider-Core/glider_core.c ****   uint8_t byte = 0;
@@ -6658,7 +6658,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4297              	.LFB386:
 1219:Glider-Core/glider_core.c **** 
 1220:Glider-Core/glider_core.c **** void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 112
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 112
 
 
 1221:Glider-Core/glider_core.c **** {
@@ -6718,7 +6718,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4335 001c FFF7FEFF 		bl	IMU_OnUART_RxComplete
  4336              	.LVL267:
 1237:Glider-Core/glider_core.c **** }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 113
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 113
 
 
  4337              		.loc 1 1237 1 is_stmt 0 view .LVU1266
@@ -6778,7 +6778,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4385              		.loc 1 1240 1 is_stmt 1 view -0
  4386              		.cfi_startproc
  4387              		@ args = 0, pretend = 0, frame = 0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 114
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 114
 
 
  4388              		@ frame_needed = 0, uses_anonymous_args = 0
@@ -6838,7 +6838,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4443 0000 00000000 		.space	512
  4443      00000000 
  4443      00000000 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 115
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 115
 
 
  4443      00000000 
@@ -6898,7 +6898,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4504              		.section	.bss.s_tx_last_hal_status,"aw",%nobits
  4505              		.align	2
  4508              	s_tx_last_hal_status:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 116
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 116
 
 
  4509 0000 00000000 		.space	4
@@ -6958,220 +6958,220 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 1
  4579              		.file 10 "Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h"
  4580              		.file 11 "Glider-Core/pressure_sensor_driver.h"
  4581              		.file 12 "Glider-Core/imu_core.h"
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 117
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 117
 
 
  4582              		.file 13 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\string.h"
  4583              		.file 14 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\stdio.h"
  4584              		.file 15 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h"
  4585              		.file 16 "<built-in>"
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 118
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 118
 
 
 DEFINED SYMBOLS
                             *ABS*:00000000 glider_core.c
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:20     .text.to_upper_ascii:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:25     .text.to_upper_ascii:00000000 to_upper_ascii
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:57     .text.text_contains_token:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:62     .text.text_contains_token:00000000 text_contains_token
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:168    .text.raw_extract_csv_field:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:173    .text.raw_extract_csv_field:00000000 raw_extract_csv_field
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:350    .rodata.try_parse_signal_from_bdbsi.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:354    .text.try_parse_signal_from_bdbsi:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:359    .text.try_parse_signal_from_bdbsi:00000000 try_parse_signal_from_bdbsi
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:499    .text.try_parse_signal_from_bdbsi:00000074 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:504    .text.cached_fix_expired:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:509    .text.cached_fix_expired:00000000 cached_fix_expired
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:558    .text.cached_fix_expired:00000028 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4478   .bss.s_last:00000000 s_last
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4472   .bss.s_last_valid_fix_tick:00000000 s_last_valid_fix_tick
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:565    .text.invalidate_cached_fix_and_request_relocate:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:570    .text.invalidate_cached_fix_and_request_relocate:00000000 invalidate_cached_fix_and_request_relocate
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:609    .text.invalidate_cached_fix_and_request_relocate:00000020 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4466   .bss.s_last_rn_request_tick:00000000 s_last_rn_request_tick
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:615    .text.is_valid_gnrmc_fix:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:620    .text.is_valid_gnrmc_fix:00000000 is_valid_gnrmc_fix
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:706    .text.is_valid_gnrmc_fix:0000004c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:713    .text.ring_pop:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:718    .text.ring_pop:00000000 ring_pop
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:786    .text.ring_pop:00000034 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4549   .bss.s_rx_tail:00000000 s_rx_tail
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4555   .bss.s_rx_head:00000000 s_rx_head
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4561   .bss.s_rx_ring:00000000 s_rx_ring
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:793    .text.ring_push:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:798    .text.ring_push:00000000 ring_push
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:859    .text.ring_push:00000034 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4538   .bss.s_rx_overflow_count:00000000 s_rx_overflow_count
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:867    .text.try_queue_cached_shortmsg:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:872    .text.try_queue_cached_shortmsg:00000000 try_queue_cached_shortmsg
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:945    .text.try_queue_cached_shortmsg:0000004c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:951    .rodata.try_parse_target_card_from_sendto.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:958    .text.try_parse_target_card_from_sendto:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:963    .text.try_parse_target_card_from_sendto:00000000 try_parse_target_card_from_sendto
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1178   .text.try_parse_target_card_from_sendto:000000c4 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1186   .text.update_local_card_id:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1191   .text.update_local_card_id:00000000 update_local_card_id
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1275   .text.update_local_card_id:00000044 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1281   .rodata.try_parse_local_card_from_bdici.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1288   .text.try_parse_local_card_from_bdici:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1293   .text.try_parse_local_card_from_bdici:00000000 try_parse_local_card_from_bdici
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1455   .text.try_parse_local_card_from_bdici:000000a8 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1461   .rodata.cache_coordinate_shortmsg.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1466   .text.cache_coordinate_shortmsg:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1471   .text.cache_coordinate_shortmsg:00000000 cache_coordinate_shortmsg
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1677   .text.cache_coordinate_shortmsg:000000d4 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1686   .text.GliderCore_Init:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1692   .text.GliderCore_Init:00000000 GliderCore_Init
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1871   .text.GliderCore_Init:000000a0 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4567   .bss.s_uart:00000000 s_uart
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4436   .bss.s_line_len:00000000 s_line_len
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 119
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:20     .text.to_upper_ascii:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:25     .text.to_upper_ascii:00000000 to_upper_ascii
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:57     .text.text_contains_token:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:62     .text.text_contains_token:00000000 text_contains_token
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:168    .text.raw_extract_csv_field:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:173    .text.raw_extract_csv_field:00000000 raw_extract_csv_field
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:350    .rodata.try_parse_signal_from_bdbsi.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:354    .text.try_parse_signal_from_bdbsi:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:359    .text.try_parse_signal_from_bdbsi:00000000 try_parse_signal_from_bdbsi
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:499    .text.try_parse_signal_from_bdbsi:00000074 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:504    .text.cached_fix_expired:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:509    .text.cached_fix_expired:00000000 cached_fix_expired
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:558    .text.cached_fix_expired:00000028 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4478   .bss.s_last:00000000 s_last
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4472   .bss.s_last_valid_fix_tick:00000000 s_last_valid_fix_tick
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:565    .text.invalidate_cached_fix_and_request_relocate:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:570    .text.invalidate_cached_fix_and_request_relocate:00000000 invalidate_cached_fix_and_request_relocate
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:609    .text.invalidate_cached_fix_and_request_relocate:00000020 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4466   .bss.s_last_rn_request_tick:00000000 s_last_rn_request_tick
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:615    .text.is_valid_gnrmc_fix:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:620    .text.is_valid_gnrmc_fix:00000000 is_valid_gnrmc_fix
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:706    .text.is_valid_gnrmc_fix:0000004c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:713    .text.ring_pop:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:718    .text.ring_pop:00000000 ring_pop
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:786    .text.ring_pop:00000034 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4549   .bss.s_rx_tail:00000000 s_rx_tail
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4555   .bss.s_rx_head:00000000 s_rx_head
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4561   .bss.s_rx_ring:00000000 s_rx_ring
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:793    .text.ring_push:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:798    .text.ring_push:00000000 ring_push
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:859    .text.ring_push:00000034 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4538   .bss.s_rx_overflow_count:00000000 s_rx_overflow_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:867    .text.try_queue_cached_shortmsg:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:872    .text.try_queue_cached_shortmsg:00000000 try_queue_cached_shortmsg
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:945    .text.try_queue_cached_shortmsg:0000004c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:951    .rodata.try_parse_target_card_from_sendto.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:958    .text.try_parse_target_card_from_sendto:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:963    .text.try_parse_target_card_from_sendto:00000000 try_parse_target_card_from_sendto
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1178   .text.try_parse_target_card_from_sendto:000000c4 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1186   .text.update_local_card_id:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1191   .text.update_local_card_id:00000000 update_local_card_id
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1275   .text.update_local_card_id:00000044 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1281   .rodata.try_parse_local_card_from_bdici.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1288   .text.try_parse_local_card_from_bdici:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1293   .text.try_parse_local_card_from_bdici:00000000 try_parse_local_card_from_bdici
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1455   .text.try_parse_local_card_from_bdici:000000a8 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1461   .rodata.cache_coordinate_shortmsg.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1466   .text.cache_coordinate_shortmsg:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1471   .text.cache_coordinate_shortmsg:00000000 cache_coordinate_shortmsg
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1677   .text.cache_coordinate_shortmsg:000000d4 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1686   .text.GliderCore_Init:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1692   .text.GliderCore_Init:00000000 GliderCore_Init
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1871   .text.GliderCore_Init:000000a0 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4567   .bss.s_uart:00000000 s_uart
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4436   .bss.s_line_len:00000000 s_line_len
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 119
 
 
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4430   .bss.s_line_overflowed:00000000 s_line_overflowed
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4532   .bss.s_rx_line_count:00000000 s_rx_line_count
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4526   .bss.s_tx_attempt_count:00000000 s_tx_attempt_count
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4520   .bss.s_tx_ok_count:00000000 s_tx_ok_count
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4514   .bss.s_tx_fail_count:00000000 s_tx_fail_count
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4508   .bss.s_tx_last_hal_status:00000000 s_tx_last_hal_status
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4502   .bss.s_tx_last_uart_error:00000000 s_tx_last_uart_error
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4496   .bss.s_shortmsg_sent_count:00000000 s_shortmsg_sent_count
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4460   .bss.s_last_shortmsg_try_tick:00000000 s_last_shortmsg_try_tick
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4454   .bss.s_last_tc_request_tick:00000000 s_last_tc_request_tick
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4448   .bss.s_last_rd_request_tick:00000000 s_last_rd_request_tick
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4490   .bss.s_last_tx_text:00000000 s_last_tx_text
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4484   .bss.s_last_shortmsg_payload:00000000 s_last_shortmsg_payload
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4543   .bss.s_rx_byte:00000000 s_rx_byte
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1897   .text.GliderCore_SendText:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:1903   .text.GliderCore_SendText:00000000 GliderCore_SendText
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2059   .text.GliderCore_SendText:00000090 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2070   .rodata.request_rd_mode_soft.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2074   .text.request_rd_mode_soft:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2079   .text.request_rd_mode_soft:00000000 request_rd_mode_soft
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2141   .text.request_rd_mode_soft:00000030 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2148   .rodata.try_send_pending_shortmsg.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2161   .text.try_send_pending_shortmsg:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2166   .text.try_send_pending_shortmsg:00000000 try_send_pending_shortmsg
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2571   .text.try_send_pending_shortmsg:00000184 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2585   .rodata.GliderCore_RunTxTask.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2592   .text.GliderCore_RunTxTask:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2598   .text.GliderCore_RunTxTask:00000000 GliderCore_RunTxTask
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2811   .text.GliderCore_RunTxTask:000000f8 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4417   .rodata.s_boot_test_cmds:00000000 s_boot_test_cmds
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2823   .text.GliderCore_GetRxLineCount:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2829   .text.GliderCore_GetRxLineCount:00000000 GliderCore_GetRxLineCount
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2845   .text.GliderCore_GetRxLineCount:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2850   .text.GliderCore_GetRxOverflowCount:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2856   .text.GliderCore_GetRxOverflowCount:00000000 GliderCore_GetRxOverflowCount
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2872   .text.GliderCore_GetRxOverflowCount:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2877   .text.GliderCore_GetTxAttemptCount:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2883   .text.GliderCore_GetTxAttemptCount:00000000 GliderCore_GetTxAttemptCount
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2899   .text.GliderCore_GetTxAttemptCount:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2904   .text.GliderCore_GetTxOkCount:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2910   .text.GliderCore_GetTxOkCount:00000000 GliderCore_GetTxOkCount
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2926   .text.GliderCore_GetTxOkCount:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2931   .text.GliderCore_GetTxFailCount:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2937   .text.GliderCore_GetTxFailCount:00000000 GliderCore_GetTxFailCount
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2953   .text.GliderCore_GetTxFailCount:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2958   .text.GliderCore_GetLastTxHalStatus:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2964   .text.GliderCore_GetLastTxHalStatus:00000000 GliderCore_GetLastTxHalStatus
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2980   .text.GliderCore_GetLastTxHalStatus:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2985   .text.GliderCore_GetLastUartErrorCode:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:2991   .text.GliderCore_GetLastUartErrorCode:00000000 GliderCore_GetLastUartErrorCode
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3007   .text.GliderCore_GetLastUartErrorCode:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3012   .text.GliderCore_GetSignalGood:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3018   .text.GliderCore_GetSignalGood:00000000 GliderCore_GetSignalGood
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3034   .text.GliderCore_GetSignalGood:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3039   .text.GliderCore_GetTxMode:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3045   .text.GliderCore_GetTxMode:00000000 GliderCore_GetTxMode
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3061   .text.GliderCore_GetTxMode:00000008 $d
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 120
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4430   .bss.s_line_overflowed:00000000 s_line_overflowed
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4532   .bss.s_rx_line_count:00000000 s_rx_line_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4526   .bss.s_tx_attempt_count:00000000 s_tx_attempt_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4520   .bss.s_tx_ok_count:00000000 s_tx_ok_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4514   .bss.s_tx_fail_count:00000000 s_tx_fail_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4508   .bss.s_tx_last_hal_status:00000000 s_tx_last_hal_status
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4502   .bss.s_tx_last_uart_error:00000000 s_tx_last_uart_error
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4496   .bss.s_shortmsg_sent_count:00000000 s_shortmsg_sent_count
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4460   .bss.s_last_shortmsg_try_tick:00000000 s_last_shortmsg_try_tick
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4454   .bss.s_last_tc_request_tick:00000000 s_last_tc_request_tick
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4448   .bss.s_last_rd_request_tick:00000000 s_last_rd_request_tick
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4490   .bss.s_last_tx_text:00000000 s_last_tx_text
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4484   .bss.s_last_shortmsg_payload:00000000 s_last_shortmsg_payload
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4543   .bss.s_rx_byte:00000000 s_rx_byte
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1897   .text.GliderCore_SendText:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:1903   .text.GliderCore_SendText:00000000 GliderCore_SendText
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2059   .text.GliderCore_SendText:00000090 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2070   .rodata.request_rd_mode_soft.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2074   .text.request_rd_mode_soft:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2079   .text.request_rd_mode_soft:00000000 request_rd_mode_soft
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2141   .text.request_rd_mode_soft:00000030 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2148   .rodata.try_send_pending_shortmsg.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2161   .text.try_send_pending_shortmsg:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2166   .text.try_send_pending_shortmsg:00000000 try_send_pending_shortmsg
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2571   .text.try_send_pending_shortmsg:00000184 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2585   .rodata.GliderCore_RunTxTask.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2592   .text.GliderCore_RunTxTask:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2598   .text.GliderCore_RunTxTask:00000000 GliderCore_RunTxTask
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2811   .text.GliderCore_RunTxTask:000000f8 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4417   .rodata.s_boot_test_cmds:00000000 s_boot_test_cmds
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2823   .text.GliderCore_GetRxLineCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2829   .text.GliderCore_GetRxLineCount:00000000 GliderCore_GetRxLineCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2845   .text.GliderCore_GetRxLineCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2850   .text.GliderCore_GetRxOverflowCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2856   .text.GliderCore_GetRxOverflowCount:00000000 GliderCore_GetRxOverflowCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2872   .text.GliderCore_GetRxOverflowCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2877   .text.GliderCore_GetTxAttemptCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2883   .text.GliderCore_GetTxAttemptCount:00000000 GliderCore_GetTxAttemptCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2899   .text.GliderCore_GetTxAttemptCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2904   .text.GliderCore_GetTxOkCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2910   .text.GliderCore_GetTxOkCount:00000000 GliderCore_GetTxOkCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2926   .text.GliderCore_GetTxOkCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2931   .text.GliderCore_GetTxFailCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2937   .text.GliderCore_GetTxFailCount:00000000 GliderCore_GetTxFailCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2953   .text.GliderCore_GetTxFailCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2958   .text.GliderCore_GetLastTxHalStatus:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2964   .text.GliderCore_GetLastTxHalStatus:00000000 GliderCore_GetLastTxHalStatus
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2980   .text.GliderCore_GetLastTxHalStatus:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2985   .text.GliderCore_GetLastUartErrorCode:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:2991   .text.GliderCore_GetLastUartErrorCode:00000000 GliderCore_GetLastUartErrorCode
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3007   .text.GliderCore_GetLastUartErrorCode:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3012   .text.GliderCore_GetSignalGood:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3018   .text.GliderCore_GetSignalGood:00000000 GliderCore_GetSignalGood
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3034   .text.GliderCore_GetSignalGood:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3039   .text.GliderCore_GetTxMode:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3045   .text.GliderCore_GetTxMode:00000000 GliderCore_GetTxMode
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3061   .text.GliderCore_GetTxMode:00000008 $d
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 120
 
 
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3066   .text.GliderCore_GetLastTxText:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3072   .text.GliderCore_GetLastTxText:00000000 GliderCore_GetLastTxText
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3086   .text.GliderCore_GetLastTxText:00000004 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3091   .text.GliderCore_GetShortMsgSentCount:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3097   .text.GliderCore_GetShortMsgSentCount:00000000 GliderCore_GetShortMsgSentCount
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3113   .text.GliderCore_GetShortMsgSentCount:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3118   .text.GliderCore_GetLastShortMsgPayload:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3124   .text.GliderCore_GetLastShortMsgPayload:00000000 GliderCore_GetLastShortMsgPayload
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3138   .text.GliderCore_GetLastShortMsgPayload:00000004 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3143   .text.GliderCore_GetCardId:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3149   .text.GliderCore_GetCardId:00000000 GliderCore_GetCardId
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3163   .text.GliderCore_GetCardId:00000004 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3168   .text.GliderCore_GetCardIdKnown:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3174   .text.GliderCore_GetCardIdKnown:00000000 GliderCore_GetCardIdKnown
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3190   .text.GliderCore_GetCardIdKnown:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3195   .text.GliderCore_GetPlatformCardId:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3201   .text.GliderCore_GetPlatformCardId:00000000 GliderCore_GetPlatformCardId
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3215   .text.GliderCore_GetPlatformCardId:00000004 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3220   .text.GliderCore_GetCardMismatch:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3226   .text.GliderCore_GetCardMismatch:00000000 GliderCore_GetCardMismatch
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3242   .text.GliderCore_GetCardMismatch:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3247   .text.GliderCore_GetHasCachedFix:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3253   .text.GliderCore_GetHasCachedFix:00000000 GliderCore_GetHasCachedFix
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3269   .text.GliderCore_GetHasCachedFix:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3274   .text.GliderCore_GetShortMsgPending:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3280   .text.GliderCore_GetShortMsgPending:00000000 GliderCore_GetShortMsgPending
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3296   .text.GliderCore_GetShortMsgPending:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3301   .text.GliderCore_GetReadyToSend:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3307   .text.GliderCore_GetReadyToSend:00000000 GliderCore_GetReadyToSend
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3354   .text.GliderCore_GetReadyToSend:00000030 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3359   .text.GliderCore_OnTextFrame:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3365   .text.GliderCore_OnTextFrame:00000000 GliderCore_OnTextFrame
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3380   .text.GliderCore_OnBinaryFrame:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3386   .text.GliderCore_OnBinaryFrame:00000000 GliderCore_OnBinaryFrame
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3402   .text.GliderCore_OnDecodedFrame:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3408   .text.GliderCore_OnDecodedFrame:00000000 GliderCore_OnDecodedFrame
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3423   .rodata.process_line.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3451   .text.process_line:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3456   .text.process_line:00000000 process_line
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3739   .text.process_line:0000013c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4425   .bss.s_decoded_frame:00000000 s_decoded_frame
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:3757   .text.process_line:0000017c $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4111   .text.process_line:0000032c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4121   .text.process_rx_byte:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4126   .text.process_rx_byte:00000000 process_rx_byte
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4234   .text.process_rx_byte:00000060 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4442   .bss.s_line_buffer:00000000 s_line_buffer
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4241   .text.GliderCore_RunRxTask:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4247   .text.GliderCore_RunRxTask:00000000 GliderCore_RunRxTask
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4289   .text.HAL_UART_RxCpltCallback:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4295   .text.HAL_UART_RxCpltCallback:00000000 HAL_UART_RxCpltCallback
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4370   .text.HAL_UART_RxCpltCallback:0000003c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4376   .text.HAL_UART_TxCpltCallback:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4382   .text.HAL_UART_TxCpltCallback:00000000 HAL_UART_TxCpltCallback
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4404   .rodata.str1.4:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4414   .rodata.s_boot_test_cmds:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4422   .bss.s_decoded_frame:00000000 $d
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s 			page 121
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3066   .text.GliderCore_GetLastTxText:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3072   .text.GliderCore_GetLastTxText:00000000 GliderCore_GetLastTxText
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3086   .text.GliderCore_GetLastTxText:00000004 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3091   .text.GliderCore_GetShortMsgSentCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3097   .text.GliderCore_GetShortMsgSentCount:00000000 GliderCore_GetShortMsgSentCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3113   .text.GliderCore_GetShortMsgSentCount:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3118   .text.GliderCore_GetLastShortMsgPayload:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3124   .text.GliderCore_GetLastShortMsgPayload:00000000 GliderCore_GetLastShortMsgPayload
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3138   .text.GliderCore_GetLastShortMsgPayload:00000004 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3143   .text.GliderCore_GetCardId:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3149   .text.GliderCore_GetCardId:00000000 GliderCore_GetCardId
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3163   .text.GliderCore_GetCardId:00000004 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3168   .text.GliderCore_GetCardIdKnown:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3174   .text.GliderCore_GetCardIdKnown:00000000 GliderCore_GetCardIdKnown
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3190   .text.GliderCore_GetCardIdKnown:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3195   .text.GliderCore_GetPlatformCardId:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3201   .text.GliderCore_GetPlatformCardId:00000000 GliderCore_GetPlatformCardId
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3215   .text.GliderCore_GetPlatformCardId:00000004 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3220   .text.GliderCore_GetCardMismatch:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3226   .text.GliderCore_GetCardMismatch:00000000 GliderCore_GetCardMismatch
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3242   .text.GliderCore_GetCardMismatch:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3247   .text.GliderCore_GetHasCachedFix:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3253   .text.GliderCore_GetHasCachedFix:00000000 GliderCore_GetHasCachedFix
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3269   .text.GliderCore_GetHasCachedFix:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3274   .text.GliderCore_GetShortMsgPending:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3280   .text.GliderCore_GetShortMsgPending:00000000 GliderCore_GetShortMsgPending
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3296   .text.GliderCore_GetShortMsgPending:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3301   .text.GliderCore_GetReadyToSend:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3307   .text.GliderCore_GetReadyToSend:00000000 GliderCore_GetReadyToSend
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3354   .text.GliderCore_GetReadyToSend:00000030 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3359   .text.GliderCore_OnTextFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3365   .text.GliderCore_OnTextFrame:00000000 GliderCore_OnTextFrame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3380   .text.GliderCore_OnBinaryFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3386   .text.GliderCore_OnBinaryFrame:00000000 GliderCore_OnBinaryFrame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3402   .text.GliderCore_OnDecodedFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3408   .text.GliderCore_OnDecodedFrame:00000000 GliderCore_OnDecodedFrame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3423   .rodata.process_line.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3451   .text.process_line:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3456   .text.process_line:00000000 process_line
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3739   .text.process_line:0000013c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4425   .bss.s_decoded_frame:00000000 s_decoded_frame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:3757   .text.process_line:0000017c $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4111   .text.process_line:0000032c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4121   .text.process_rx_byte:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4126   .text.process_rx_byte:00000000 process_rx_byte
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4234   .text.process_rx_byte:00000060 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4442   .bss.s_line_buffer:00000000 s_line_buffer
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4241   .text.GliderCore_RunRxTask:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4247   .text.GliderCore_RunRxTask:00000000 GliderCore_RunRxTask
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4289   .text.HAL_UART_RxCpltCallback:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4295   .text.HAL_UART_RxCpltCallback:00000000 HAL_UART_RxCpltCallback
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4370   .text.HAL_UART_RxCpltCallback:0000003c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4376   .text.HAL_UART_TxCpltCallback:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4382   .text.HAL_UART_TxCpltCallback:00000000 HAL_UART_TxCpltCallback
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4404   .rodata.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4414   .rodata.s_boot_test_cmds:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4422   .bss.s_decoded_frame:00000000 $d
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s 			page 121
 
 
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4431   .bss.s_line_overflowed:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4433   .bss.s_line_len:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4439   .bss.s_line_buffer:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4445   .bss.s_last_rd_request_tick:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4451   .bss.s_last_tc_request_tick:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4457   .bss.s_last_shortmsg_try_tick:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4463   .bss.s_last_rn_request_tick:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4469   .bss.s_last_valid_fix_tick:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4475   .bss.s_last:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4481   .bss.s_last_shortmsg_payload:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4487   .bss.s_last_tx_text:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4493   .bss.s_shortmsg_sent_count:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4499   .bss.s_tx_last_uart_error:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4505   .bss.s_tx_last_hal_status:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4511   .bss.s_tx_fail_count:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4517   .bss.s_tx_ok_count:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4523   .bss.s_tx_attempt_count:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4529   .bss.s_rx_line_count:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4535   .bss.s_rx_overflow_count:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4544   .bss.s_rx_byte:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4546   .bss.s_rx_tail:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4552   .bss.s_rx_head:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4558   .bss.s_rx_ring:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cccCD5iC.s:4564   .bss.s_uart:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4431   .bss.s_line_overflowed:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4433   .bss.s_line_len:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4439   .bss.s_line_buffer:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4445   .bss.s_last_rd_request_tick:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4451   .bss.s_last_tc_request_tick:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4457   .bss.s_last_shortmsg_try_tick:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4463   .bss.s_last_rn_request_tick:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4469   .bss.s_last_valid_fix_tick:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4475   .bss.s_last:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4481   .bss.s_last_shortmsg_payload:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4487   .bss.s_last_tx_text:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4493   .bss.s_shortmsg_sent_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4499   .bss.s_tx_last_uart_error:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4505   .bss.s_tx_last_hal_status:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4511   .bss.s_tx_fail_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4517   .bss.s_tx_ok_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4523   .bss.s_tx_attempt_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4529   .bss.s_rx_line_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4535   .bss.s_rx_overflow_count:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4544   .bss.s_rx_byte:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4546   .bss.s_rx_tail:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4552   .bss.s_rx_head:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4558   .bss.s_rx_ring:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccwK9l96.s:4564   .bss.s_uart:00000000 $d
 
 UNDEFINED SYMBOLS
 HAL_GetTick
