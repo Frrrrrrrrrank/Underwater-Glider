@@ -1,0 +1,972 @@
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 1
+
+
+   1              		.cpu cortex-m7
+   2              		.arch armv7e-m
+   3              		.fpu fpv5-d16
+   4              		.eabi_attribute 28, 1
+   5              		.eabi_attribute 20, 1
+   6              		.eabi_attribute 21, 1
+   7              		.eabi_attribute 23, 3
+   8              		.eabi_attribute 24, 1
+   9              		.eabi_attribute 25, 1
+  10              		.eabi_attribute 26, 1
+  11              		.eabi_attribute 30, 1
+  12              		.eabi_attribute 34, 1
+  13              		.eabi_attribute 18, 4
+  14              		.file	"uart1_rs485_driver.c"
+  15              		.text
+  16              	.Ltext0:
+  17              		.cfi_sections	.debug_frame
+  18              		.file 1 "Glider-Core/uart1_rs485_driver.c"
+  19              		.section	.text.U1Rs485_RingPush,"ax",%progbits
+  20              		.align	1
+  21              		.syntax unified
+  22              		.thumb
+  23              		.thumb_func
+  25              	U1Rs485_RingPush:
+  26              	.LVL0:
+  27              	.LFB335:
+   1:Glider-Core/uart1_rs485_driver.c **** #include "uart1_rs485_driver.h"
+   2:Glider-Core/uart1_rs485_driver.c **** 
+   3:Glider-Core/uart1_rs485_driver.c **** static UART_HandleTypeDef *s_u1_uart = NULL;
+   4:Glider-Core/uart1_rs485_driver.c **** static volatile uint8_t s_u1_rx_ring[U1RS485_RX_RING_SIZE];
+   5:Glider-Core/uart1_rs485_driver.c **** static volatile uint16_t s_u1_rx_head = 0U;
+   6:Glider-Core/uart1_rs485_driver.c **** static volatile uint16_t s_u1_rx_tail = 0U;
+   7:Glider-Core/uart1_rs485_driver.c **** static volatile uint8_t s_u1_rx_byte = 0U;
+   8:Glider-Core/uart1_rs485_driver.c **** 
+   9:Glider-Core/uart1_rs485_driver.c **** volatile U1Rs485Diag g_u1_rs485_diag = {
+  10:Glider-Core/uart1_rs485_driver.c ****     0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U};
+  11:Glider-Core/uart1_rs485_driver.c **** 
+  12:Glider-Core/uart1_rs485_driver.c **** static void U1Rs485_RingPush(uint8_t data)
+  13:Glider-Core/uart1_rs485_driver.c **** {
+  28              		.loc 1 13 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		@ link register save eliminated.
+  33              		.loc 1 13 1 is_stmt 0 view .LVU1
+  34 0000 10B4     		push	{r4}
+  35              	.LCFI0:
+  36              		.cfi_def_cfa_offset 4
+  37              		.cfi_offset 4, -4
+  14:Glider-Core/uart1_rs485_driver.c ****   uint16_t next = (uint16_t)((s_u1_rx_head + 1U) % U1RS485_RX_RING_SIZE);
+  38              		.loc 1 14 3 is_stmt 1 view .LVU2
+  39              		.loc 1 14 19 is_stmt 0 view .LVU3
+  40 0002 104B     		ldr	r3, .L5
+  41 0004 1B88     		ldrh	r3, [r3]
+  42 0006 9BB2     		uxth	r3, r3
+  43 0008 0133     		adds	r3, r3, #1
+  44              		.loc 1 14 12 view .LVU4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 2
+
+
+  45 000a C3F30803 		ubfx	r3, r3, #0, #9
+  46              	.LVL1:
+  15:Glider-Core/uart1_rs485_driver.c **** 
+  16:Glider-Core/uart1_rs485_driver.c ****   if (next == s_u1_rx_tail)
+  47              		.loc 1 16 3 is_stmt 1 view .LVU5
+  48              		.loc 1 16 12 is_stmt 0 view .LVU6
+  49 000e 0E4A     		ldr	r2, .L5+4
+  50 0010 1288     		ldrh	r2, [r2]
+  51 0012 92B2     		uxth	r2, r2
+  52              		.loc 1 16 6 view .LVU7
+  53 0014 9A42     		cmp	r2, r3
+  54 0016 08D0     		beq	.L4
+  55              	.L2:
+  17:Glider-Core/uart1_rs485_driver.c ****   {
+  18:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_overflow_count++;
+  19:Glider-Core/uart1_rs485_driver.c ****     s_u1_rx_tail = (uint16_t)((s_u1_rx_tail + 1U) % U1RS485_RX_RING_SIZE);
+  20:Glider-Core/uart1_rs485_driver.c ****   }
+  21:Glider-Core/uart1_rs485_driver.c **** 
+  22:Glider-Core/uart1_rs485_driver.c ****   s_u1_rx_ring[s_u1_rx_head] = data;
+  56              		.loc 1 22 3 is_stmt 1 view .LVU8
+  57              		.loc 1 22 15 is_stmt 0 view .LVU9
+  58 0018 0A49     		ldr	r1, .L5
+  59 001a 0A88     		ldrh	r2, [r1]
+  60 001c 92B2     		uxth	r2, r2
+  61              		.loc 1 22 30 view .LVU10
+  62 001e 0B4C     		ldr	r4, .L5+8
+  63 0020 A054     		strb	r0, [r4, r2]
+  23:Glider-Core/uart1_rs485_driver.c ****   s_u1_rx_head = next;
+  64              		.loc 1 23 3 is_stmt 1 view .LVU11
+  65              		.loc 1 23 16 is_stmt 0 view .LVU12
+  66 0022 0B80     		strh	r3, [r1]	@ movhi
+  24:Glider-Core/uart1_rs485_driver.c **** }
+  67              		.loc 1 24 1 view .LVU13
+  68 0024 5DF8044B 		ldr	r4, [sp], #4
+  69              	.LCFI1:
+  70              		.cfi_remember_state
+  71              		.cfi_restore 4
+  72              		.cfi_def_cfa_offset 0
+  73 0028 7047     		bx	lr
+  74              	.L4:
+  75              	.LCFI2:
+  76              		.cfi_restore_state
+  18:Glider-Core/uart1_rs485_driver.c ****     s_u1_rx_tail = (uint16_t)((s_u1_rx_tail + 1U) % U1RS485_RX_RING_SIZE);
+  77              		.loc 1 18 5 is_stmt 1 view .LVU14
+  18:Glider-Core/uart1_rs485_driver.c ****     s_u1_rx_tail = (uint16_t)((s_u1_rx_tail + 1U) % U1RS485_RX_RING_SIZE);
+  78              		.loc 1 18 20 is_stmt 0 view .LVU15
+  79 002a 0949     		ldr	r1, .L5+12
+  80 002c CA68     		ldr	r2, [r1, #12]
+  18:Glider-Core/uart1_rs485_driver.c ****     s_u1_rx_tail = (uint16_t)((s_u1_rx_tail + 1U) % U1RS485_RX_RING_SIZE);
+  81              		.loc 1 18 38 view .LVU16
+  82 002e 0132     		adds	r2, r2, #1
+  83 0030 CA60     		str	r2, [r1, #12]
+  19:Glider-Core/uart1_rs485_driver.c ****   }
+  84              		.loc 1 19 5 is_stmt 1 view .LVU17
+  19:Glider-Core/uart1_rs485_driver.c ****   }
+  85              		.loc 1 19 20 is_stmt 0 view .LVU18
+  86 0032 0549     		ldr	r1, .L5+4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 3
+
+
+  87 0034 0A88     		ldrh	r2, [r1]
+  88 0036 92B2     		uxth	r2, r2
+  89 0038 0132     		adds	r2, r2, #1
+  90 003a C2F30802 		ubfx	r2, r2, #0, #9
+  19:Glider-Core/uart1_rs485_driver.c ****   }
+  91              		.loc 1 19 18 view .LVU19
+  92 003e 0A80     		strh	r2, [r1]	@ movhi
+  93 0040 EAE7     		b	.L2
+  94              	.L6:
+  95 0042 00BF     		.align	2
+  96              	.L5:
+  97 0044 00000000 		.word	s_u1_rx_head
+  98 0048 00000000 		.word	s_u1_rx_tail
+  99 004c 00000000 		.word	s_u1_rx_ring
+ 100 0050 00000000 		.word	g_u1_rs485_diag
+ 101              		.cfi_endproc
+ 102              	.LFE335:
+ 104              		.section	.text.U1Rs485_Init,"ax",%progbits
+ 105              		.align	1
+ 106              		.global	U1Rs485_Init
+ 107              		.syntax unified
+ 108              		.thumb
+ 109              		.thumb_func
+ 111              	U1Rs485_Init:
+ 112              	.LVL2:
+ 113              	.LFB336:
+  25:Glider-Core/uart1_rs485_driver.c **** 
+  26:Glider-Core/uart1_rs485_driver.c **** void U1Rs485_Init(UART_HandleTypeDef *huart)
+  27:Glider-Core/uart1_rs485_driver.c **** {
+ 114              		.loc 1 27 1 is_stmt 1 view -0
+ 115              		.cfi_startproc
+ 116              		@ args = 0, pretend = 0, frame = 0
+ 117              		@ frame_needed = 0, uses_anonymous_args = 0
+ 118              		.loc 1 27 1 is_stmt 0 view .LVU21
+ 119 0000 08B5     		push	{r3, lr}
+ 120              	.LCFI3:
+ 121              		.cfi_def_cfa_offset 8
+ 122              		.cfi_offset 3, -8
+ 123              		.cfi_offset 14, -4
+  28:Glider-Core/uart1_rs485_driver.c ****   HAL_StatusTypeDef status;
+ 124              		.loc 1 28 3 is_stmt 1 view .LVU22
+  29:Glider-Core/uart1_rs485_driver.c **** 
+  30:Glider-Core/uart1_rs485_driver.c ****   s_u1_uart = huart;
+ 125              		.loc 1 30 3 view .LVU23
+ 126              		.loc 1 30 13 is_stmt 0 view .LVU24
+ 127 0002 154B     		ldr	r3, .L13
+ 128 0004 1860     		str	r0, [r3]
+  31:Glider-Core/uart1_rs485_driver.c ****   s_u1_rx_head = 0U;
+ 129              		.loc 1 31 3 is_stmt 1 view .LVU25
+ 130              		.loc 1 31 16 is_stmt 0 view .LVU26
+ 131 0006 0023     		movs	r3, #0
+ 132 0008 144A     		ldr	r2, .L13+4
+ 133 000a 1380     		strh	r3, [r2]	@ movhi
+  32:Glider-Core/uart1_rs485_driver.c ****   s_u1_rx_tail = 0U;
+ 134              		.loc 1 32 3 is_stmt 1 view .LVU27
+ 135              		.loc 1 32 16 is_stmt 0 view .LVU28
+ 136 000c 144A     		ldr	r2, .L13+8
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 4
+
+
+ 137 000e 1380     		strh	r3, [r2]	@ movhi
+  33:Glider-Core/uart1_rs485_driver.c ****   s_u1_rx_byte = 0U;
+ 138              		.loc 1 33 3 is_stmt 1 view .LVU29
+ 139              		.loc 1 33 16 is_stmt 0 view .LVU30
+ 140 0010 144A     		ldr	r2, .L13+12
+ 141 0012 1370     		strb	r3, [r2]
+  34:Glider-Core/uart1_rs485_driver.c **** 
+  35:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.initialized = 0U;
+ 142              		.loc 1 35 3 is_stmt 1 view .LVU31
+ 143              		.loc 1 35 31 is_stmt 0 view .LVU32
+ 144 0014 144A     		ldr	r2, .L13+16
+ 145 0016 1360     		str	r3, [r2]
+  36:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_irq_count = 0U;
+ 146              		.loc 1 36 3 is_stmt 1 view .LVU33
+ 147              		.loc 1 36 32 is_stmt 0 view .LVU34
+ 148 0018 5360     		str	r3, [r2, #4]
+  37:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_byte_count = 0U;
+ 149              		.loc 1 37 3 is_stmt 1 view .LVU35
+ 150              		.loc 1 37 33 is_stmt 0 view .LVU36
+ 151 001a 9360     		str	r3, [r2, #8]
+  38:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_overflow_count = 0U;
+ 152              		.loc 1 38 3 is_stmt 1 view .LVU37
+ 153              		.loc 1 38 37 is_stmt 0 view .LVU38
+ 154 001c D360     		str	r3, [r2, #12]
+  39:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_rearm_ok_count = 0U;
+ 155              		.loc 1 39 3 is_stmt 1 view .LVU39
+ 156              		.loc 1 39 37 is_stmt 0 view .LVU40
+ 157 001e 1361     		str	r3, [r2, #16]
+  40:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_rearm_fail_count = 0U;
+ 158              		.loc 1 40 3 is_stmt 1 view .LVU41
+ 159              		.loc 1 40 39 is_stmt 0 view .LVU42
+ 160 0020 5361     		str	r3, [r2, #20]
+  41:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_init_status = (uint32_t)HAL_ERROR;
+ 161              		.loc 1 41 3 is_stmt 1 view .LVU43
+ 162              		.loc 1 41 34 is_stmt 0 view .LVU44
+ 163 0022 0121     		movs	r1, #1
+ 164 0024 9161     		str	r1, [r2, #24]
+  42:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.last_error = 0U;
+ 165              		.loc 1 42 3 is_stmt 1 view .LVU45
+ 166              		.loc 1 42 30 is_stmt 0 view .LVU46
+ 167 0026 D361     		str	r3, [r2, #28]
+  43:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.uart_error_code = 0U;
+ 168              		.loc 1 43 3 is_stmt 1 view .LVU47
+ 169              		.loc 1 43 35 is_stmt 0 view .LVU48
+ 170 0028 1362     		str	r3, [r2, #32]
+  44:Glider-Core/uart1_rs485_driver.c **** 
+  45:Glider-Core/uart1_rs485_driver.c ****   if (s_u1_uart == NULL)
+ 171              		.loc 1 45 3 is_stmt 1 view .LVU49
+ 172              		.loc 1 45 6 is_stmt 0 view .LVU50
+ 173 002a 60B1     		cbz	r0, .L12
+  46:Glider-Core/uart1_rs485_driver.c ****   {
+  47:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.last_error = 1U;
+  48:Glider-Core/uart1_rs485_driver.c ****     return;
+  49:Glider-Core/uart1_rs485_driver.c ****   }
+  50:Glider-Core/uart1_rs485_driver.c **** 
+  51:Glider-Core/uart1_rs485_driver.c ****   status = HAL_UART_Receive_IT(s_u1_uart, (uint8_t *)&s_u1_rx_byte, 1U);
+ 174              		.loc 1 51 3 is_stmt 1 view .LVU51
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 5
+
+
+ 175              		.loc 1 51 12 is_stmt 0 view .LVU52
+ 176 002c 0122     		movs	r2, #1
+ 177 002e 0D49     		ldr	r1, .L13+12
+ 178 0030 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 179              	.LVL3:
+  52:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_init_status = (uint32_t)status;
+ 180              		.loc 1 52 3 is_stmt 1 view .LVU53
+ 181              		.loc 1 52 34 is_stmt 0 view .LVU54
+ 182 0034 0C4B     		ldr	r3, .L13+16
+ 183 0036 9861     		str	r0, [r3, #24]
+  53:Glider-Core/uart1_rs485_driver.c ****   if (status == HAL_OK)
+ 184              		.loc 1 53 3 is_stmt 1 view .LVU55
+ 185              		.loc 1 53 6 is_stmt 0 view .LVU56
+ 186 0038 38B9     		cbnz	r0, .L10
+  54:Glider-Core/uart1_rs485_driver.c ****   {
+  55:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.initialized = 1U;
+ 187              		.loc 1 55 5 is_stmt 1 view .LVU57
+ 188              		.loc 1 55 33 is_stmt 0 view .LVU58
+ 189 003a 0122     		movs	r2, #1
+ 190 003c 1A60     		str	r2, [r3]
+  56:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_ok_count++;
+ 191              		.loc 1 56 5 is_stmt 1 view .LVU59
+ 192              		.loc 1 56 20 is_stmt 0 view .LVU60
+ 193 003e 1A69     		ldr	r2, [r3, #16]
+ 194              		.loc 1 56 38 view .LVU61
+ 195 0040 0132     		adds	r2, r2, #1
+ 196 0042 1A61     		str	r2, [r3, #16]
+ 197              	.LVL4:
+ 198              	.L7:
+  57:Glider-Core/uart1_rs485_driver.c ****   }
+  58:Glider-Core/uart1_rs485_driver.c ****   else
+  59:Glider-Core/uart1_rs485_driver.c ****   {
+  60:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.last_error = 2U;
+  61:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_fail_count++;
+  62:Glider-Core/uart1_rs485_driver.c ****   }
+  63:Glider-Core/uart1_rs485_driver.c **** }
+ 199              		.loc 1 63 1 view .LVU62
+ 200 0044 08BD     		pop	{r3, pc}
+ 201              	.LVL5:
+ 202              	.L12:
+  47:Glider-Core/uart1_rs485_driver.c ****     return;
+ 203              		.loc 1 47 5 is_stmt 1 view .LVU63
+  47:Glider-Core/uart1_rs485_driver.c ****     return;
+ 204              		.loc 1 47 32 is_stmt 0 view .LVU64
+ 205 0046 D161     		str	r1, [r2, #28]
+  48:Glider-Core/uart1_rs485_driver.c ****   }
+ 206              		.loc 1 48 5 is_stmt 1 view .LVU65
+ 207 0048 FCE7     		b	.L7
+ 208              	.LVL6:
+ 209              	.L10:
+  60:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_fail_count++;
+ 210              		.loc 1 60 5 view .LVU66
+  60:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_fail_count++;
+ 211              		.loc 1 60 32 is_stmt 0 view .LVU67
+ 212 004a 074B     		ldr	r3, .L13+16
+ 213 004c 0222     		movs	r2, #2
+ 214 004e DA61     		str	r2, [r3, #28]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 6
+
+
+  61:Glider-Core/uart1_rs485_driver.c ****   }
+ 215              		.loc 1 61 5 is_stmt 1 view .LVU68
+  61:Glider-Core/uart1_rs485_driver.c ****   }
+ 216              		.loc 1 61 20 is_stmt 0 view .LVU69
+ 217 0050 5A69     		ldr	r2, [r3, #20]
+  61:Glider-Core/uart1_rs485_driver.c ****   }
+ 218              		.loc 1 61 40 view .LVU70
+ 219 0052 0132     		adds	r2, r2, #1
+ 220 0054 5A61     		str	r2, [r3, #20]
+ 221 0056 F5E7     		b	.L7
+ 222              	.L14:
+ 223              		.align	2
+ 224              	.L13:
+ 225 0058 00000000 		.word	s_u1_uart
+ 226 005c 00000000 		.word	s_u1_rx_head
+ 227 0060 00000000 		.word	s_u1_rx_tail
+ 228 0064 00000000 		.word	s_u1_rx_byte
+ 229 0068 00000000 		.word	g_u1_rs485_diag
+ 230              		.cfi_endproc
+ 231              	.LFE336:
+ 233              		.section	.text.U1Rs485_OnRxComplete,"ax",%progbits
+ 234              		.align	1
+ 235              		.global	U1Rs485_OnRxComplete
+ 236              		.syntax unified
+ 237              		.thumb
+ 238              		.thumb_func
+ 240              	U1Rs485_OnRxComplete:
+ 241              	.LVL7:
+ 242              	.LFB337:
+  64:Glider-Core/uart1_rs485_driver.c **** 
+  65:Glider-Core/uart1_rs485_driver.c **** void U1Rs485_OnRxComplete(UART_HandleTypeDef *huart)
+  66:Glider-Core/uart1_rs485_driver.c **** {
+ 243              		.loc 1 66 1 is_stmt 1 view -0
+ 244              		.cfi_startproc
+ 245              		@ args = 0, pretend = 0, frame = 0
+ 246              		@ frame_needed = 0, uses_anonymous_args = 0
+  67:Glider-Core/uart1_rs485_driver.c ****   HAL_StatusTypeDef status;
+ 247              		.loc 1 67 3 view .LVU72
+  68:Glider-Core/uart1_rs485_driver.c **** 
+  69:Glider-Core/uart1_rs485_driver.c ****   if (huart == NULL || s_u1_uart == NULL)
+ 248              		.loc 1 69 3 view .LVU73
+ 249              		.loc 1 69 6 is_stmt 0 view .LVU74
+ 250 0000 30B1     		cbz	r0, .L19
+ 251              		.loc 1 69 34 discriminator 1 view .LVU75
+ 252 0002 144B     		ldr	r3, .L23
+ 253 0004 1B68     		ldr	r3, [r3]
+ 254              		.loc 1 69 21 discriminator 1 view .LVU76
+ 255 0006 1BB1     		cbz	r3, .L19
+  70:Glider-Core/uart1_rs485_driver.c ****   {
+  71:Glider-Core/uart1_rs485_driver.c ****     return;
+  72:Glider-Core/uart1_rs485_driver.c ****   }
+  73:Glider-Core/uart1_rs485_driver.c **** 
+  74:Glider-Core/uart1_rs485_driver.c ****   if (huart->Instance != s_u1_uart->Instance)
+ 256              		.loc 1 74 3 is_stmt 1 view .LVU77
+ 257              		.loc 1 74 12 is_stmt 0 view .LVU78
+ 258 0008 0268     		ldr	r2, [r0]
+ 259              		.loc 1 74 35 view .LVU79
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 7
+
+
+ 260 000a 1B68     		ldr	r3, [r3]
+ 261              		.loc 1 74 6 view .LVU80
+ 262 000c 9A42     		cmp	r2, r3
+ 263 000e 00D0     		beq	.L22
+ 264              	.L19:
+ 265 0010 7047     		bx	lr
+ 266              	.L22:
+  66:Glider-Core/uart1_rs485_driver.c ****   HAL_StatusTypeDef status;
+ 267              		.loc 1 66 1 view .LVU81
+ 268 0012 10B5     		push	{r4, lr}
+ 269              	.LCFI4:
+ 270              		.cfi_def_cfa_offset 8
+ 271              		.cfi_offset 4, -8
+ 272              		.cfi_offset 14, -4
+  75:Glider-Core/uart1_rs485_driver.c ****   {
+  76:Glider-Core/uart1_rs485_driver.c ****     return;
+  77:Glider-Core/uart1_rs485_driver.c ****   }
+  78:Glider-Core/uart1_rs485_driver.c **** 
+  79:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_irq_count++;
+ 273              		.loc 1 79 3 is_stmt 1 view .LVU82
+ 274              		.loc 1 79 18 is_stmt 0 view .LVU83
+ 275 0014 104B     		ldr	r3, .L23+4
+ 276 0016 5A68     		ldr	r2, [r3, #4]
+ 277              		.loc 1 79 31 view .LVU84
+ 278 0018 0132     		adds	r2, r2, #1
+ 279 001a 5A60     		str	r2, [r3, #4]
+  80:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.rx_byte_count++;
+ 280              		.loc 1 80 3 is_stmt 1 view .LVU85
+ 281              		.loc 1 80 18 is_stmt 0 view .LVU86
+ 282 001c 9A68     		ldr	r2, [r3, #8]
+ 283              		.loc 1 80 32 view .LVU87
+ 284 001e 0132     		adds	r2, r2, #1
+ 285 0020 9A60     		str	r2, [r3, #8]
+  81:Glider-Core/uart1_rs485_driver.c ****   U1Rs485_RingPush(s_u1_rx_byte);
+ 286              		.loc 1 81 3 is_stmt 1 view .LVU88
+ 287 0022 0E4C     		ldr	r4, .L23+8
+ 288 0024 2078     		ldrb	r0, [r4]	@ zero_extendqisi2
+ 289              	.LVL8:
+ 290              		.loc 1 81 3 is_stmt 0 view .LVU89
+ 291 0026 FFF7FEFF 		bl	U1Rs485_RingPush
+ 292              	.LVL9:
+  82:Glider-Core/uart1_rs485_driver.c **** 
+  83:Glider-Core/uart1_rs485_driver.c ****   status = HAL_UART_Receive_IT(s_u1_uart, (uint8_t *)&s_u1_rx_byte, 1U);
+ 293              		.loc 1 83 3 is_stmt 1 view .LVU90
+ 294              		.loc 1 83 12 is_stmt 0 view .LVU91
+ 295 002a 0122     		movs	r2, #1
+ 296 002c 2146     		mov	r1, r4
+ 297 002e 094B     		ldr	r3, .L23
+ 298 0030 1868     		ldr	r0, [r3]
+ 299 0032 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 300              	.LVL10:
+  84:Glider-Core/uart1_rs485_driver.c ****   if (status == HAL_OK)
+ 301              		.loc 1 84 3 is_stmt 1 view .LVU92
+ 302              		.loc 1 84 6 is_stmt 0 view .LVU93
+ 303 0036 20B9     		cbnz	r0, .L17
+  85:Glider-Core/uart1_rs485_driver.c ****   {
+  86:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_ok_count++;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 8
+
+
+ 304              		.loc 1 86 5 is_stmt 1 view .LVU94
+ 305              		.loc 1 86 20 is_stmt 0 view .LVU95
+ 306 0038 074A     		ldr	r2, .L23+4
+ 307 003a 1369     		ldr	r3, [r2, #16]
+ 308              		.loc 1 86 38 view .LVU96
+ 309 003c 0133     		adds	r3, r3, #1
+ 310 003e 1361     		str	r3, [r2, #16]
+ 311              	.L15:
+  87:Glider-Core/uart1_rs485_driver.c ****   }
+  88:Glider-Core/uart1_rs485_driver.c ****   else if (status != HAL_BUSY)
+  89:Glider-Core/uart1_rs485_driver.c ****   {
+  90:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_fail_count++;
+  91:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.last_error = 3U;
+  92:Glider-Core/uart1_rs485_driver.c ****   }
+  93:Glider-Core/uart1_rs485_driver.c **** }
+ 312              		.loc 1 93 1 view .LVU97
+ 313 0040 10BD     		pop	{r4, pc}
+ 314              	.L17:
+  88:Glider-Core/uart1_rs485_driver.c ****   {
+ 315              		.loc 1 88 8 is_stmt 1 view .LVU98
+  88:Glider-Core/uart1_rs485_driver.c ****   {
+ 316              		.loc 1 88 11 is_stmt 0 view .LVU99
+ 317 0042 0228     		cmp	r0, #2
+ 318 0044 FCD0     		beq	.L15
+  90:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.last_error = 3U;
+ 319              		.loc 1 90 5 is_stmt 1 view .LVU100
+  90:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.last_error = 3U;
+ 320              		.loc 1 90 20 is_stmt 0 view .LVU101
+ 321 0046 044B     		ldr	r3, .L23+4
+ 322 0048 5A69     		ldr	r2, [r3, #20]
+  90:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.last_error = 3U;
+ 323              		.loc 1 90 40 view .LVU102
+ 324 004a 0132     		adds	r2, r2, #1
+ 325 004c 5A61     		str	r2, [r3, #20]
+  91:Glider-Core/uart1_rs485_driver.c ****   }
+ 326              		.loc 1 91 5 is_stmt 1 view .LVU103
+  91:Glider-Core/uart1_rs485_driver.c ****   }
+ 327              		.loc 1 91 32 is_stmt 0 view .LVU104
+ 328 004e 0322     		movs	r2, #3
+ 329 0050 DA61     		str	r2, [r3, #28]
+ 330 0052 F5E7     		b	.L15
+ 331              	.L24:
+ 332              		.align	2
+ 333              	.L23:
+ 334 0054 00000000 		.word	s_u1_uart
+ 335 0058 00000000 		.word	g_u1_rs485_diag
+ 336 005c 00000000 		.word	s_u1_rx_byte
+ 337              		.cfi_endproc
+ 338              	.LFE337:
+ 340              		.section	.text.U1Rs485_OnError,"ax",%progbits
+ 341              		.align	1
+ 342              		.global	U1Rs485_OnError
+ 343              		.syntax unified
+ 344              		.thumb
+ 345              		.thumb_func
+ 347              	U1Rs485_OnError:
+ 348              	.LVL11:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 9
+
+
+ 349              	.LFB338:
+  94:Glider-Core/uart1_rs485_driver.c **** 
+  95:Glider-Core/uart1_rs485_driver.c **** void U1Rs485_OnError(UART_HandleTypeDef *huart)
+  96:Glider-Core/uart1_rs485_driver.c **** {
+ 350              		.loc 1 96 1 is_stmt 1 view -0
+ 351              		.cfi_startproc
+ 352              		@ args = 0, pretend = 0, frame = 0
+ 353              		@ frame_needed = 0, uses_anonymous_args = 0
+  97:Glider-Core/uart1_rs485_driver.c ****   HAL_StatusTypeDef status;
+ 354              		.loc 1 97 3 view .LVU106
+  98:Glider-Core/uart1_rs485_driver.c **** 
+  99:Glider-Core/uart1_rs485_driver.c ****   if (huart == NULL || s_u1_uart == NULL)
+ 355              		.loc 1 99 3 view .LVU107
+ 356              		.loc 1 99 6 is_stmt 0 view .LVU108
+ 357 0000 38B1     		cbz	r0, .L29
+ 358 0002 0346     		mov	r3, r0
+ 359              		.loc 1 99 34 discriminator 1 view .LVU109
+ 360 0004 174A     		ldr	r2, .L33
+ 361 0006 1068     		ldr	r0, [r2]
+ 362              	.LVL12:
+ 363              		.loc 1 99 21 discriminator 1 view .LVU110
+ 364 0008 18B1     		cbz	r0, .L29
+ 100:Glider-Core/uart1_rs485_driver.c ****   {
+ 101:Glider-Core/uart1_rs485_driver.c ****     return;
+ 102:Glider-Core/uart1_rs485_driver.c ****   }
+ 103:Glider-Core/uart1_rs485_driver.c **** 
+ 104:Glider-Core/uart1_rs485_driver.c ****   if (huart->Instance != s_u1_uart->Instance)
+ 365              		.loc 1 104 3 is_stmt 1 view .LVU111
+ 366              		.loc 1 104 12 is_stmt 0 view .LVU112
+ 367 000a 1968     		ldr	r1, [r3]
+ 368              		.loc 1 104 35 view .LVU113
+ 369 000c 0268     		ldr	r2, [r0]
+ 370              		.loc 1 104 6 view .LVU114
+ 371 000e 9142     		cmp	r1, r2
+ 372 0010 00D0     		beq	.L32
+ 373              	.LVL13:
+ 374              	.L29:
+ 375              		.loc 1 104 6 view .LVU115
+ 376 0012 7047     		bx	lr
+ 377              	.LVL14:
+ 378              	.L32:
+  96:Glider-Core/uart1_rs485_driver.c ****   HAL_StatusTypeDef status;
+ 379              		.loc 1 96 1 view .LVU116
+ 380 0014 10B5     		push	{r4, lr}
+ 381              	.LCFI5:
+ 382              		.cfi_def_cfa_offset 8
+ 383              		.cfi_offset 4, -8
+ 384              		.cfi_offset 14, -4
+ 105:Glider-Core/uart1_rs485_driver.c ****   {
+ 106:Glider-Core/uart1_rs485_driver.c ****     return;
+ 107:Glider-Core/uart1_rs485_driver.c ****   }
+ 108:Glider-Core/uart1_rs485_driver.c **** 
+ 109:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.uart_error_code = huart->ErrorCode;
+ 385              		.loc 1 109 3 is_stmt 1 view .LVU117
+ 386              		.loc 1 109 42 is_stmt 0 view .LVU118
+ 387 0016 D3F89020 		ldr	r2, [r3, #144]
+ 388              		.loc 1 109 35 view .LVU119
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 10
+
+
+ 389 001a 1349     		ldr	r1, .L33+4
+ 390 001c 0A62     		str	r2, [r1, #32]
+ 110:Glider-Core/uart1_rs485_driver.c ****   g_u1_rs485_diag.last_error = 4U;
+ 391              		.loc 1 110 3 is_stmt 1 view .LVU120
+ 392              		.loc 1 110 30 is_stmt 0 view .LVU121
+ 393 001e 0422     		movs	r2, #4
+ 394 0020 CA61     		str	r2, [r1, #28]
+ 111:Glider-Core/uart1_rs485_driver.c **** 
+ 112:Glider-Core/uart1_rs485_driver.c ****   __HAL_UART_CLEAR_OREFLAG(huart);
+ 395              		.loc 1 112 3 is_stmt 1 view .LVU122
+ 396 0022 1968     		ldr	r1, [r3]
+ 397 0024 0824     		movs	r4, #8
+ 398 0026 0C62     		str	r4, [r1, #32]
+ 113:Glider-Core/uart1_rs485_driver.c ****   __HAL_UART_CLEAR_NEFLAG(huart);
+ 399              		.loc 1 113 3 view .LVU123
+ 400 0028 1968     		ldr	r1, [r3]
+ 401 002a 0A62     		str	r2, [r1, #32]
+ 114:Glider-Core/uart1_rs485_driver.c ****   __HAL_UART_CLEAR_FEFLAG(huart);
+ 402              		.loc 1 114 3 view .LVU124
+ 403 002c 1A68     		ldr	r2, [r3]
+ 404 002e 0221     		movs	r1, #2
+ 405 0030 1162     		str	r1, [r2, #32]
+ 115:Glider-Core/uart1_rs485_driver.c ****   __HAL_UART_CLEAR_PEFLAG(huart);
+ 406              		.loc 1 115 3 view .LVU125
+ 407 0032 1968     		ldr	r1, [r3]
+ 408 0034 0122     		movs	r2, #1
+ 409 0036 0A62     		str	r2, [r1, #32]
+ 116:Glider-Core/uart1_rs485_driver.c **** 
+ 117:Glider-Core/uart1_rs485_driver.c ****   (void)(huart->Instance->RDR);
+ 410              		.loc 1 117 3 view .LVU126
+ 411              		.loc 1 117 15 is_stmt 0 view .LVU127
+ 412 0038 1968     		ldr	r1, [r3]
+ 413              		.loc 1 117 3 view .LVU128
+ 414 003a 496A     		ldr	r1, [r1, #36]
+ 118:Glider-Core/uart1_rs485_driver.c ****   huart->RxState = HAL_UART_STATE_READY;
+ 415              		.loc 1 118 3 is_stmt 1 view .LVU129
+ 416              		.loc 1 118 18 is_stmt 0 view .LVU130
+ 417 003c 2021     		movs	r1, #32
+ 418 003e C3F88C10 		str	r1, [r3, #140]
+ 119:Glider-Core/uart1_rs485_driver.c **** 
+ 120:Glider-Core/uart1_rs485_driver.c ****   status = HAL_UART_Receive_IT(s_u1_uart, (uint8_t *)&s_u1_rx_byte, 1U);
+ 419              		.loc 1 120 3 is_stmt 1 view .LVU131
+ 420              		.loc 1 120 12 is_stmt 0 view .LVU132
+ 421 0042 0A49     		ldr	r1, .L33+8
+ 422 0044 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 423              	.LVL15:
+ 121:Glider-Core/uart1_rs485_driver.c ****   if (status == HAL_OK)
+ 424              		.loc 1 121 3 is_stmt 1 view .LVU133
+ 425              		.loc 1 121 6 is_stmt 0 view .LVU134
+ 426 0048 20B9     		cbnz	r0, .L27
+ 122:Glider-Core/uart1_rs485_driver.c ****   {
+ 123:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_ok_count++;
+ 427              		.loc 1 123 5 is_stmt 1 view .LVU135
+ 428              		.loc 1 123 20 is_stmt 0 view .LVU136
+ 429 004a 074A     		ldr	r2, .L33+4
+ 430 004c 1369     		ldr	r3, [r2, #16]
+ 431              		.loc 1 123 38 view .LVU137
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 11
+
+
+ 432 004e 0133     		adds	r3, r3, #1
+ 433 0050 1361     		str	r3, [r2, #16]
+ 434              	.L25:
+ 124:Glider-Core/uart1_rs485_driver.c ****   }
+ 125:Glider-Core/uart1_rs485_driver.c ****   else if (status != HAL_BUSY)
+ 126:Glider-Core/uart1_rs485_driver.c ****   {
+ 127:Glider-Core/uart1_rs485_driver.c ****     g_u1_rs485_diag.rx_rearm_fail_count++;
+ 128:Glider-Core/uart1_rs485_driver.c ****   }
+ 129:Glider-Core/uart1_rs485_driver.c **** }
+ 435              		.loc 1 129 1 view .LVU138
+ 436 0052 10BD     		pop	{r4, pc}
+ 437              	.L27:
+ 125:Glider-Core/uart1_rs485_driver.c ****   {
+ 438              		.loc 1 125 8 is_stmt 1 view .LVU139
+ 125:Glider-Core/uart1_rs485_driver.c ****   {
+ 439              		.loc 1 125 11 is_stmt 0 view .LVU140
+ 440 0054 0228     		cmp	r0, #2
+ 441 0056 FCD0     		beq	.L25
+ 127:Glider-Core/uart1_rs485_driver.c ****   }
+ 442              		.loc 1 127 5 is_stmt 1 view .LVU141
+ 127:Glider-Core/uart1_rs485_driver.c ****   }
+ 443              		.loc 1 127 20 is_stmt 0 view .LVU142
+ 444 0058 034A     		ldr	r2, .L33+4
+ 445 005a 5369     		ldr	r3, [r2, #20]
+ 127:Glider-Core/uart1_rs485_driver.c ****   }
+ 446              		.loc 1 127 40 view .LVU143
+ 447 005c 0133     		adds	r3, r3, #1
+ 448 005e 5361     		str	r3, [r2, #20]
+ 449 0060 F7E7     		b	.L25
+ 450              	.L34:
+ 451 0062 00BF     		.align	2
+ 452              	.L33:
+ 453 0064 00000000 		.word	s_u1_uart
+ 454 0068 00000000 		.word	g_u1_rs485_diag
+ 455 006c 00000000 		.word	s_u1_rx_byte
+ 456              		.cfi_endproc
+ 457              	.LFE338:
+ 459              		.section	.text.U1Rs485_Available,"ax",%progbits
+ 460              		.align	1
+ 461              		.global	U1Rs485_Available
+ 462              		.syntax unified
+ 463              		.thumb
+ 464              		.thumb_func
+ 466              	U1Rs485_Available:
+ 467              	.LFB339:
+ 130:Glider-Core/uart1_rs485_driver.c **** 
+ 131:Glider-Core/uart1_rs485_driver.c **** uint16_t U1Rs485_Available(void)
+ 132:Glider-Core/uart1_rs485_driver.c **** {
+ 468              		.loc 1 132 1 is_stmt 1 view -0
+ 469              		.cfi_startproc
+ 470              		@ args = 0, pretend = 0, frame = 0
+ 471              		@ frame_needed = 0, uses_anonymous_args = 0
+ 472              		@ link register save eliminated.
+ 133:Glider-Core/uart1_rs485_driver.c ****   uint16_t head = s_u1_rx_head;
+ 473              		.loc 1 133 3 view .LVU145
+ 474              		.loc 1 133 12 is_stmt 0 view .LVU146
+ 475 0000 084B     		ldr	r3, .L39
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 12
+
+
+ 476 0002 1888     		ldrh	r0, [r3]
+ 477 0004 80B2     		uxth	r0, r0
+ 478              	.LVL16:
+ 134:Glider-Core/uart1_rs485_driver.c ****   uint16_t tail = s_u1_rx_tail;
+ 479              		.loc 1 134 3 is_stmt 1 view .LVU147
+ 480              		.loc 1 134 12 is_stmt 0 view .LVU148
+ 481 0006 084B     		ldr	r3, .L39+4
+ 482 0008 1B88     		ldrh	r3, [r3]
+ 483 000a 9BB2     		uxth	r3, r3
+ 484              	.LVL17:
+ 135:Glider-Core/uart1_rs485_driver.c **** 
+ 136:Glider-Core/uart1_rs485_driver.c ****   if (head >= tail)
+ 485              		.loc 1 136 3 is_stmt 1 view .LVU149
+ 486              		.loc 1 136 6 is_stmt 0 view .LVU150
+ 487 000c 9842     		cmp	r0, r3
+ 488 000e 05D2     		bcs	.L38
+ 137:Glider-Core/uart1_rs485_driver.c ****   {
+ 138:Glider-Core/uart1_rs485_driver.c ****     return (uint16_t)(head - tail);
+ 139:Glider-Core/uart1_rs485_driver.c ****   }
+ 140:Glider-Core/uart1_rs485_driver.c **** 
+ 141:Glider-Core/uart1_rs485_driver.c ****   return (uint16_t)(U1RS485_RX_RING_SIZE - tail + head);
+ 489              		.loc 1 141 3 is_stmt 1 view .LVU151
+ 490              		.loc 1 141 49 is_stmt 0 view .LVU152
+ 491 0010 C01A     		subs	r0, r0, r3
+ 492              	.LVL18:
+ 493              		.loc 1 141 49 view .LVU153
+ 494 0012 80B2     		uxth	r0, r0
+ 495              		.loc 1 141 10 view .LVU154
+ 496 0014 00F50070 		add	r0, r0, #512
+ 497 0018 80B2     		uxth	r0, r0
+ 142:Glider-Core/uart1_rs485_driver.c **** }
+ 498              		.loc 1 142 1 view .LVU155
+ 499 001a 7047     		bx	lr
+ 500              	.LVL19:
+ 501              	.L38:
+ 138:Glider-Core/uart1_rs485_driver.c ****   }
+ 502              		.loc 1 138 5 is_stmt 1 view .LVU156
+ 138:Glider-Core/uart1_rs485_driver.c ****   }
+ 503              		.loc 1 138 12 is_stmt 0 view .LVU157
+ 504 001c C01A     		subs	r0, r0, r3
+ 505              	.LVL20:
+ 138:Glider-Core/uart1_rs485_driver.c ****   }
+ 506              		.loc 1 138 12 view .LVU158
+ 507 001e 80B2     		uxth	r0, r0
+ 508 0020 7047     		bx	lr
+ 509              	.L40:
+ 510 0022 00BF     		.align	2
+ 511              	.L39:
+ 512 0024 00000000 		.word	s_u1_rx_head
+ 513 0028 00000000 		.word	s_u1_rx_tail
+ 514              		.cfi_endproc
+ 515              	.LFE339:
+ 517              		.section	.text.U1Rs485_Read,"ax",%progbits
+ 518              		.align	1
+ 519              		.global	U1Rs485_Read
+ 520              		.syntax unified
+ 521              		.thumb
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 13
+
+
+ 522              		.thumb_func
+ 524              	U1Rs485_Read:
+ 525              	.LVL21:
+ 526              	.LFB340:
+ 143:Glider-Core/uart1_rs485_driver.c **** 
+ 144:Glider-Core/uart1_rs485_driver.c **** uint16_t U1Rs485_Read(uint8_t *dst, uint16_t max_len)
+ 145:Glider-Core/uart1_rs485_driver.c **** {
+ 527              		.loc 1 145 1 is_stmt 1 view -0
+ 528              		.cfi_startproc
+ 529              		@ args = 0, pretend = 0, frame = 0
+ 530              		@ frame_needed = 0, uses_anonymous_args = 0
+ 146:Glider-Core/uart1_rs485_driver.c ****   uint16_t count = 0U;
+ 531              		.loc 1 146 3 view .LVU160
+ 147:Glider-Core/uart1_rs485_driver.c **** 
+ 148:Glider-Core/uart1_rs485_driver.c ****   if (dst == NULL || max_len == 0U)
+ 532              		.loc 1 148 3 view .LVU161
+ 533              		.loc 1 148 6 is_stmt 0 view .LVU162
+ 534 0000 0029     		cmp	r1, #0
+ 535 0002 18BF     		it	ne
+ 536 0004 0028     		cmpne	r0, #0
+ 537 0006 19D0     		beq	.L45
+ 145:Glider-Core/uart1_rs485_driver.c ****   uint16_t count = 0U;
+ 538              		.loc 1 145 1 view .LVU163
+ 539 0008 00B5     		push	{lr}
+ 540              	.LCFI6:
+ 541              		.cfi_def_cfa_offset 4
+ 542              		.cfi_offset 14, -4
+ 543 000a 8646     		mov	lr, r0
+ 544 000c 8C46     		mov	ip, r1
+ 146:Glider-Core/uart1_rs485_driver.c ****   uint16_t count = 0U;
+ 545              		.loc 1 146 12 view .LVU164
+ 546 000e 0020     		movs	r0, #0
+ 547              	.LVL22:
+ 548              	.L43:
+ 149:Glider-Core/uart1_rs485_driver.c ****   {
+ 150:Glider-Core/uart1_rs485_driver.c ****     return 0U;
+ 151:Glider-Core/uart1_rs485_driver.c ****   }
+ 152:Glider-Core/uart1_rs485_driver.c **** 
+ 153:Glider-Core/uart1_rs485_driver.c ****   while (count < max_len)
+ 549              		.loc 1 153 16 is_stmt 1 view .LVU165
+ 550 0010 6045     		cmp	r0, ip
+ 551 0012 15D2     		bcs	.L42
+ 552              	.LBB2:
+ 154:Glider-Core/uart1_rs485_driver.c ****   {
+ 155:Glider-Core/uart1_rs485_driver.c ****     uint16_t tail = s_u1_rx_tail;
+ 553              		.loc 1 155 5 view .LVU166
+ 554              		.loc 1 155 14 is_stmt 0 view .LVU167
+ 555 0014 0B4B     		ldr	r3, .L50
+ 556 0016 1B88     		ldrh	r3, [r3]
+ 557 0018 9BB2     		uxth	r3, r3
+ 558              	.LVL23:
+ 156:Glider-Core/uart1_rs485_driver.c ****     if (tail == s_u1_rx_head)
+ 559              		.loc 1 156 5 is_stmt 1 view .LVU168
+ 560              		.loc 1 156 14 is_stmt 0 view .LVU169
+ 561 001a 0B4A     		ldr	r2, .L50+4
+ 562 001c 1288     		ldrh	r2, [r2]
+ 563 001e 92B2     		uxth	r2, r2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 14
+
+
+ 564              		.loc 1 156 8 view .LVU170
+ 565 0020 9A42     		cmp	r2, r3
+ 566 0022 0DD0     		beq	.L42
+ 157:Glider-Core/uart1_rs485_driver.c ****     {
+ 158:Glider-Core/uart1_rs485_driver.c ****       break;
+ 159:Glider-Core/uart1_rs485_driver.c ****     }
+ 160:Glider-Core/uart1_rs485_driver.c **** 
+ 161:Glider-Core/uart1_rs485_driver.c ****     dst[count] = s_u1_rx_ring[tail];
+ 567              		.loc 1 161 5 is_stmt 1 view .LVU171
+ 568              		.loc 1 161 30 is_stmt 0 view .LVU172
+ 569 0024 094A     		ldr	r2, .L50+8
+ 570 0026 D25C     		ldrb	r2, [r2, r3]	@ zero_extendqisi2
+ 571              		.loc 1 161 16 view .LVU173
+ 572 0028 0EF80020 		strb	r2, [lr, r0]
+ 162:Glider-Core/uart1_rs485_driver.c ****     s_u1_rx_tail = (uint16_t)((tail + 1U) % U1RS485_RX_RING_SIZE);
+ 573              		.loc 1 162 5 is_stmt 1 view .LVU174
+ 574              		.loc 1 162 20 is_stmt 0 view .LVU175
+ 575 002c 0133     		adds	r3, r3, #1
+ 576              	.LVL24:
+ 577              		.loc 1 162 20 view .LVU176
+ 578 002e C3F30803 		ubfx	r3, r3, #0, #9
+ 579              	.LVL25:
+ 580              		.loc 1 162 18 view .LVU177
+ 581 0032 044A     		ldr	r2, .L50
+ 582 0034 1380     		strh	r3, [r2]	@ movhi
+ 163:Glider-Core/uart1_rs485_driver.c ****     count++;
+ 583              		.loc 1 163 5 is_stmt 1 view .LVU178
+ 584              		.loc 1 163 10 is_stmt 0 view .LVU179
+ 585 0036 0130     		adds	r0, r0, #1
+ 586              	.LVL26:
+ 587              		.loc 1 163 10 view .LVU180
+ 588 0038 80B2     		uxth	r0, r0
+ 589              	.LVL27:
+ 590              		.loc 1 163 10 view .LVU181
+ 591 003a E9E7     		b	.L43
+ 592              	.LVL28:
+ 593              	.L45:
+ 594              	.LCFI7:
+ 595              		.cfi_def_cfa_offset 0
+ 596              		.cfi_restore 14
+ 597              		.loc 1 163 10 view .LVU182
+ 598              	.LBE2:
+ 150:Glider-Core/uart1_rs485_driver.c ****   }
+ 599              		.loc 1 150 12 view .LVU183
+ 600 003c 0020     		movs	r0, #0
+ 601              	.LVL29:
+ 164:Glider-Core/uart1_rs485_driver.c ****   }
+ 165:Glider-Core/uart1_rs485_driver.c **** 
+ 166:Glider-Core/uart1_rs485_driver.c ****   return count;
+ 167:Glider-Core/uart1_rs485_driver.c **** }
+ 602              		.loc 1 167 1 view .LVU184
+ 603 003e 7047     		bx	lr
+ 604              	.LVL30:
+ 605              	.L42:
+ 606              	.LCFI8:
+ 607              		.cfi_def_cfa_offset 4
+ 608              		.cfi_offset 14, -4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 15
+
+
+ 609              		.loc 1 167 1 view .LVU185
+ 610 0040 5DF804FB 		ldr	pc, [sp], #4
+ 611              	.L51:
+ 612              		.align	2
+ 613              	.L50:
+ 614 0044 00000000 		.word	s_u1_rx_tail
+ 615 0048 00000000 		.word	s_u1_rx_head
+ 616 004c 00000000 		.word	s_u1_rx_ring
+ 617              		.cfi_endproc
+ 618              	.LFE340:
+ 620              		.section	.text.U1Rs485_ClearRxBuffer,"ax",%progbits
+ 621              		.align	1
+ 622              		.global	U1Rs485_ClearRxBuffer
+ 623              		.syntax unified
+ 624              		.thumb
+ 625              		.thumb_func
+ 627              	U1Rs485_ClearRxBuffer:
+ 628              	.LFB341:
+ 168:Glider-Core/uart1_rs485_driver.c **** 
+ 169:Glider-Core/uart1_rs485_driver.c **** void U1Rs485_ClearRxBuffer(void)
+ 170:Glider-Core/uart1_rs485_driver.c **** {
+ 629              		.loc 1 170 1 is_stmt 1 view -0
+ 630              		.cfi_startproc
+ 631              		@ args = 0, pretend = 0, frame = 0
+ 632              		@ frame_needed = 0, uses_anonymous_args = 0
+ 633              		@ link register save eliminated.
+ 171:Glider-Core/uart1_rs485_driver.c ****   s_u1_rx_tail = s_u1_rx_head;
+ 634              		.loc 1 171 3 view .LVU187
+ 635              		.loc 1 171 16 is_stmt 0 view .LVU188
+ 636 0000 024B     		ldr	r3, .L53
+ 637 0002 1B88     		ldrh	r3, [r3]
+ 638 0004 9BB2     		uxth	r3, r3
+ 639 0006 024A     		ldr	r2, .L53+4
+ 640 0008 1380     		strh	r3, [r2]	@ movhi
+ 172:Glider-Core/uart1_rs485_driver.c **** }
+ 641              		.loc 1 172 1 view .LVU189
+ 642 000a 7047     		bx	lr
+ 643              	.L54:
+ 644              		.align	2
+ 645              	.L53:
+ 646 000c 00000000 		.word	s_u1_rx_head
+ 647 0010 00000000 		.word	s_u1_rx_tail
+ 648              		.cfi_endproc
+ 649              	.LFE341:
+ 651              		.global	g_u1_rs485_diag
+ 652              		.section	.bss.g_u1_rs485_diag,"aw",%nobits
+ 653              		.align	2
+ 656              	g_u1_rs485_diag:
+ 657 0000 00000000 		.space	36
+ 657      00000000 
+ 657      00000000 
+ 657      00000000 
+ 657      00000000 
+ 658              		.section	.bss.s_u1_rx_byte,"aw",%nobits
+ 661              	s_u1_rx_byte:
+ 662 0000 00       		.space	1
+ 663              		.section	.bss.s_u1_rx_tail,"aw",%nobits
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 16
+
+
+ 664              		.align	1
+ 667              	s_u1_rx_tail:
+ 668 0000 0000     		.space	2
+ 669              		.section	.bss.s_u1_rx_head,"aw",%nobits
+ 670              		.align	1
+ 673              	s_u1_rx_head:
+ 674 0000 0000     		.space	2
+ 675              		.section	.bss.s_u1_rx_ring,"aw",%nobits
+ 676              		.align	2
+ 679              	s_u1_rx_ring:
+ 680 0000 00000000 		.space	512
+ 680      00000000 
+ 680      00000000 
+ 680      00000000 
+ 680      00000000 
+ 681              		.section	.bss.s_u1_uart,"aw",%nobits
+ 682              		.align	2
+ 685              	s_u1_uart:
+ 686 0000 00000000 		.space	4
+ 687              		.text
+ 688              	.Letext0:
+ 689              		.file 2 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 690              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 691              		.file 4 "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h743xx.h"
+ 692              		.file 5 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h"
+ 693              		.file 6 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma.h"
+ 694              		.file 7 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h"
+ 695              		.file 8 "Glider-Core/uart1_rs485_driver.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s 			page 17
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 uart1_rs485_driver.c
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:20     .text.U1Rs485_RingPush:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:25     .text.U1Rs485_RingPush:00000000 U1Rs485_RingPush
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:97     .text.U1Rs485_RingPush:00000044 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:673    .bss.s_u1_rx_head:00000000 s_u1_rx_head
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:667    .bss.s_u1_rx_tail:00000000 s_u1_rx_tail
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:679    .bss.s_u1_rx_ring:00000000 s_u1_rx_ring
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:656    .bss.g_u1_rs485_diag:00000000 g_u1_rs485_diag
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:105    .text.U1Rs485_Init:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:111    .text.U1Rs485_Init:00000000 U1Rs485_Init
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:225    .text.U1Rs485_Init:00000058 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:685    .bss.s_u1_uart:00000000 s_u1_uart
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:661    .bss.s_u1_rx_byte:00000000 s_u1_rx_byte
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:234    .text.U1Rs485_OnRxComplete:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:240    .text.U1Rs485_OnRxComplete:00000000 U1Rs485_OnRxComplete
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:334    .text.U1Rs485_OnRxComplete:00000054 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:341    .text.U1Rs485_OnError:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:347    .text.U1Rs485_OnError:00000000 U1Rs485_OnError
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:453    .text.U1Rs485_OnError:00000064 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:460    .text.U1Rs485_Available:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:466    .text.U1Rs485_Available:00000000 U1Rs485_Available
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:512    .text.U1Rs485_Available:00000024 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:518    .text.U1Rs485_Read:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:524    .text.U1Rs485_Read:00000000 U1Rs485_Read
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:614    .text.U1Rs485_Read:00000044 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:621    .text.U1Rs485_ClearRxBuffer:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:627    .text.U1Rs485_ClearRxBuffer:00000000 U1Rs485_ClearRxBuffer
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:646    .text.U1Rs485_ClearRxBuffer:0000000c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:653    .bss.g_u1_rs485_diag:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:662    .bss.s_u1_rx_byte:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:664    .bss.s_u1_rx_tail:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:670    .bss.s_u1_rx_head:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:676    .bss.s_u1_rx_ring:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccsigDT7.s:682    .bss.s_u1_uart:00000000 $d
+
+UNDEFINED SYMBOLS
+HAL_UART_Receive_IT

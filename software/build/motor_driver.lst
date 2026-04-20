@@ -1,4 +1,4 @@
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 1
 
 
    1              		.cpu cortex-m7
@@ -58,7 +58,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
   29:Glider-Core/motor_driver.c ****       .timeout_count = 0U,
   30:Glider-Core/motor_driver.c ****       .crc_error_count = 0U,
   31:Glider-Core/motor_driver.c ****       .protocol_error_count = 0U,
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 2
 
 
   32:Glider-Core/motor_driver.c ****       .last_exception_func = 0U,
@@ -118,7 +118,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
   86:Glider-Core/motor_driver.c ****       .enable_speed_ctrl = 1U,
   87:Glider-Core/motor_driver.c ****       .enable_poll = 1U,
   88:Glider-Core/motor_driver.c ****       .target_speed_rpm = 0,
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 3
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 3
 
 
   89:Glider-Core/motor_driver.c ****       .feedback_speed_rpm = 0,
@@ -178,7 +178,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  143:Glider-Core/motor_driver.c ****       },
  144:Glider-Core/motor_driver.c ****       .verify_regs = {0},
  145:Glider-Core/motor_driver.c ****       .status_regs = {0},
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 4
 
 
  146:Glider-Core/motor_driver.c ****       .fault_regs = {0},
@@ -238,7 +238,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
   48              		.loc 1 178 3 view .LVU8
   49 000c 10E0     		b	.L2
   50              	.LVL3:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 5
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 5
 
 
   51              	.L4:
@@ -298,7 +298,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
   84              	.LVL9:
   85              	.L2:
  178:Glider-Core/motor_driver.c ****   {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 6
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 6
 
 
   86              		.loc 1 178 18 is_stmt 1 discriminator 1 view .LVU21
@@ -358,7 +358,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  124              		.cfi_def_cfa_offset 8
  125              		.cfi_offset 4, -8
  126              		.cfi_offset 14, -4
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 7
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 7
 
 
  127 0002 8C46     		mov	ip, r1
@@ -418,7 +418,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  169              	.LVL17:
  170              		.loc 1 213 12 view .LVU55
  171 0028 E071     		strb	r0, [r4, #7]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 8
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 8
 
 
  214:Glider-Core/motor_driver.c **** 
@@ -478,7 +478,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  214 000c A370     		strb	r3, [r4, #2]
  228:Glider-Core/motor_driver.c ****   frame[3] = (uint8_t)(start_reg & 0xFFU);
  215              		.loc 1 228 3 is_stmt 1 view .LVU70
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 9
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 9
 
 
  216              		.loc 1 228 12 is_stmt 0 view .LVU71
@@ -538,7 +538,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  239:Glider-Core/motor_driver.c **** static uint8_t Motor_ReceiveExact(uint8_t *buffer, uint16_t expected_len, uint32_t timeout_ms)
  240:Glider-Core/motor_driver.c **** {
  241:Glider-Core/motor_driver.c ****   uint16_t index;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 10
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 10
 
 
  242:Glider-Core/motor_driver.c ****   HAL_StatusTypeDef rx_status;
@@ -598,7 +598,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  296:Glider-Core/motor_driver.c ****   osDelay(2U);
  297:Glider-Core/motor_driver.c **** 
  298:Glider-Core/motor_driver.c ****   /* Read the fixed header first: addr + func + bytecount/exception code. */
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 11
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 11
 
 
  299:Glider-Core/motor_driver.c ****   if (Motor_ReceiveExact(header, 3U, MOTOR_UART_RX_TIMEOUT_MS) == 0U)
@@ -658,7 +658,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  353:Glider-Core/motor_driver.c **** {
  262              		.loc 1 353 1 is_stmt 1 view -0
  263              		.cfi_startproc
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 12
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 12
 
 
  264              		@ args = 0, pretend = 0, frame = 0
@@ -718,7 +718,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  371:Glider-Core/motor_driver.c ****   calc_crc = Motor_Crc16(rx_frame, 6U);
  372:Glider-Core/motor_driver.c ****   if (recv_crc != calc_crc)
  373:Glider-Core/motor_driver.c ****   {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 13
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 13
 
 
  374:Glider-Core/motor_driver.c ****     g_motor_bus_diag.total_crc_error_count++;
@@ -778,7 +778,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  335              		.loc 1 371 14 is_stmt 0 view .LVU119
  336 003e 0621     		movs	r1, #6
  337              	.LVL32:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 14
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 14
 
 
  371:Glider-Core/motor_driver.c ****   if (recv_crc != calc_crc)
@@ -838,7 +838,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  380              		.section	.text.Motor_ParseReadBlockResponse,"ax",%progbits
  381              		.align	1
  382              		.syntax unified
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 15
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 15
 
 
  383              		.thumb
@@ -898,7 +898,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  430:Glider-Core/motor_driver.c ****     g_motor_bus_diag.last_error = 14U;
  431:Glider-Core/motor_driver.c ****     return 0U;
  432:Glider-Core/motor_driver.c ****   }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 16
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 16
 
 
  433:Glider-Core/motor_driver.c **** 
@@ -958,7 +958,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  418              	.LVL39:
  419              		.loc 1 457 88 discriminator 1 view .LVU145
  420 0014 B1FA81F1 		clz	r1, r1
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 17
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 17
 
 
  421 0018 4909     		lsrs	r1, r1, #5
@@ -1018,7 +1018,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  482:Glider-Core/motor_driver.c ****     return 0U;
  483:Glider-Core/motor_driver.c ****   }
  484:Glider-Core/motor_driver.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 18
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 18
 
 
  485:Glider-Core/motor_driver.c ****   if (rx_len < (uint16_t)(5U + byte_count))
@@ -1078,7 +1078,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  491              		.loc 1 459 33 view .LVU176
  492 0062 1022     		movs	r2, #16
  493              	.LVL46:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 19
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 19
 
 
  459:Glider-Core/motor_driver.c ****     return 0U;
@@ -1138,7 +1138,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  517 0076 0025     		movs	r5, #0
  518 0078 F7E7     		b	.L31
  519              	.LVL51:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 20
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 20
 
 
  520              	.L33:
@@ -1198,7 +1198,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  558              	.LVL57:
  559              	.L45:
  487:Glider-Core/motor_driver.c ****     return 0U;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 21
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 21
 
 
  560              		.loc 1 487 5 is_stmt 1 view .LVU203
@@ -1258,7 +1258,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  597              		.loc 1 503 21 is_stmt 0 view .LVU220
  598 00c4 114B     		ldr	r3, .L46
  599 00c6 D3F8E824 		ldr	r2, [r3, #1256]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 22
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 22
 
 
  503:Glider-Core/motor_driver.c ****     g_motor_bus_diag.last_error = 19U;
@@ -1318,7 +1318,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  638 00f8 9BB2     		uxth	r3, r3
  639              	.LVL66:
  640              	.L39:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 23
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 23
 
 
  508:Glider-Core/motor_driver.c ****   {
@@ -1378,7 +1378,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  686 0009 18       		.byte	(.L58-.L51)/2
  687 000a 07       		.byte	(.L55-.L51)/2
  688 000b 0A       		.byte	(.L54-.L51)/2
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 24
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 24
 
 
  689 000c 0D       		.byte	(.L53-.L51)/2
@@ -1438,7 +1438,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  735              	.LVL80:
  736              		.loc 1 529 21 view .LVU261
  737 0032 7047     		bx	lr
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 25
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 25
 
 
  738              	.LVL81:
@@ -1498,7 +1498,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  778              		.cfi_def_cfa_offset 24
  779              		.cfi_offset 3, -24
  780              		.cfi_offset 4, -20
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 26
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 26
 
 
  781              		.cfi_offset 5, -16
@@ -1558,7 +1558,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  819              	.LVL90:
  560:Glider-Core/motor_driver.c ****   if (recv_crc != calc_crc)
  820              		.loc 1 560 3 is_stmt 1 view .LVU288
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 27
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 27
 
 
  821              		.loc 1 560 6 is_stmt 0 view .LVU289
@@ -1618,7 +1618,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  866              		.cfi_restore 5
  867              		.cfi_restore 6
  868              		.cfi_restore 7
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 28
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 28
 
 
  869              		.cfi_restore 14
@@ -1678,7 +1678,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  917              		@ link register save eliminated.
  574:Glider-Core/motor_driver.c ****   uint32_t active = 0U;
  918              		.loc 1 574 3 view .LVU314
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 29
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 29
 
 
  919              	.LVL100:
@@ -1738,7 +1738,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  961 0024 C3F8D804 		str	r0, [r3, #1240]
  586:Glider-Core/motor_driver.c **** }
  962              		.loc 1 586 1 view .LVU332
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 30
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 30
 
 
  963 0028 7047     		bx	lr
@@ -1798,7 +1798,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1011 0014 09D2     		bcs	.L88
  251:Glider-Core/motor_driver.c ****     if (rx_status != HAL_OK)
  1012              		.loc 1 251 5 view .LVU341
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 31
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 31
 
 
  251:Glider-Core/motor_driver.c ****     if (rx_status != HAL_OK)
@@ -1858,7 +1858,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1057              		.cfi_offset 3, -24
  1058              		.cfi_offset 4, -20
  1059              		.cfi_offset 5, -16
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 32
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 32
 
 
  1060              		.cfi_offset 6, -12
@@ -1918,7 +1918,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1106              		.loc 1 272 6 is_stmt 0 view .LVU361
  1107 0006 002A     		cmp	r2, #0
  1108 0008 18BF     		it	ne
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 33
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 33
 
 
  1109 000a 0028     		cmpne	r0, #0
@@ -1978,7 +1978,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  278:Glider-Core/motor_driver.c **** 
  1152              		.loc 1 278 15 is_stmt 0 view .LVU373
  1153 0034 0023     		movs	r3, #0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 34
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 34
 
 
  1154 0036 089A     		ldr	r2, [sp, #32]
@@ -2038,7 +2038,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1193 0064 3148     		ldr	r0, .L111+8
  1194              	.LVL126:
  293:Glider-Core/motor_driver.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 35
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 35
 
 
  1195              		.loc 1 293 3 is_stmt 0 view .LVU389
@@ -2098,7 +2098,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1232              		.loc 1 314 11 is_stmt 0 view .LVU406
  1233 0094 062B     		cmp	r3, #6
  1234 0096 2AD0     		beq	.L104
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 36
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 36
 
 
  320:Glider-Core/motor_driver.c ****     expected_len = (uint16_t)(3U + byte_count + 2U);
@@ -2158,7 +2158,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1273              	.L103:
  312:Glider-Core/motor_driver.c ****   }
  1274              		.loc 1 312 18 view .LVU423
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 37
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 37
 
 
  1275 00bc 0524     		movs	r4, #5
@@ -2218,7 +2218,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1314              	.LVL139:
  349:Glider-Core/motor_driver.c **** }
  1315              		.loc 1 349 3 view .LVU439
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 38
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 38
 
 
  349:Glider-Core/motor_driver.c **** }
@@ -2278,7 +2278,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1356 011a 0322     		movs	r2, #3
  1357 011c C3F82425 		str	r2, [r3, #1316]
  336:Glider-Core/motor_driver.c ****     }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 39
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 39
 
 
  1358              		.loc 1 336 7 is_stmt 1 view .LVU454
@@ -2338,7 +2338,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  620:Glider-Core/motor_driver.c **** 
  621:Glider-Core/motor_driver.c ****   g_motor_nodes[slot].enable_poll = (enable_poll != 0U) ? 1U : 0U;
  622:Glider-Core/motor_driver.c **** }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 40
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 40
 
 
  623:Glider-Core/motor_driver.c **** 
@@ -2398,7 +2398,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1387              		.loc 1 669 3 view .LVU460
  670:Glider-Core/motor_driver.c ****   int16_t speed_cmd;
  1388              		.loc 1 670 3 view .LVU461
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 41
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 41
 
 
  671:Glider-Core/motor_driver.c ****   uint16_t status_word;
@@ -2458,7 +2458,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1427 001a D35C     		ldrb	r3, [r2, r3]	@ zero_extendqisi2
  1428              		.loc 1 685 36 discriminator 1 view .LVU479
  1429 001c 002B     		cmp	r3, #0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 42
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 42
 
 
  1430 001e 00F09D80 		beq	.L113
@@ -2518,7 +2518,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1470 0050 021D     		adds	r2, r0, #4
  1471 0052 8F4B     		ldr	r3, .L193+4
  1472 0054 03EB8203 		add	r3, r3, r2, lsl #2
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 43
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 43
 
 
  1473 0058 5B68     		ldr	r3, [r3, #4]
@@ -2578,7 +2578,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1522              		.loc 1 704 53 view .LVU510
  1523 009c 7C4B     		ldr	r3, .L193+4
  1524 009e 1A19     		adds	r2, r3, r4
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 44
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 44
 
 
  1525 00a0 82F83410 		strb	r1, [r2, #52]
@@ -2638,7 +2638,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  725:Glider-Core/motor_driver.c ****           g_motor_internal.last_cmd_tick[index] = now_tick;
  726:Glider-Core/motor_driver.c ****         }
  727:Glider-Core/motor_driver.c ****       }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 45
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 45
 
 
  728:Glider-Core/motor_driver.c ****     }
@@ -2698,7 +2698,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  756:Glider-Core/motor_driver.c ****         /* 5. Send start position command */
  757:Glider-Core/motor_driver.c ****         uint16_t pos_start_cmd = node->pos_cmd_is_absolute ? MOTOR_CMD_START_ABS_POS : MOTOR_CMD_ST
  758:Glider-Core/motor_driver.c ****         tx_len = Motor_BuildWriteSingleRegFrame(node_id, node->reg_map.reg_cmd_start, pos_start_cmd
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 46
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 46
 
 
  759:Glider-Core/motor_driver.c ****         if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
@@ -2758,7 +2758,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  774:Glider-Core/motor_driver.c ****       tx_len = Motor_BuildWriteSingleRegFrame(node_id,
  775:Glider-Core/motor_driver.c ****                                               node->reg_map.reg_cmd_speed_rpm,
  776:Glider-Core/motor_driver.c ****                                               (uint16_t)speed_cmd,
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 47
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 47
 
 
  777:Glider-Core/motor_driver.c ****                                               tx_frame);
@@ -2818,7 +2818,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  831:Glider-Core/motor_driver.c **** 
  832:Glider-Core/motor_driver.c ****       g_motor_internal.last_cmd_tick[index] = now_tick;
  833:Glider-Core/motor_driver.c ****     }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 48
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 48
 
 
  834:Glider-Core/motor_driver.c ****   }
@@ -2878,7 +2878,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  867:Glider-Core/motor_driver.c ****       dbg->baud_rate_bps = Motor_BaudCodeToBps(dbg->reg_0015_baud_cfg);
  868:Glider-Core/motor_driver.c ****       dbg->reg_0016_uart_fmt_cfg = (got_regs >= 3U) ? block_words[2U] : 0U;
  869:Glider-Core/motor_driver.c ****       dbg->reg_0017_save_cmd = (got_regs >= 4U) ? block_words[3U] : 0U;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 49
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 49
 
 
  870:Glider-Core/motor_driver.c **** 
@@ -2938,7 +2938,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  924:Glider-Core/motor_driver.c ****           dbg->reg_000C_pos_high = (got_regs >= 13U) ? block_words[12U] : 0U;
  925:Glider-Core/motor_driver.c ****           dbg->pos_signed_32 = (int32_t)(((uint32_t)dbg->reg_000C_pos_high << 16) | dbg->reg_000B_p
  926:Glider-Core/motor_driver.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 50
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 50
 
 
  927:Glider-Core/motor_driver.c ****           node->status_word = dbg->reg_0004_status;
@@ -2998,7 +2998,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  981:Glider-Core/motor_driver.c ****       }
  982:Glider-Core/motor_driver.c ****       else
  983:Glider-Core/motor_driver.c ****       {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 51
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 51
 
 
  984:Glider-Core/motor_driver.c ****         /* Fault read disabled by config. */
@@ -3058,7 +3058,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1664 0172 83F82420 		strb	r2, [r3, #36]
  719:Glider-Core/motor_driver.c ****         if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
  1665              		.loc 1 719 9 is_stmt 1 view .LVU555
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 52
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 52
 
 
  719:Glider-Core/motor_driver.c ****         if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
@@ -3118,7 +3118,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  738:Glider-Core/motor_driver.c ****         
  1709              		.loc 1 738 9 is_stmt 1 view .LVU567
  738:Glider-Core/motor_driver.c ****         
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 53
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 53
 
 
  1710              		.loc 1 738 31 is_stmt 0 view .LVU568
@@ -3178,7 +3178,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1755              		.loc 1 749 9 view .LVU577
  749:Glider-Core/motor_driver.c ****         Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len);
  1756              		.loc 1 749 71 is_stmt 0 view .LVU578
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 54
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 54
 
 
  1757 0208 B7F84410 		ldrh	r1, [r7, #68]
@@ -3238,7 +3238,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1801              	.LVL177:
  758:Glider-Core/motor_driver.c ****         if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
  1802              		.loc 1 758 9 is_stmt 1 discriminator 4 view .LVU589
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 55
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 55
 
 
  758:Glider-Core/motor_driver.c ****         if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
@@ -3298,7 +3298,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  757:Glider-Core/motor_driver.c ****         tx_len = Motor_BuildWriteSingleRegFrame(node_id, node->reg_map.reg_cmd_start, pos_start_cmd
  1848              		.loc 1 757 18 view .LVU599
  1849              	.LBE2:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 56
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 56
 
 
  773:Glider-Core/motor_driver.c ****       tx_len = Motor_BuildWriteSingleRegFrame(node_id,
@@ -3358,7 +3358,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  814:Glider-Core/motor_driver.c ****       {
  1891              		.loc 1 814 16 is_stmt 0 view .LVU613
  1892 02ce 02AB     		add	r3, sp, #8
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 57
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 57
 
 
  1893 02d0 0093     		str	r3, [sp]
@@ -3418,7 +3418,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1931              		.loc 1 821 46 is_stmt 0 view .LVU629
  1932 030c C2F82805 		str	r0, [r2, #1320]
  822:Glider-Core/motor_driver.c ****         g_motor_bus_diag.last_error = 11U;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 58
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 58
 
 
  1933              		.loc 1 822 9 is_stmt 1 view .LVU630
@@ -3478,7 +3478,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  1976              	.LVL193:
  787:Glider-Core/motor_driver.c ****             Motor_ParseWriteAck(node_id, rx_frame, rx_len) != 0U)
  1977              		.loc 1 787 12 view .LVU642
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 59
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 59
 
 
  1978 0356 C8B1     		cbz	r0, .L124
@@ -3538,7 +3538,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  796:Glider-Core/motor_driver.c ****         {
  2017              		.loc 1 796 18 is_stmt 0 view .LVU658
  2018 038c 02AB     		add	r3, sp, #8
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 60
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 60
 
 
  2019 038e 0093     		str	r3, [sp]
@@ -3598,7 +3598,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2057 03c6 C2F82805 		str	r0, [r2, #1320]
  804:Glider-Core/motor_driver.c ****           g_motor_bus_diag.last_error = 15U;
  2058              		.loc 1 804 11 is_stmt 1 view .LVU675
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 61
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 61
 
 
  804:Glider-Core/motor_driver.c ****           g_motor_bus_diag.last_error = 15U;
@@ -3658,7 +3658,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  828:Glider-Core/motor_driver.c ****         node->comm_ok = 0U;
  2098              		.loc 1 828 13 is_stmt 0 view .LVU691
  2099 0402 9A6B     		ldr	r2, [r3, #56]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 62
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 62
 
 
  828:Glider-Core/motor_driver.c ****         node->comm_ok = 0U;
@@ -3718,7 +3718,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2141 0440 C7F80201 		str	r0, [r7, #258]	@ unaligned
  2142 0444 C7F80611 		str	r1, [r7, #262]	@ unaligned
  846:Glider-Core/motor_driver.c ****     dbg->poll_last_req_reg_count = req_count;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 63
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 63
 
 
  2143              		.loc 1 846 5 view .LVU705
@@ -3778,7 +3778,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2186              		.loc 1 873 13 view .LVU716
  2187 0494 C0B1     		cbz	r0, .L136
  875:Glider-Core/motor_driver.c ****       node->valid = 0U;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 64
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 64
 
 
  2188              		.loc 1 875 7 is_stmt 1 view .LVU717
@@ -3838,7 +3838,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2224 04c4 C2F82435 		str	r3, [r2, #1316]
  883:Glider-Core/motor_driver.c ****     }
  2225              		.loc 1 883 7 is_stmt 1 view .LVU736
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 65
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 65
 
 
  886:Glider-Core/motor_driver.c ****     {
@@ -3898,7 +3898,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2266 04f8 00000000 		.word	g_motor_internal
  2267              	.LVL207:
  2268              	.L190:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 66
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 66
 
 
  857:Glider-Core/motor_driver.c ****       dbg->poll_last_rsp_reg_count = got_regs;
@@ -3958,7 +3958,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2309              		.loc 1 863 7 view .LVU764
  2310 0542 5200     		lsls	r2, r2, #1
  2311              	.LVL212:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 67
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 67
 
 
  863:Glider-Core/motor_driver.c **** 
@@ -4018,7 +4018,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2351              		.loc 1 868 34 is_stmt 0 discriminator 4 view .LVU779
  2352 058a B8F1020F 		cmp	r8, #2
  2353 058e 49D9     		bls	.L161
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 68
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 68
 
 
  868:Glider-Core/motor_driver.c ****       dbg->reg_0017_save_cmd = (got_regs >= 4U) ? block_words[3U] : 0U;
@@ -4078,7 +4078,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  943:Glider-Core/motor_driver.c ****       if (node->reg_map.fault_read_reg_count != 0U)
  2392              		.loc 1 943 28 is_stmt 0 view .LVU796
  2393 05c8 974B     		ldr	r3, .L197
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 69
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 69
 
 
  2394 05ca 4FF49A72 		mov	r2, #308
@@ -4138,7 +4138,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2432              	.LVL220:
  995:Glider-Core/motor_driver.c ****       node->comm_ok = 1U;
  2433              		.loc 1 995 19 view .LVU813
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 70
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 70
 
 
  2434 0600 9A60     		str	r2, [r3, #8]
@@ -4198,7 +4198,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  869:Glider-Core/motor_driver.c **** 
  2473              		.loc 1 869 30 view .LVU829
  2474 0628 0021     		movs	r1, #0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 71
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 71
 
 
  2475 062a BFE7     		b	.L133
@@ -4258,7 +4258,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2515              		.loc 1 898 13 is_stmt 0 view .LVU843
  2516 0668 0DF12E03 		add	r3, sp, #46
  2517 066c 0093     		str	r3, [sp]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 72
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 72
 
 
  2518 066e 4023     		movs	r3, #64
@@ -4318,7 +4318,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2562 06c4 4846     		mov	r0, r9
  2563 06c6 FFF7FEFF 		bl	memcpy
  2564              	.LVL233:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 73
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 73
 
 
  911:Glider-Core/motor_driver.c ****           memcpy((void *)node->status_regs, (const void *)block_words, copy_count * sizeof(uint16_t
@@ -4378,7 +4378,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2605 0704 4FF49A71 		mov	r1, #308
  2606 0708 01FB0433 		mla	r3, r1, r4, r3
  2607 070c A3F8DA20 		strh	r2, [r3, #218]	@ movhi
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 74
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 74
 
 
  916:Glider-Core/motor_driver.c ****           dbg->reg_0003_work_mode = (got_regs >= 4U) ? block_words[3U] : 0U;
@@ -4438,7 +4438,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  919:Glider-Core/motor_driver.c ****           dbg->reg_0006_actual_speed = (got_regs >= 7U) ? block_words[6U] : 0U;
  2648              		.loc 1 919 38 discriminator 1 view .LVU882
  2649 0756 BDF81620 		ldrh	r2, [sp, #22]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 75
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 75
 
 
  2650              	.L142:
@@ -4498,7 +4498,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2691 07a6 A3F8E820 		strh	r2, [r3, #232]	@ movhi
  923:Glider-Core/motor_driver.c ****           dbg->reg_000C_pos_high = (got_regs >= 13U) ? block_words[12U] : 0U;
  2692              		.loc 1 923 11 is_stmt 1 discriminator 4 view .LVU896
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 76
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 76
 
 
  923:Glider-Core/motor_driver.c ****           dbg->reg_000C_pos_high = (got_regs >= 13U) ? block_words[12U] : 0U;
@@ -4558,7 +4558,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  928:Glider-Core/motor_driver.c ****         }
  2732              		.loc 1 928 11 is_stmt 1 discriminator 4 view .LVU912
  928:Glider-Core/motor_driver.c ****         }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 77
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 77
 
 
  2733              		.loc 1 928 59 is_stmt 0 discriminator 4 view .LVU913
@@ -4618,7 +4618,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2776              	.L172:
  923:Glider-Core/motor_driver.c ****           dbg->reg_000C_pos_high = (got_regs >= 13U) ? block_words[12U] : 0U;
  2777              		.loc 1 923 33 view .LVU925
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 78
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 78
 
 
  2778 081e 0022     		movs	r2, #0
@@ -4678,7 +4678,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2821              		.loc 1 951 9 is_stmt 1 view .LVU936
  951:Glider-Core/motor_driver.c **** 
  2822              		.loc 1 951 38 is_stmt 0 view .LVU937
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 79
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 79
 
 
  2823 0864 A7F8C480 		strh	r8, [r7, #196]	@ movhi
@@ -4738,7 +4738,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2866 08ba A3F8C660 		strh	r6, [r3, #198]	@ movhi
  963:Glider-Core/motor_driver.c ****                  (rx_len > UMOTOR_NODE_DEBUG_RX_MAX) ? UMOTOR_NODE_DEBUG_RX_MAX : rx_len);
  2867              		.loc 1 963 11 is_stmt 1 view .LVU949
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 80
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 80
 
 
  2868 08be 282A     		cmp	r2, #40
@@ -4798,7 +4798,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  970:Glider-Core/motor_driver.c ****           dbg->reg_0196_second_fault = (got_regs >= 3U) ? block_words[2U] : 0U;
  2910              		.loc 1 970 42 discriminator 1 view .LVU962
  2911 08fe BDF80E20 		ldrh	r2, [sp, #14]
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 81
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 81
 
 
  2912              	.L150:
@@ -4858,7 +4858,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2953 094e A3F8FC20 		strh	r2, [r3, #252]	@ movhi
  974:Glider-Core/motor_driver.c ****           dbg->reg_019A_comm_fault_bits = (got_regs >= 7U) ? block_words[6U] : 0U;
  2954              		.loc 1 974 11 is_stmt 1 discriminator 4 view .LVU976
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 82
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 82
 
 
  974:Glider-Core/motor_driver.c ****           dbg->reg_019A_comm_fault_bits = (got_regs >= 7U) ? block_words[6U] : 0U;
@@ -4918,7 +4918,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  2997 0990 0022     		movs	r2, #0
  2998 0992 D7E7     		b	.L153
  2999              	.L179:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 83
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 83
 
 
  974:Glider-Core/motor_driver.c ****           dbg->reg_019A_comm_fault_bits = (got_regs >= 7U) ? block_words[6U] : 0U;
@@ -4978,7 +4978,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3048              		.loc 1 595 31 is_stmt 0 view .LVU996
  3049 0004 0D4B     		ldr	r3, .L205
  3050 0006 4FF49A7C 		mov	ip, #308
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 84
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 84
 
 
  3051 000a 0CFB0033 		mla	r3, ip, r0, r3
@@ -5038,7 +5038,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3092              		.cfi_endproc
  3093              	.LFE350:
  3095              		.section	.text.UMotor_SetNodeSpeedControl,"ax",%progbits
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 85
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 85
 
 
  3096              		.align	1
@@ -5098,7 +5098,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3145              		.loc 1 615 1 is_stmt 1 view -0
  3146              		.cfi_startproc
  3147              		@ args = 0, pretend = 0, frame = 0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 86
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 86
 
 
  3148              		@ frame_needed = 0, uses_anonymous_args = 0
@@ -5158,7 +5158,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3194              		.loc 1 626 40 view .LVU1027
  3195 0006 4909     		lsrs	r1, r1, #5
  626:Glider-Core/motor_driver.c ****   {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 87
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 87
 
 
  3196              		.loc 1 626 33 view .LVU1028
@@ -5218,7 +5218,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3237 004a DCF80C30 		ldr	r3, [ip, #12]	@ unaligned
  3238 004e AEE80F00 		stmia	lr!, {r0, r1, r2, r3}
  3239 0052 BCF81030 		ldrh	r3, [ip, #16]	@ unaligned
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 88
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 88
 
 
  3240 0056 AEF80030 		strh	r3, [lr]	@ unaligned
@@ -5278,7 +5278,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3284              		.section	.text.UMotor_SetTargetSpeedById,"ax",%progbits
  3285              		.align	1
  3286              		.global	UMotor_SetTargetSpeedById
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 89
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 89
 
 
  3287              		.syntax unified
@@ -5338,7 +5338,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3329              		.cfi_def_cfa_offset 4
  3330              		.cfi_offset 4, -4
  3331 001c 03E0     		b	.L234
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 90
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 90
 
 
  3332              	.L232:
@@ -5398,7 +5398,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3373 0052 5DF8044B 		ldr	r4, [sp], #4
  3374              	.LCFI23:
  3375              		.cfi_restore 4
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 91
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 91
 
 
  3376              		.cfi_def_cfa_offset 0
@@ -5458,7 +5458,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3423 000e 04E0     		b	.L246
  3424              	.LVL282:
  3425              	.L248:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 92
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 92
 
 
 1021:Glider-Core/motor_driver.c **** 
@@ -5518,7 +5518,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
 1033:Glider-Core/motor_driver.c ****   {
  3435              		.loc 1 1033 3 view .LVU1091
  3436              	.L246:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 93
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 93
 
 
 1033:Glider-Core/motor_driver.c ****   {
@@ -5578,7 +5578,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3478              	.LFE356:
  3480              		.section	.text.UMotor_SetMotorEnable,"ax",%progbits
  3481              		.align	1
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 94
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 94
 
 
  3482              		.global	UMotor_SetMotorEnable
@@ -5638,7 +5638,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3528              	.LVL290:
  3529              	.LFB358:
 1077:Glider-Core/motor_driver.c **** 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 95
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 95
 
 
 1078:Glider-Core/motor_driver.c **** /* Stop motor manually */
@@ -5698,7 +5698,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3573              		.cfi_startproc
  3574              		@ args = 0, pretend = 0, frame = 0
  3575              		@ frame_needed = 0, uses_anonymous_args = 0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 96
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 96
 
 
  3576              		@ link register save eliminated.
@@ -5758,7 +5758,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3621              	.LVL297:
  3622              	.L264:
  3623              		.loc 1 1098 1 discriminator 4 view .LVU1137
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 97
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 97
 
 
  3624 0032 7047     		bx	lr
@@ -5818,7 +5818,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3673      00000000 
  3674 0076 0000     		.short	0
  3675 0078 00000000 		.space	30
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 98
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 98
 
 
  3675      00000000 
@@ -5878,7 +5878,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3712 01ac 00000000 		.space	30
  3712      00000000 
  3712      00000000 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 99
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 99
 
 
  3712      00000000 
@@ -5938,7 +5938,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3749      00000000 
  3749      00000000 
  3749      00000000 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 100
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 100
 
 
  3750 02fe 0000     		.short	0
@@ -5998,7 +5998,7 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3786      00000000 
  3787 0432 0000     		.short	0
  3788 0434 00000000 		.space	30
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 101
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 101
 
 
  3788      00000000 
@@ -6033,83 +6033,83 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 1
  3806              		.file 10 "Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h"
  3807              		.file 11 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\string.h"
  3808              		.file 12 "<built-in>"
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 102
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 102
 
 
 DEFINED SYMBOLS
                             *ABS*:00000000 motor_driver.c
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:20     .text.Motor_Crc16:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:25     .text.Motor_Crc16:00000000 Motor_Crc16
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:109    .text.Motor_BuildWriteSingleRegFrame:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:114    .text.Motor_BuildWriteSingleRegFrame:00000000 Motor_BuildWriteSingleRegFrame
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:181    .text.Motor_BuildReadStatusFrame:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:186    .text.Motor_BuildReadStatusFrame:00000000 Motor_BuildReadStatusFrame
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:254    .text.Motor_ParseWriteAck:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:259    .text.Motor_ParseWriteAck:00000000 Motor_ParseWriteAck
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:376    .text.Motor_ParseWriteAck:00000064 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3643   .data.g_umotor:00000000 g_umotor
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:381    .text.Motor_ParseReadBlockResponse:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:386    .text.Motor_ParseReadBlockResponse:00000000 Motor_ParseReadBlockResponse
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:662    .text.Motor_ParseReadBlockResponse:0000010c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:667    .text.Motor_BaudCodeToBps:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:672    .text.Motor_BaudCodeToBps:00000000 Motor_BaudCodeToBps
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:685    .text.Motor_BaudCodeToBps:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:757    .text.Motor_ParseExceptionResponse:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:762    .text.Motor_ParseExceptionResponse:00000000 Motor_ParseExceptionResponse
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:901    .text.Motor_ParseExceptionResponse:00000060 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:906    .text.Motor_UpdateActiveNodeCount:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:911    .text.Motor_UpdateActiveNodeCount:00000000 Motor_UpdateActiveNodeCount
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:967    .text.Motor_UpdateActiveNodeCount:0000002c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:972    .text.Motor_ReceiveExact:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:977    .text.Motor_ReceiveExact:00000000 Motor_ReceiveExact
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1071   .text.Motor_ReceiveExact:00000038 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1076   .text.Motor_Transfer:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1081   .text.Motor_Transfer:00000000 Motor_Transfer
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1364   .text.Motor_Transfer:00000124 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1372   .text.Motor_ProcessOneNode:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1377   .text.Motor_ProcessOneNode:00000000 Motor_ProcessOneNode
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1844   .text.Motor_ProcessOneNode:0000028c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3636   .bss.g_motor_internal:00000000 g_motor_internal
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:1852   .text.Motor_ProcessOneNode:00000294 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:2265   .text.Motor_ProcessOneNode:000004f4 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:2271   .text.Motor_ProcessOneNode:000004fc $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:2787   .text.Motor_ProcessOneNode:00000828 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:2792   .text.Motor_ProcessOneNode:0000082c $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3024   .text.Motor_ProcessOneNode:000009a0 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3029   .text.UMotor_SetNodeEnabled:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3035   .text.UMotor_SetNodeEnabled:00000000 UMotor_SetNodeEnabled
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3091   .text.UMotor_SetNodeEnabled:0000003c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3096   .text.UMotor_SetNodeSpeedControl:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3102   .text.UMotor_SetNodeSpeedControl:00000000 UMotor_SetNodeSpeedControl
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3131   .text.UMotor_SetNodeSpeedControl:00000018 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3136   .text.UMotor_SetNodePollEnabled:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3142   .text.UMotor_SetNodePollEnabled:00000000 UMotor_SetNodePollEnabled
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3171   .text.UMotor_SetNodePollEnabled:00000018 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3176   .text.UMotor_SetNodeRegisterMap:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3182   .text.UMotor_SetNodeRegisterMap:00000000 UMotor_SetNodeRegisterMap
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3280   .text.UMotor_SetNodeRegisterMap:00000070 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3285   .text.UMotor_SetTargetSpeedById:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3291   .text.UMotor_SetTargetSpeedById:00000000 UMotor_SetTargetSpeedById
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3385   .text.UMotor_SetTargetSpeedById:0000005c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3391   .text.UMotor_StartTask:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3397   .text.UMotor_StartTask:00000000 UMotor_StartTask
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s 			page 103
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:20     .text.Motor_Crc16:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:25     .text.Motor_Crc16:00000000 Motor_Crc16
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:109    .text.Motor_BuildWriteSingleRegFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:114    .text.Motor_BuildWriteSingleRegFrame:00000000 Motor_BuildWriteSingleRegFrame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:181    .text.Motor_BuildReadStatusFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:186    .text.Motor_BuildReadStatusFrame:00000000 Motor_BuildReadStatusFrame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:254    .text.Motor_ParseWriteAck:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:259    .text.Motor_ParseWriteAck:00000000 Motor_ParseWriteAck
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:376    .text.Motor_ParseWriteAck:00000064 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3643   .data.g_umotor:00000000 g_umotor
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:381    .text.Motor_ParseReadBlockResponse:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:386    .text.Motor_ParseReadBlockResponse:00000000 Motor_ParseReadBlockResponse
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:662    .text.Motor_ParseReadBlockResponse:0000010c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:667    .text.Motor_BaudCodeToBps:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:672    .text.Motor_BaudCodeToBps:00000000 Motor_BaudCodeToBps
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:685    .text.Motor_BaudCodeToBps:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:757    .text.Motor_ParseExceptionResponse:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:762    .text.Motor_ParseExceptionResponse:00000000 Motor_ParseExceptionResponse
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:901    .text.Motor_ParseExceptionResponse:00000060 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:906    .text.Motor_UpdateActiveNodeCount:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:911    .text.Motor_UpdateActiveNodeCount:00000000 Motor_UpdateActiveNodeCount
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:967    .text.Motor_UpdateActiveNodeCount:0000002c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:972    .text.Motor_ReceiveExact:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:977    .text.Motor_ReceiveExact:00000000 Motor_ReceiveExact
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1071   .text.Motor_ReceiveExact:00000038 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1076   .text.Motor_Transfer:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1081   .text.Motor_Transfer:00000000 Motor_Transfer
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1364   .text.Motor_Transfer:00000124 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1372   .text.Motor_ProcessOneNode:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1377   .text.Motor_ProcessOneNode:00000000 Motor_ProcessOneNode
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1844   .text.Motor_ProcessOneNode:0000028c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3636   .bss.g_motor_internal:00000000 g_motor_internal
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:1852   .text.Motor_ProcessOneNode:00000294 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:2265   .text.Motor_ProcessOneNode:000004f4 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:2271   .text.Motor_ProcessOneNode:000004fc $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:2787   .text.Motor_ProcessOneNode:00000828 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:2792   .text.Motor_ProcessOneNode:0000082c $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3024   .text.Motor_ProcessOneNode:000009a0 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3029   .text.UMotor_SetNodeEnabled:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3035   .text.UMotor_SetNodeEnabled:00000000 UMotor_SetNodeEnabled
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3091   .text.UMotor_SetNodeEnabled:0000003c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3096   .text.UMotor_SetNodeSpeedControl:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3102   .text.UMotor_SetNodeSpeedControl:00000000 UMotor_SetNodeSpeedControl
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3131   .text.UMotor_SetNodeSpeedControl:00000018 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3136   .text.UMotor_SetNodePollEnabled:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3142   .text.UMotor_SetNodePollEnabled:00000000 UMotor_SetNodePollEnabled
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3171   .text.UMotor_SetNodePollEnabled:00000018 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3176   .text.UMotor_SetNodeRegisterMap:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3182   .text.UMotor_SetNodeRegisterMap:00000000 UMotor_SetNodeRegisterMap
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3280   .text.UMotor_SetNodeRegisterMap:00000070 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3285   .text.UMotor_SetTargetSpeedById:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3291   .text.UMotor_SetTargetSpeedById:00000000 UMotor_SetTargetSpeedById
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3385   .text.UMotor_SetTargetSpeedById:0000005c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3391   .text.UMotor_StartTask:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3397   .text.UMotor_StartTask:00000000 UMotor_StartTask
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s 			page 103
 
 
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3475   .text.UMotor_StartTask:00000048 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3481   .text.UMotor_SetMotorEnable:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3487   .text.UMotor_SetMotorEnable:00000000 UMotor_SetMotorEnable
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3516   .text.UMotor_SetMotorEnable:00000018 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3521   .text.UMotor_StopMotor:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3527   .text.UMotor_StopMotor:00000000 UMotor_StopMotor
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3558   .text.UMotor_StopMotor:0000001c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3563   .text.UMotor_RunPosition:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3569   .text.UMotor_RunPosition:00000000 UMotor_RunPosition
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3628   .text.UMotor_RunPosition:00000034 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3633   .bss.g_motor_internal:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:3640   .data.g_umotor:00000000 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:692    .text.Motor_BaudCodeToBps:0000000f $d
-C:\Users\OUFARU~1\AppData\Local\Temp\ccKohBPu.s:692    .text.Motor_BaudCodeToBps:00000010 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3475   .text.UMotor_StartTask:00000048 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3481   .text.UMotor_SetMotorEnable:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3487   .text.UMotor_SetMotorEnable:00000000 UMotor_SetMotorEnable
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3516   .text.UMotor_SetMotorEnable:00000018 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3521   .text.UMotor_StopMotor:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3527   .text.UMotor_StopMotor:00000000 UMotor_StopMotor
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3558   .text.UMotor_StopMotor:0000001c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3563   .text.UMotor_RunPosition:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3569   .text.UMotor_RunPosition:00000000 UMotor_RunPosition
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3628   .text.UMotor_RunPosition:00000034 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3633   .bss.g_motor_internal:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:3640   .data.g_umotor:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:692    .text.Motor_BaudCodeToBps:0000000f $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccA6RZ16.s:692    .text.Motor_BaudCodeToBps:00000010 $t
 
 UNDEFINED SYMBOLS
 HAL_UART_Receive

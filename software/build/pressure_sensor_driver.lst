@@ -1,0 +1,3352 @@
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 1
+
+
+   1              		.cpu cortex-m7
+   2              		.arch armv7e-m
+   3              		.fpu fpv5-d16
+   4              		.eabi_attribute 28, 1
+   5              		.eabi_attribute 20, 1
+   6              		.eabi_attribute 21, 1
+   7              		.eabi_attribute 23, 3
+   8              		.eabi_attribute 24, 1
+   9              		.eabi_attribute 25, 1
+  10              		.eabi_attribute 26, 1
+  11              		.eabi_attribute 30, 1
+  12              		.eabi_attribute 34, 1
+  13              		.eabi_attribute 18, 4
+  14              		.file	"pressure_sensor_driver.c"
+  15              		.text
+  16              	.Ltext0:
+  17              		.cfi_sections	.debug_frame
+  18              		.file 1 "Glider-Core/pressure_sensor_driver.c"
+  19              		.section	.text.PressureSensorDriver_ModbusCrc16,"ax",%progbits
+  20              		.align	1
+  21              		.syntax unified
+  22              		.thumb
+  23              		.thumb_func
+  25              	PressureSensorDriver_ModbusCrc16:
+  26              	.LVL0:
+  27              	.LFB335:
+   1:Glider-Core/pressure_sensor_driver.c **** #include "pressure_sensor_driver.h"
+   2:Glider-Core/pressure_sensor_driver.c **** 
+   3:Glider-Core/pressure_sensor_driver.c **** #include <string.h>
+   4:Glider-Core/pressure_sensor_driver.c **** 
+   5:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING 0x03U
+   6:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_MODBUS_REQUEST_LEN 8U
+   7:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN 16U
+   8:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_MODBUS_VALUE_BYTE_COUNT 4U
+   9:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_MODBUS_VALUE_REG_COUNT 0x0002U
+  10:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_MODBUS_PRESSURE_START_REG 0x0002U
+  11:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_MODBUS_TEMPERATURE_START_REG 0x0008U
+  12:Glider-Core/pressure_sensor_driver.c **** 
+  13:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_REQ_PRESSURE 0U
+  14:Glider-Core/pressure_sensor_driver.c **** #define PRESSURE_SENSOR_REQ_TEMPERATURE 1U
+  15:Glider-Core/pressure_sensor_driver.c **** 
+  16:Glider-Core/pressure_sensor_driver.c **** static UART_HandleTypeDef *s_pressure_sensor_uart = NULL;
+  17:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_pressure_sensor_rx_ring[PRESSURE_SENSOR_RX_RING_SIZE];
+  18:Glider-Core/pressure_sensor_driver.c **** static volatile uint16_t s_pressure_sensor_rx_head = 0U;
+  19:Glider-Core/pressure_sensor_driver.c **** static volatile uint16_t s_pressure_sensor_rx_tail = 0U;
+  20:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_pressure_sensor_rx_byte = 0U;
+  21:Glider-Core/pressure_sensor_driver.c **** 
+  22:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_modbus_request[PRESSURE_SENSOR_MODBUS_REQUEST_LEN];
+  23:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_response_frame[PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN];
+  24:Glider-Core/pressure_sensor_driver.c **** static volatile uint16_t s_response_index = 0U;
+  25:Glider-Core/pressure_sensor_driver.c **** static volatile uint16_t s_response_expected_len = 0U;
+  26:Glider-Core/pressure_sensor_driver.c **** 
+  27:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_tx_in_flight = 0U;
+  28:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_waiting_response = 0U;
+  29:Glider-Core/pressure_sensor_driver.c **** static volatile uint32_t s_last_request_tick = 0U;
+  30:Glider-Core/pressure_sensor_driver.c **** static volatile uint32_t s_response_start_tick = 0U;
+  31:Glider-Core/pressure_sensor_driver.c **** 
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 2
+
+
+  32:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_next_request_kind = PRESSURE_SENSOR_REQ_PRESSURE;
+  33:Glider-Core/pressure_sensor_driver.c **** static volatile uint8_t s_active_request_kind = PRESSURE_SENSOR_REQ_PRESSURE;
+  34:Glider-Core/pressure_sensor_driver.c **** 
+  35:Glider-Core/pressure_sensor_driver.c **** volatile PressureSensorState g_pressure_sensor_state = {0};
+  36:Glider-Core/pressure_sensor_driver.c **** 
+  37:Glider-Core/pressure_sensor_driver.c **** static uint16_t PressureSensorDriver_ModbusCrc16(const uint8_t *data, uint16_t len)
+  38:Glider-Core/pressure_sensor_driver.c **** {
+  28              		.loc 1 38 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		.loc 1 38 1 is_stmt 0 view .LVU1
+  33 0000 00B5     		push	{lr}
+  34              	.LCFI0:
+  35              		.cfi_def_cfa_offset 4
+  36              		.cfi_offset 14, -4
+  37 0002 8646     		mov	lr, r0
+  39:Glider-Core/pressure_sensor_driver.c ****   uint16_t crc = 0xFFFFU;
+  38              		.loc 1 39 3 is_stmt 1 view .LVU2
+  39              	.LVL1:
+  40:Glider-Core/pressure_sensor_driver.c ****   uint16_t i;
+  40              		.loc 1 40 3 view .LVU3
+  41:Glider-Core/pressure_sensor_driver.c ****   uint8_t bit;
+  41              		.loc 1 41 3 view .LVU4
+  42:Glider-Core/pressure_sensor_driver.c **** 
+  43:Glider-Core/pressure_sensor_driver.c ****   for (i = 0U; i < len; i++)
+  42              		.loc 1 43 3 view .LVU5
+  43              		.loc 1 43 10 is_stmt 0 view .LVU6
+  44 0004 4FF0000C 		mov	ip, #0
+  39:Glider-Core/pressure_sensor_driver.c ****   uint16_t i;
+  45              		.loc 1 39 12 view .LVU7
+  46 0008 4FF6FF70 		movw	r0, #65535
+  47              	.LVL2:
+  48              		.loc 1 43 3 view .LVU8
+  49 000c 10E0     		b	.L2
+  50              	.LVL3:
+  51              	.L4:
+  44:Glider-Core/pressure_sensor_driver.c ****   {
+  45:Glider-Core/pressure_sensor_driver.c ****     crc ^= data[i];
+  46:Glider-Core/pressure_sensor_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  47:Glider-Core/pressure_sensor_driver.c ****     {
+  48:Glider-Core/pressure_sensor_driver.c ****       if ((crc & 0x0001U) != 0U)
+  49:Glider-Core/pressure_sensor_driver.c ****       {
+  50:Glider-Core/pressure_sensor_driver.c ****         crc = (uint16_t)((crc >> 1) ^ 0xA001U);
+  51:Glider-Core/pressure_sensor_driver.c ****       }
+  52:Glider-Core/pressure_sensor_driver.c ****       else
+  53:Glider-Core/pressure_sensor_driver.c ****       {
+  54:Glider-Core/pressure_sensor_driver.c ****         crc >>= 1;
+  52              		.loc 1 54 9 is_stmt 1 view .LVU9
+  53              		.loc 1 54 13 is_stmt 0 view .LVU10
+  54 000e 4008     		lsrs	r0, r0, #1
+  55              	.LVL4:
+  56              	.L5:
+  46:Glider-Core/pressure_sensor_driver.c ****     {
+  57              		.loc 1 46 33 is_stmt 1 discriminator 2 view .LVU11
+  58 0010 0133     		adds	r3, r3, #1
+  59              	.LVL5:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 3
+
+
+  46:Glider-Core/pressure_sensor_driver.c ****     {
+  60              		.loc 1 46 33 is_stmt 0 discriminator 2 view .LVU12
+  61 0012 DBB2     		uxtb	r3, r3
+  62              	.LVL6:
+  63              	.L3:
+  46:Glider-Core/pressure_sensor_driver.c ****     {
+  64              		.loc 1 46 24 is_stmt 1 discriminator 1 view .LVU13
+  65 0014 072B     		cmp	r3, #7
+  66 0016 07D8     		bhi	.L9
+  48:Glider-Core/pressure_sensor_driver.c ****       {
+  67              		.loc 1 48 7 view .LVU14
+  48:Glider-Core/pressure_sensor_driver.c ****       {
+  68              		.loc 1 48 10 is_stmt 0 view .LVU15
+  69 0018 10F0010F 		tst	r0, #1
+  70 001c F7D0     		beq	.L4
+  50:Glider-Core/pressure_sensor_driver.c ****       }
+  71              		.loc 1 50 9 is_stmt 1 view .LVU16
+  50:Glider-Core/pressure_sensor_driver.c ****       }
+  72              		.loc 1 50 13 is_stmt 0 view .LVU17
+  73 001e 4AF20102 		movw	r2, #40961
+  74 0022 82EA5000 		eor	r0, r2, r0, lsr #1
+  75              	.LVL7:
+  50:Glider-Core/pressure_sensor_driver.c ****       }
+  76              		.loc 1 50 13 view .LVU18
+  77 0026 F3E7     		b	.L5
+  78              	.L9:
+  43:Glider-Core/pressure_sensor_driver.c ****   {
+  79              		.loc 1 43 26 is_stmt 1 discriminator 2 view .LVU19
+  80 0028 0CF1010C 		add	ip, ip, #1
+  81              	.LVL8:
+  43:Glider-Core/pressure_sensor_driver.c ****   {
+  82              		.loc 1 43 26 is_stmt 0 discriminator 2 view .LVU20
+  83 002c 1FFA8CFC 		uxth	ip, ip
+  84              	.LVL9:
+  85              	.L2:
+  43:Glider-Core/pressure_sensor_driver.c ****   {
+  86              		.loc 1 43 18 is_stmt 1 discriminator 1 view .LVU21
+  87 0030 8C45     		cmp	ip, r1
+  88 0032 04D2     		bcs	.L10
+  45:Glider-Core/pressure_sensor_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  89              		.loc 1 45 5 view .LVU22
+  45:Glider-Core/pressure_sensor_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  90              		.loc 1 45 16 is_stmt 0 view .LVU23
+  91 0034 1EF80C30 		ldrb	r3, [lr, ip]	@ zero_extendqisi2
+  45:Glider-Core/pressure_sensor_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  92              		.loc 1 45 9 view .LVU24
+  93 0038 5840     		eors	r0, r0, r3
+  94              	.LVL10:
+  46:Glider-Core/pressure_sensor_driver.c ****     {
+  95              		.loc 1 46 5 is_stmt 1 view .LVU25
+  46:Glider-Core/pressure_sensor_driver.c ****     {
+  96              		.loc 1 46 14 is_stmt 0 view .LVU26
+  97 003a 0023     		movs	r3, #0
+  46:Glider-Core/pressure_sensor_driver.c ****     {
+  98              		.loc 1 46 5 view .LVU27
+  99 003c EAE7     		b	.L3
+ 100              	.LVL11:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 4
+
+
+ 101              	.L10:
+  55:Glider-Core/pressure_sensor_driver.c ****       }
+  56:Glider-Core/pressure_sensor_driver.c ****     }
+  57:Glider-Core/pressure_sensor_driver.c ****   }
+  58:Glider-Core/pressure_sensor_driver.c **** 
+  59:Glider-Core/pressure_sensor_driver.c ****   return crc;
+ 102              		.loc 1 59 3 is_stmt 1 view .LVU28
+  60:Glider-Core/pressure_sensor_driver.c **** }
+ 103              		.loc 1 60 1 is_stmt 0 view .LVU29
+ 104 003e 5DF804FB 		ldr	pc, [sp], #4
+ 105              		.cfi_endproc
+ 106              	.LFE335:
+ 108              		.section	.text.PressureSensorDriver_UpdateRingAvailable,"ax",%progbits
+ 109              		.align	1
+ 110              		.syntax unified
+ 111              		.thumb
+ 112              		.thumb_func
+ 114              	PressureSensorDriver_UpdateRingAvailable:
+ 115              	.LFB336:
+  61:Glider-Core/pressure_sensor_driver.c **** 
+  62:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_UpdateRingAvailable(void)
+  63:Glider-Core/pressure_sensor_driver.c **** {
+ 116              		.loc 1 63 1 is_stmt 1 view -0
+ 117              		.cfi_startproc
+ 118              		@ args = 0, pretend = 0, frame = 0
+ 119              		@ frame_needed = 0, uses_anonymous_args = 0
+ 120              		@ link register save eliminated.
+  64:Glider-Core/pressure_sensor_driver.c ****   if (s_pressure_sensor_rx_head >= s_pressure_sensor_rx_tail)
+ 121              		.loc 1 64 3 view .LVU31
+ 122              		.loc 1 64 33 is_stmt 0 view .LVU32
+ 123 0000 0E4B     		ldr	r3, .L14
+ 124 0002 1A88     		ldrh	r2, [r3]
+ 125 0004 92B2     		uxth	r2, r2
+ 126 0006 0E4B     		ldr	r3, .L14+4
+ 127 0008 1B88     		ldrh	r3, [r3]
+ 128 000a 9BB2     		uxth	r3, r3
+ 129              		.loc 1 64 6 view .LVU33
+ 130 000c 9A42     		cmp	r2, r3
+ 131 000e 09D3     		bcc	.L12
+  65:Glider-Core/pressure_sensor_driver.c ****   {
+  66:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.ring_available_bytes = (uint32_t)(s_pressure_sensor_rx_head - s_press
+ 132              		.loc 1 66 5 is_stmt 1 view .LVU34
+ 133              		.loc 1 66 91 is_stmt 0 view .LVU35
+ 134 0010 0A4B     		ldr	r3, .L14
+ 135 0012 1B88     		ldrh	r3, [r3]
+ 136 0014 9BB2     		uxth	r3, r3
+ 137 0016 0A4A     		ldr	r2, .L14+4
+ 138 0018 1288     		ldrh	r2, [r2]
+ 139 001a 92B2     		uxth	r2, r2
+ 140 001c 9B1A     		subs	r3, r3, r2
+ 141              		.loc 1 66 52 view .LVU36
+ 142 001e 094A     		ldr	r2, .L14+8
+ 143 0020 5364     		str	r3, [r2, #68]
+ 144 0022 7047     		bx	lr
+ 145              	.L12:
+  67:Glider-Core/pressure_sensor_driver.c ****   }
+  68:Glider-Core/pressure_sensor_driver.c ****   else
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 5
+
+
+  69:Glider-Core/pressure_sensor_driver.c ****   {
+  70:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.ring_available_bytes =
+ 146              		.loc 1 70 5 is_stmt 1 view .LVU37
+  71:Glider-Core/pressure_sensor_driver.c ****         (uint32_t)(PRESSURE_SENSOR_RX_RING_SIZE - s_pressure_sensor_rx_tail + s_pressure_sensor_rx_
+ 147              		.loc 1 71 77 is_stmt 0 view .LVU38
+ 148 0024 054B     		ldr	r3, .L14
+ 149 0026 1B88     		ldrh	r3, [r3]
+ 150 0028 9BB2     		uxth	r3, r3
+ 151 002a 054A     		ldr	r2, .L14+4
+ 152 002c 1288     		ldrh	r2, [r2]
+ 153 002e 92B2     		uxth	r2, r2
+ 154 0030 9B1A     		subs	r3, r3, r2
+ 155 0032 03F50073 		add	r3, r3, #512
+  70:Glider-Core/pressure_sensor_driver.c ****         (uint32_t)(PRESSURE_SENSOR_RX_RING_SIZE - s_pressure_sensor_rx_tail + s_pressure_sensor_rx_
+ 156              		.loc 1 70 52 view .LVU39
+ 157 0036 034A     		ldr	r2, .L14+8
+ 158 0038 5364     		str	r3, [r2, #68]
+  72:Glider-Core/pressure_sensor_driver.c ****   }
+  73:Glider-Core/pressure_sensor_driver.c **** }
+ 159              		.loc 1 73 1 view .LVU40
+ 160 003a 7047     		bx	lr
+ 161              	.L15:
+ 162              		.align	2
+ 163              	.L14:
+ 164 003c 00000000 		.word	s_pressure_sensor_rx_head
+ 165 0040 00000000 		.word	s_pressure_sensor_rx_tail
+ 166 0044 00000000 		.word	g_pressure_sensor_state
+ 167              		.cfi_endproc
+ 168              	.LFE336:
+ 170              		.section	.text.PressureSensorDriver_ResetResponseParser,"ax",%progbits
+ 171              		.align	1
+ 172              		.syntax unified
+ 173              		.thumb
+ 174              		.thumb_func
+ 176              	PressureSensorDriver_ResetResponseParser:
+ 177              	.LFB337:
+  74:Glider-Core/pressure_sensor_driver.c **** 
+  75:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_ResetResponseParser(void)
+  76:Glider-Core/pressure_sensor_driver.c **** {
+ 178              		.loc 1 76 1 is_stmt 1 view -0
+ 179              		.cfi_startproc
+ 180              		@ args = 0, pretend = 0, frame = 0
+ 181              		@ frame_needed = 0, uses_anonymous_args = 0
+ 182              		@ link register save eliminated.
+  77:Glider-Core/pressure_sensor_driver.c ****   s_response_index = 0U;
+ 183              		.loc 1 77 3 view .LVU42
+ 184              		.loc 1 77 20 is_stmt 0 view .LVU43
+ 185 0000 0023     		movs	r3, #0
+ 186 0002 024A     		ldr	r2, .L17
+ 187 0004 1380     		strh	r3, [r2]	@ movhi
+  78:Glider-Core/pressure_sensor_driver.c ****   s_response_expected_len = 0U;
+ 188              		.loc 1 78 3 is_stmt 1 view .LVU44
+ 189              		.loc 1 78 27 is_stmt 0 view .LVU45
+ 190 0006 024A     		ldr	r2, .L17+4
+ 191 0008 1380     		strh	r3, [r2]	@ movhi
+  79:Glider-Core/pressure_sensor_driver.c **** }
+ 192              		.loc 1 79 1 view .LVU46
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 6
+
+
+ 193 000a 7047     		bx	lr
+ 194              	.L18:
+ 195              		.align	2
+ 196              	.L17:
+ 197 000c 00000000 		.word	s_response_index
+ 198 0010 00000000 		.word	s_response_expected_len
+ 199              		.cfi_endproc
+ 200              	.LFE337:
+ 202              		.section	.text.PressureSensorDriver_StopWaitingResponse,"ax",%progbits
+ 203              		.align	1
+ 204              		.syntax unified
+ 205              		.thumb
+ 206              		.thumb_func
+ 208              	PressureSensorDriver_StopWaitingResponse:
+ 209              	.LFB338:
+  80:Glider-Core/pressure_sensor_driver.c **** 
+  81:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_StopWaitingResponse(void)
+  82:Glider-Core/pressure_sensor_driver.c **** {
+ 210              		.loc 1 82 1 is_stmt 1 view -0
+ 211              		.cfi_startproc
+ 212              		@ args = 0, pretend = 0, frame = 0
+ 213              		@ frame_needed = 0, uses_anonymous_args = 0
+ 214 0000 08B5     		push	{r3, lr}
+ 215              	.LCFI1:
+ 216              		.cfi_def_cfa_offset 8
+ 217              		.cfi_offset 3, -8
+ 218              		.cfi_offset 14, -4
+  83:Glider-Core/pressure_sensor_driver.c ****   s_waiting_response = 0U;
+ 219              		.loc 1 83 3 view .LVU48
+ 220              		.loc 1 83 22 is_stmt 0 view .LVU49
+ 221 0002 0023     		movs	r3, #0
+ 222 0004 034A     		ldr	r2, .L21
+ 223 0006 1370     		strb	r3, [r2]
+  84:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_waiting = 0U;
+ 224              		.loc 1 84 3 is_stmt 1 view .LVU50
+ 225              		.loc 1 84 43 is_stmt 0 view .LVU51
+ 226 0008 034A     		ldr	r2, .L21+4
+ 227 000a 5361     		str	r3, [r2, #20]
+  85:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_ResetResponseParser();
+ 228              		.loc 1 85 3 is_stmt 1 view .LVU52
+ 229 000c FFF7FEFF 		bl	PressureSensorDriver_ResetResponseParser
+ 230              	.LVL12:
+  86:Glider-Core/pressure_sensor_driver.c **** }
+ 231              		.loc 1 86 1 is_stmt 0 view .LVU53
+ 232 0010 08BD     		pop	{r3, pc}
+ 233              	.L22:
+ 234 0012 00BF     		.align	2
+ 235              	.L21:
+ 236 0014 00000000 		.word	s_waiting_response
+ 237 0018 00000000 		.word	g_pressure_sensor_state
+ 238              		.cfi_endproc
+ 239              	.LFE338:
+ 241              		.section	.text.PressureSensorDriver_CopyTxFrameToState,"ax",%progbits
+ 242              		.align	1
+ 243              		.syntax unified
+ 244              		.thumb
+ 245              		.thumb_func
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 7
+
+
+ 247              	PressureSensorDriver_CopyTxFrameToState:
+ 248              	.LFB339:
+  87:Glider-Core/pressure_sensor_driver.c **** 
+  88:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_CopyTxFrameToState(void)
+  89:Glider-Core/pressure_sensor_driver.c **** {
+ 249              		.loc 1 89 1 is_stmt 1 view -0
+ 250              		.cfi_startproc
+ 251              		@ args = 0, pretend = 0, frame = 0
+ 252              		@ frame_needed = 0, uses_anonymous_args = 0
+ 253              		@ link register save eliminated.
+  90:Glider-Core/pressure_sensor_driver.c ****   uint32_t i;
+ 254              		.loc 1 90 3 view .LVU55
+  91:Glider-Core/pressure_sensor_driver.c **** 
+  92:Glider-Core/pressure_sensor_driver.c ****   for (i = 0U; i < (uint32_t)sizeof(g_pressure_sensor_readout.last_tx_data); i++)
+ 255              		.loc 1 92 3 view .LVU56
+ 256              	.LVL13:
+ 257              		.loc 1 92 10 is_stmt 0 view .LVU57
+ 258 0000 0023     		movs	r3, #0
+ 259              		.loc 1 92 3 view .LVU58
+ 260 0002 05E0     		b	.L24
+ 261              	.LVL14:
+ 262              	.L25:
+  93:Glider-Core/pressure_sensor_driver.c ****   {
+  94:Glider-Core/pressure_sensor_driver.c ****     if (i < PRESSURE_SENSOR_MODBUS_REQUEST_LEN)
+  95:Glider-Core/pressure_sensor_driver.c ****     {
+  96:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_readout.last_tx_data[i] = s_modbus_request[i];
+  97:Glider-Core/pressure_sensor_driver.c ****     }
+  98:Glider-Core/pressure_sensor_driver.c ****     else
+  99:Glider-Core/pressure_sensor_driver.c ****     {
+ 100:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_readout.last_tx_data[i] = 0U;
+ 263              		.loc 1 100 7 is_stmt 1 view .LVU59
+ 264              		.loc 1 100 49 is_stmt 0 view .LVU60
+ 265 0004 094A     		ldr	r2, .L29
+ 266 0006 1A44     		add	r2, r2, r3
+ 267 0008 0021     		movs	r1, #0
+ 268 000a 82F85C10 		strb	r1, [r2, #92]
+ 269              	.L26:
+  92:Glider-Core/pressure_sensor_driver.c ****   {
+ 270              		.loc 1 92 79 is_stmt 1 discriminator 2 view .LVU61
+ 271 000e 0133     		adds	r3, r3, #1
+ 272              	.LVL15:
+ 273              	.L24:
+  92:Glider-Core/pressure_sensor_driver.c ****   {
+ 274              		.loc 1 92 18 discriminator 1 view .LVU62
+ 275 0010 0F2B     		cmp	r3, #15
+ 276 0012 09D8     		bhi	.L28
+  94:Glider-Core/pressure_sensor_driver.c ****     {
+ 277              		.loc 1 94 5 view .LVU63
+  94:Glider-Core/pressure_sensor_driver.c ****     {
+ 278              		.loc 1 94 8 is_stmt 0 view .LVU64
+ 279 0014 072B     		cmp	r3, #7
+ 280 0016 F5D8     		bhi	.L25
+  96:Glider-Core/pressure_sensor_driver.c ****     }
+ 281              		.loc 1 96 7 is_stmt 1 view .LVU65
+  96:Glider-Core/pressure_sensor_driver.c ****     }
+ 282              		.loc 1 96 67 is_stmt 0 view .LVU66
+ 283 0018 054A     		ldr	r2, .L29+4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 8
+
+
+ 284 001a D15C     		ldrb	r1, [r2, r3]	@ zero_extendqisi2
+ 285 001c C9B2     		uxtb	r1, r1
+  96:Glider-Core/pressure_sensor_driver.c ****     }
+ 286              		.loc 1 96 49 view .LVU67
+ 287 001e 034A     		ldr	r2, .L29
+ 288 0020 1A44     		add	r2, r2, r3
+ 289 0022 82F85C10 		strb	r1, [r2, #92]
+ 290 0026 F2E7     		b	.L26
+ 291              	.L28:
+ 101:Glider-Core/pressure_sensor_driver.c ****     }
+ 102:Glider-Core/pressure_sensor_driver.c ****   }
+ 103:Glider-Core/pressure_sensor_driver.c **** }
+ 292              		.loc 1 103 1 view .LVU68
+ 293 0028 7047     		bx	lr
+ 294              	.L30:
+ 295 002a 00BF     		.align	2
+ 296              	.L29:
+ 297 002c 00000000 		.word	g_pressure_sensor_state
+ 298 0030 00000000 		.word	s_modbus_request
+ 299              		.cfi_endproc
+ 300              	.LFE339:
+ 302              		.section	.text.PressureSensorDriver_CopyResponseFrameToState,"ax",%progbits
+ 303              		.align	1
+ 304              		.syntax unified
+ 305              		.thumb
+ 306              		.thumb_func
+ 308              	PressureSensorDriver_CopyResponseFrameToState:
+ 309              	.LVL16:
+ 310              	.LFB340:
+ 104:Glider-Core/pressure_sensor_driver.c **** 
+ 105:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_CopyResponseFrameToState(uint16_t len)
+ 106:Glider-Core/pressure_sensor_driver.c **** {
+ 311              		.loc 1 106 1 is_stmt 1 view -0
+ 312              		.cfi_startproc
+ 313              		@ args = 0, pretend = 0, frame = 0
+ 314              		@ frame_needed = 0, uses_anonymous_args = 0
+ 315              		@ link register save eliminated.
+ 107:Glider-Core/pressure_sensor_driver.c ****   uint32_t i;
+ 316              		.loc 1 107 3 view .LVU70
+ 108:Glider-Core/pressure_sensor_driver.c **** 
+ 109:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.last_response_len = (uint32_t)len;
+ 317              		.loc 1 109 3 view .LVU71
+ 318              		.loc 1 109 47 is_stmt 0 view .LVU72
+ 319 0000 0B4B     		ldr	r3, .L37
+ 320 0002 D866     		str	r0, [r3, #108]
+ 110:Glider-Core/pressure_sensor_driver.c ****   for (i = 0U; i < (uint32_t)sizeof(g_pressure_sensor_readout.last_response_data); i++)
+ 321              		.loc 1 110 3 is_stmt 1 view .LVU73
+ 322              	.LVL17:
+ 323              		.loc 1 110 10 is_stmt 0 view .LVU74
+ 324 0004 0023     		movs	r3, #0
+ 325              		.loc 1 110 3 view .LVU75
+ 326 0006 05E0     		b	.L32
+ 327              	.LVL18:
+ 328              	.L33:
+ 111:Glider-Core/pressure_sensor_driver.c ****   {
+ 112:Glider-Core/pressure_sensor_driver.c ****     if (i < (uint32_t)len)
+ 113:Glider-Core/pressure_sensor_driver.c ****     {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 9
+
+
+ 114:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_readout.last_response_data[i] = s_response_frame[i];
+ 115:Glider-Core/pressure_sensor_driver.c ****     }
+ 116:Glider-Core/pressure_sensor_driver.c ****     else
+ 117:Glider-Core/pressure_sensor_driver.c ****     {
+ 118:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_readout.last_response_data[i] = 0U;
+ 329              		.loc 1 118 7 is_stmt 1 view .LVU76
+ 330              		.loc 1 118 55 is_stmt 0 view .LVU77
+ 331 0008 094A     		ldr	r2, .L37
+ 332 000a 1A44     		add	r2, r2, r3
+ 333 000c 0021     		movs	r1, #0
+ 334 000e 82F87010 		strb	r1, [r2, #112]
+ 335              	.L34:
+ 110:Glider-Core/pressure_sensor_driver.c ****   for (i = 0U; i < (uint32_t)sizeof(g_pressure_sensor_readout.last_response_data); i++)
+ 336              		.loc 1 110 85 is_stmt 1 discriminator 2 view .LVU78
+ 337 0012 0133     		adds	r3, r3, #1
+ 338              	.LVL19:
+ 339              	.L32:
+ 110:Glider-Core/pressure_sensor_driver.c ****   for (i = 0U; i < (uint32_t)sizeof(g_pressure_sensor_readout.last_response_data); i++)
+ 340              		.loc 1 110 18 discriminator 1 view .LVU79
+ 341 0014 0F2B     		cmp	r3, #15
+ 342 0016 09D8     		bhi	.L36
+ 112:Glider-Core/pressure_sensor_driver.c ****     {
+ 343              		.loc 1 112 5 view .LVU80
+ 112:Glider-Core/pressure_sensor_driver.c ****     {
+ 344              		.loc 1 112 8 is_stmt 0 view .LVU81
+ 345 0018 9842     		cmp	r0, r3
+ 346 001a F5D9     		bls	.L33
+ 114:Glider-Core/pressure_sensor_driver.c ****     }
+ 347              		.loc 1 114 7 is_stmt 1 view .LVU82
+ 114:Glider-Core/pressure_sensor_driver.c ****     }
+ 348              		.loc 1 114 73 is_stmt 0 view .LVU83
+ 349 001c 054A     		ldr	r2, .L37+4
+ 350 001e D15C     		ldrb	r1, [r2, r3]	@ zero_extendqisi2
+ 351 0020 C9B2     		uxtb	r1, r1
+ 114:Glider-Core/pressure_sensor_driver.c ****     }
+ 352              		.loc 1 114 55 view .LVU84
+ 353 0022 034A     		ldr	r2, .L37
+ 354 0024 1A44     		add	r2, r2, r3
+ 355 0026 82F87010 		strb	r1, [r2, #112]
+ 356 002a F2E7     		b	.L34
+ 357              	.L36:
+ 119:Glider-Core/pressure_sensor_driver.c ****     }
+ 120:Glider-Core/pressure_sensor_driver.c ****   }
+ 121:Glider-Core/pressure_sensor_driver.c **** }
+ 358              		.loc 1 121 1 view .LVU85
+ 359 002c 7047     		bx	lr
+ 360              	.L38:
+ 361 002e 00BF     		.align	2
+ 362              	.L37:
+ 363 0030 00000000 		.word	g_pressure_sensor_state
+ 364 0034 00000000 		.word	s_response_frame
+ 365              		.cfi_endproc
+ 366              	.LFE340:
+ 368              		.section	.text.PressureSensorDriver_BuildReadRequest,"ax",%progbits
+ 369              		.align	1
+ 370              		.syntax unified
+ 371              		.thumb
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 10
+
+
+ 372              		.thumb_func
+ 374              	PressureSensorDriver_BuildReadRequest:
+ 375              	.LVL20:
+ 376              	.LFB341:
+ 122:Glider-Core/pressure_sensor_driver.c **** 
+ 123:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_BuildReadRequest(uint8_t addr, uint16_t start_reg)
+ 124:Glider-Core/pressure_sensor_driver.c **** {
+ 377              		.loc 1 124 1 is_stmt 1 view -0
+ 378              		.cfi_startproc
+ 379              		@ args = 0, pretend = 0, frame = 0
+ 380              		@ frame_needed = 0, uses_anonymous_args = 0
+ 381              		.loc 1 124 1 is_stmt 0 view .LVU87
+ 382 0000 10B5     		push	{r4, lr}
+ 383              	.LCFI2:
+ 384              		.cfi_def_cfa_offset 8
+ 385              		.cfi_offset 4, -8
+ 386              		.cfi_offset 14, -4
+ 125:Glider-Core/pressure_sensor_driver.c ****   uint16_t crc;
+ 387              		.loc 1 125 3 is_stmt 1 view .LVU88
+ 126:Glider-Core/pressure_sensor_driver.c **** 
+ 127:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[0] = addr;
+ 388              		.loc 1 127 3 view .LVU89
+ 389              		.loc 1 127 23 is_stmt 0 view .LVU90
+ 390 0002 0C4C     		ldr	r4, .L41
+ 391 0004 2070     		strb	r0, [r4]
+ 128:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[1] = PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING;
+ 392              		.loc 1 128 3 is_stmt 1 view .LVU91
+ 393              		.loc 1 128 23 is_stmt 0 view .LVU92
+ 394 0006 0323     		movs	r3, #3
+ 395 0008 6370     		strb	r3, [r4, #1]
+ 129:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[2] = (uint8_t)((start_reg >> 8) & 0xFFU);
+ 396              		.loc 1 129 3 is_stmt 1 view .LVU93
+ 397              		.loc 1 129 25 is_stmt 0 view .LVU94
+ 398 000a 0B0A     		lsrs	r3, r1, #8
+ 399              		.loc 1 129 23 view .LVU95
+ 400 000c A370     		strb	r3, [r4, #2]
+ 130:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[3] = (uint8_t)(start_reg & 0xFFU);
+ 401              		.loc 1 130 3 is_stmt 1 view .LVU96
+ 402              		.loc 1 130 25 is_stmt 0 view .LVU97
+ 403 000e C9B2     		uxtb	r1, r1
+ 404              	.LVL21:
+ 405              		.loc 1 130 23 view .LVU98
+ 406 0010 E170     		strb	r1, [r4, #3]
+ 131:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[4] = (uint8_t)((PRESSURE_SENSOR_MODBUS_VALUE_REG_COUNT >> 8) & 0xFFU);
+ 407              		.loc 1 131 3 is_stmt 1 view .LVU99
+ 408              		.loc 1 131 23 is_stmt 0 view .LVU100
+ 409 0012 0023     		movs	r3, #0
+ 410 0014 2371     		strb	r3, [r4, #4]
+ 132:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[5] = (uint8_t)(PRESSURE_SENSOR_MODBUS_VALUE_REG_COUNT & 0xFFU);
+ 411              		.loc 1 132 3 is_stmt 1 view .LVU101
+ 412              		.loc 1 132 23 is_stmt 0 view .LVU102
+ 413 0016 0223     		movs	r3, #2
+ 414 0018 6371     		strb	r3, [r4, #5]
+ 133:Glider-Core/pressure_sensor_driver.c **** 
+ 134:Glider-Core/pressure_sensor_driver.c ****   crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_modbus_request, 6U);
+ 415              		.loc 1 134 3 is_stmt 1 view .LVU103
+ 416              		.loc 1 134 9 is_stmt 0 view .LVU104
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 11
+
+
+ 417 001a 0621     		movs	r1, #6
+ 418 001c 2046     		mov	r0, r4
+ 419              	.LVL22:
+ 420              		.loc 1 134 9 view .LVU105
+ 421 001e FFF7FEFF 		bl	PressureSensorDriver_ModbusCrc16
+ 422              	.LVL23:
+ 135:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[6] = (uint8_t)(crc & 0xFFU);
+ 423              		.loc 1 135 3 is_stmt 1 view .LVU106
+ 424              		.loc 1 135 25 is_stmt 0 view .LVU107
+ 425 0022 C3B2     		uxtb	r3, r0
+ 426              		.loc 1 135 23 view .LVU108
+ 427 0024 A371     		strb	r3, [r4, #6]
+ 136:Glider-Core/pressure_sensor_driver.c ****   s_modbus_request[7] = (uint8_t)((crc >> 8) & 0xFFU);
+ 428              		.loc 1 136 3 is_stmt 1 view .LVU109
+ 429              		.loc 1 136 25 is_stmt 0 view .LVU110
+ 430 0026 C0F30720 		ubfx	r0, r0, #8, #8
+ 431              	.LVL24:
+ 432              		.loc 1 136 23 view .LVU111
+ 433 002a E071     		strb	r0, [r4, #7]
+ 137:Glider-Core/pressure_sensor_driver.c **** 
+ 138:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_CopyTxFrameToState();
+ 434              		.loc 1 138 3 is_stmt 1 view .LVU112
+ 435 002c FFF7FEFF 		bl	PressureSensorDriver_CopyTxFrameToState
+ 436              	.LVL25:
+ 139:Glider-Core/pressure_sensor_driver.c **** }
+ 437              		.loc 1 139 1 is_stmt 0 view .LVU113
+ 438 0030 10BD     		pop	{r4, pc}
+ 439              	.L42:
+ 440 0032 00BF     		.align	2
+ 441              	.L41:
+ 442 0034 00000000 		.word	s_modbus_request
+ 443              		.cfi_endproc
+ 444              	.LFE341:
+ 446              		.section	.text.PressureSensorDriver_DecodeFloat,"ax",%progbits
+ 447              		.align	1
+ 448              		.syntax unified
+ 449              		.thumb
+ 450              		.thumb_func
+ 452              	PressureSensorDriver_DecodeFloat:
+ 453              	.LVL26:
+ 454              	.LFB342:
+ 140:Glider-Core/pressure_sensor_driver.c **** 
+ 141:Glider-Core/pressure_sensor_driver.c **** static uint8_t PressureSensorDriver_DecodeFloat(const volatile uint8_t *src, float *out_value)
+ 142:Glider-Core/pressure_sensor_driver.c **** {
+ 455              		.loc 1 142 1 is_stmt 1 view -0
+ 456              		.cfi_startproc
+ 457              		@ args = 0, pretend = 0, frame = 0
+ 458              		@ frame_needed = 0, uses_anonymous_args = 0
+ 459              		@ link register save eliminated.
+ 143:Glider-Core/pressure_sensor_driver.c ****   uint32_t bits;
+ 460              		.loc 1 143 3 view .LVU115
+ 144:Glider-Core/pressure_sensor_driver.c **** 
+ 145:Glider-Core/pressure_sensor_driver.c ****   if (src == NULL || out_value == NULL)
+ 461              		.loc 1 145 3 view .LVU116
+ 462              		.loc 1 145 32 is_stmt 0 view .LVU117
+ 463 0000 8C46     		mov	ip, r1
+ 464              		.loc 1 145 6 view .LVU118
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 12
+
+
+ 465 0002 0029     		cmp	r1, #0
+ 466 0004 18BF     		it	ne
+ 467 0006 0028     		cmpne	r0, #0
+ 468 0008 0DD0     		beq	.L45
+ 146:Glider-Core/pressure_sensor_driver.c ****   {
+ 147:Glider-Core/pressure_sensor_driver.c ****     return 0U;
+ 148:Glider-Core/pressure_sensor_driver.c ****   }
+ 149:Glider-Core/pressure_sensor_driver.c **** 
+ 150:Glider-Core/pressure_sensor_driver.c ****   bits = ((uint32_t)src[0] << 24) |
+ 469              		.loc 1 150 3 is_stmt 1 view .LVU119
+ 470              		.loc 1 150 24 is_stmt 0 view .LVU120
+ 471 000a 0178     		ldrb	r1, [r0]	@ zero_extendqisi2
+ 472              	.LVL27:
+ 151:Glider-Core/pressure_sensor_driver.c ****          ((uint32_t)src[1] << 16) |
+ 473              		.loc 1 151 24 view .LVU121
+ 474 000c 4378     		ldrb	r3, [r0, #1]	@ zero_extendqisi2
+ 475              		.loc 1 151 28 view .LVU122
+ 476 000e 1B04     		lsls	r3, r3, #16
+ 150:Glider-Core/pressure_sensor_driver.c ****          ((uint32_t)src[1] << 16) |
+ 477              		.loc 1 150 35 view .LVU123
+ 478 0010 43EA0163 		orr	r3, r3, r1, lsl #24
+ 152:Glider-Core/pressure_sensor_driver.c ****          ((uint32_t)src[2] << 8) |
+ 479              		.loc 1 152 24 view .LVU124
+ 480 0014 8178     		ldrb	r1, [r0, #2]	@ zero_extendqisi2
+ 151:Glider-Core/pressure_sensor_driver.c ****          ((uint32_t)src[1] << 16) |
+ 481              		.loc 1 151 35 view .LVU125
+ 482 0016 43EA0123 		orr	r3, r3, r1, lsl #8
+ 153:Glider-Core/pressure_sensor_driver.c ****          ((uint32_t)src[3]);
+ 483              		.loc 1 153 24 view .LVU126
+ 484 001a C278     		ldrb	r2, [r0, #3]	@ zero_extendqisi2
+ 152:Glider-Core/pressure_sensor_driver.c ****          ((uint32_t)src[2] << 8) |
+ 485              		.loc 1 152 34 view .LVU127
+ 486 001c 1343     		orrs	r3, r3, r2
+ 487              	.LVL28:
+ 154:Glider-Core/pressure_sensor_driver.c ****   (void)memcpy(out_value, &bits, sizeof(float));
+ 488              		.loc 1 154 3 is_stmt 1 view .LVU128
+ 489              		.loc 1 154 9 is_stmt 0 view .LVU129
+ 490 001e CCF80030 		str	r3, [ip]	@ unaligned
+ 155:Glider-Core/pressure_sensor_driver.c **** 
+ 156:Glider-Core/pressure_sensor_driver.c ****   return 1U;
+ 491              		.loc 1 156 3 is_stmt 1 view .LVU130
+ 492              		.loc 1 156 10 is_stmt 0 view .LVU131
+ 493 0022 0120     		movs	r0, #1
+ 494              	.LVL29:
+ 495              		.loc 1 156 10 view .LVU132
+ 496 0024 7047     		bx	lr
+ 497              	.LVL30:
+ 498              	.L45:
+ 147:Glider-Core/pressure_sensor_driver.c ****   }
+ 499              		.loc 1 147 12 view .LVU133
+ 500 0026 0020     		movs	r0, #0
+ 501              	.LVL31:
+ 157:Glider-Core/pressure_sensor_driver.c **** }
+ 502              		.loc 1 157 1 view .LVU134
+ 503 0028 7047     		bx	lr
+ 504              		.cfi_endproc
+ 505              	.LFE342:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 13
+
+
+ 507              		.section	.text.PressureSensorDriver_RingPush,"ax",%progbits
+ 508              		.align	1
+ 509              		.syntax unified
+ 510              		.thumb
+ 511              		.thumb_func
+ 513              	PressureSensorDriver_RingPush:
+ 514              	.LVL32:
+ 515              	.LFB346:
+ 158:Glider-Core/pressure_sensor_driver.c **** 
+ 159:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_CommitMeasurement(float value)
+ 160:Glider-Core/pressure_sensor_driver.c **** {
+ 161:Glider-Core/pressure_sensor_driver.c ****   if (s_active_request_kind == PRESSURE_SENSOR_REQ_PRESSURE)
+ 162:Glider-Core/pressure_sensor_driver.c ****   {
+ 163:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.pressure_bar = value;
+ 164:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.pressure_valid = 1U;
+ 165:Glider-Core/pressure_sensor_driver.c ****   }
+ 166:Glider-Core/pressure_sensor_driver.c ****   else
+ 167:Glider-Core/pressure_sensor_driver.c ****   {
+ 168:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.temperature_c = value;
+ 169:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.temperature_valid = 1U;
+ 170:Glider-Core/pressure_sensor_driver.c ****   }
+ 171:Glider-Core/pressure_sensor_driver.c **** 
+ 172:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.last_update_tick = HAL_GetTick();
+ 173:Glider-Core/pressure_sensor_driver.c **** }
+ 174:Glider-Core/pressure_sensor_driver.c **** 
+ 175:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_HandleResponseFrame(uint16_t len)
+ 176:Glider-Core/pressure_sensor_driver.c **** {
+ 177:Glider-Core/pressure_sensor_driver.c ****   uint16_t recv_crc;
+ 178:Glider-Core/pressure_sensor_driver.c ****   uint16_t calc_crc;
+ 179:Glider-Core/pressure_sensor_driver.c ****   uint8_t func;
+ 180:Glider-Core/pressure_sensor_driver.c ****   float value = 0.0f;
+ 181:Glider-Core/pressure_sensor_driver.c **** 
+ 182:Glider-Core/pressure_sensor_driver.c ****   if (len < 5U || len > PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN)
+ 183:Glider-Core/pressure_sensor_driver.c ****   {
+ 184:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 10U;
+ 185:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 186:Glider-Core/pressure_sensor_driver.c ****     return;
+ 187:Glider-Core/pressure_sensor_driver.c ****   }
+ 188:Glider-Core/pressure_sensor_driver.c **** 
+ 189:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_CopyResponseFrameToState(len);
+ 190:Glider-Core/pressure_sensor_driver.c **** 
+ 191:Glider-Core/pressure_sensor_driver.c ****   recv_crc = (uint16_t)(((uint16_t)s_response_frame[len - 1U] << 8) | s_response_frame[len - 2U]);
+ 192:Glider-Core/pressure_sensor_driver.c ****   calc_crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_response_frame, (uint16_t)(len - 2
+ 193:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_response_tick = HAL_GetTick();
+ 194:Glider-Core/pressure_sensor_driver.c **** 
+ 195:Glider-Core/pressure_sensor_driver.c ****   if (recv_crc != calc_crc)
+ 196:Glider-Core/pressure_sensor_driver.c ****   {
+ 197:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.crc_error_count++;
+ 198:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 8U;
+ 199:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 200:Glider-Core/pressure_sensor_driver.c ****     return;
+ 201:Glider-Core/pressure_sensor_driver.c ****   }
+ 202:Glider-Core/pressure_sensor_driver.c **** 
+ 203:Glider-Core/pressure_sensor_driver.c ****   func = s_response_frame[1];
+ 204:Glider-Core/pressure_sensor_driver.c ****   if (func == (uint8_t)(PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING | 0x80U))
+ 205:Glider-Core/pressure_sensor_driver.c ****   {
+ 206:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.exception_count++;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 14
+
+
+ 207:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_exception_code = s_response_frame[2];
+ 208:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 9U;
+ 209:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 210:Glider-Core/pressure_sensor_driver.c ****     return;
+ 211:Glider-Core/pressure_sensor_driver.c ****   }
+ 212:Glider-Core/pressure_sensor_driver.c **** 
+ 213:Glider-Core/pressure_sensor_driver.c ****   if (func != PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING || s_response_frame[2] != PRESSURE_SENSOR_MO
+ 214:Glider-Core/pressure_sensor_driver.c ****   {
+ 215:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 10U;
+ 216:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 217:Glider-Core/pressure_sensor_driver.c ****     return;
+ 218:Glider-Core/pressure_sensor_driver.c ****   }
+ 219:Glider-Core/pressure_sensor_driver.c **** 
+ 220:Glider-Core/pressure_sensor_driver.c ****   if (PressureSensorDriver_DecodeFloat(&s_response_frame[3], &value) == 0U)
+ 221:Glider-Core/pressure_sensor_driver.c ****   {
+ 222:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 10U;
+ 223:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 224:Glider-Core/pressure_sensor_driver.c ****     return;
+ 225:Glider-Core/pressure_sensor_driver.c ****   }
+ 226:Glider-Core/pressure_sensor_driver.c **** 
+ 227:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_CommitMeasurement(value);
+ 228:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_ok_count++;
+ 229:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 0U;
+ 230:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_StopWaitingResponse();
+ 231:Glider-Core/pressure_sensor_driver.c **** }
+ 232:Glider-Core/pressure_sensor_driver.c **** 
+ 233:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_ProcessResponseByte(uint8_t data)
+ 234:Glider-Core/pressure_sensor_driver.c **** {
+ 235:Glider-Core/pressure_sensor_driver.c ****   uint8_t configured_addr;
+ 236:Glider-Core/pressure_sensor_driver.c **** 
+ 237:Glider-Core/pressure_sensor_driver.c ****   if (s_waiting_response == 0U)
+ 238:Glider-Core/pressure_sensor_driver.c ****   {
+ 239:Glider-Core/pressure_sensor_driver.c ****     return;
+ 240:Glider-Core/pressure_sensor_driver.c ****   }
+ 241:Glider-Core/pressure_sensor_driver.c **** 
+ 242:Glider-Core/pressure_sensor_driver.c ****   configured_addr = (uint8_t)g_pressure_sensor_diag.slave_address;
+ 243:Glider-Core/pressure_sensor_driver.c ****   if (configured_addr == 0U)
+ 244:Glider-Core/pressure_sensor_driver.c ****   {
+ 245:Glider-Core/pressure_sensor_driver.c ****     configured_addr = PRESSURE_SENSOR_MODBUS_DEFAULT_ADDR;
+ 246:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.slave_address = configured_addr;
+ 247:Glider-Core/pressure_sensor_driver.c ****   }
+ 248:Glider-Core/pressure_sensor_driver.c **** 
+ 249:Glider-Core/pressure_sensor_driver.c ****   if (s_response_index == 0U)
+ 250:Glider-Core/pressure_sensor_driver.c ****   {
+ 251:Glider-Core/pressure_sensor_driver.c ****     if (data != configured_addr)
+ 252:Glider-Core/pressure_sensor_driver.c ****     {
+ 253:Glider-Core/pressure_sensor_driver.c ****       return;
+ 254:Glider-Core/pressure_sensor_driver.c ****     }
+ 255:Glider-Core/pressure_sensor_driver.c **** 
+ 256:Glider-Core/pressure_sensor_driver.c ****     s_response_frame[s_response_index] = data;
+ 257:Glider-Core/pressure_sensor_driver.c ****     s_response_index = 1U;
+ 258:Glider-Core/pressure_sensor_driver.c ****     return;
+ 259:Glider-Core/pressure_sensor_driver.c ****   }
+ 260:Glider-Core/pressure_sensor_driver.c **** 
+ 261:Glider-Core/pressure_sensor_driver.c ****   if (s_response_index >= PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN)
+ 262:Glider-Core/pressure_sensor_driver.c ****   {
+ 263:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 11U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 15
+
+
+ 264:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 265:Glider-Core/pressure_sensor_driver.c ****     return;
+ 266:Glider-Core/pressure_sensor_driver.c ****   }
+ 267:Glider-Core/pressure_sensor_driver.c **** 
+ 268:Glider-Core/pressure_sensor_driver.c ****   s_response_frame[s_response_index] = data;
+ 269:Glider-Core/pressure_sensor_driver.c ****   s_response_index++;
+ 270:Glider-Core/pressure_sensor_driver.c **** 
+ 271:Glider-Core/pressure_sensor_driver.c ****   if (s_response_index == 2U)
+ 272:Glider-Core/pressure_sensor_driver.c ****   {
+ 273:Glider-Core/pressure_sensor_driver.c ****     uint8_t func = s_response_frame[1];
+ 274:Glider-Core/pressure_sensor_driver.c **** 
+ 275:Glider-Core/pressure_sensor_driver.c ****     if (func == PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING)
+ 276:Glider-Core/pressure_sensor_driver.c ****     {
+ 277:Glider-Core/pressure_sensor_driver.c ****       return;
+ 278:Glider-Core/pressure_sensor_driver.c ****     }
+ 279:Glider-Core/pressure_sensor_driver.c **** 
+ 280:Glider-Core/pressure_sensor_driver.c ****     if (func == (uint8_t)(PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING | 0x80U))
+ 281:Glider-Core/pressure_sensor_driver.c ****     {
+ 282:Glider-Core/pressure_sensor_driver.c ****       s_response_expected_len = 5U;
+ 283:Glider-Core/pressure_sensor_driver.c ****       return;
+ 284:Glider-Core/pressure_sensor_driver.c ****     }
+ 285:Glider-Core/pressure_sensor_driver.c **** 
+ 286:Glider-Core/pressure_sensor_driver.c ****     s_response_index = 0U;
+ 287:Glider-Core/pressure_sensor_driver.c ****     return;
+ 288:Glider-Core/pressure_sensor_driver.c ****   }
+ 289:Glider-Core/pressure_sensor_driver.c **** 
+ 290:Glider-Core/pressure_sensor_driver.c ****   if (s_response_index == 3U && s_response_frame[1] == PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING)
+ 291:Glider-Core/pressure_sensor_driver.c ****   {
+ 292:Glider-Core/pressure_sensor_driver.c ****     uint8_t byte_count = s_response_frame[2];
+ 293:Glider-Core/pressure_sensor_driver.c **** 
+ 294:Glider-Core/pressure_sensor_driver.c ****     s_response_expected_len = (uint16_t)(3U + byte_count + 2U);
+ 295:Glider-Core/pressure_sensor_driver.c ****     if (byte_count != PRESSURE_SENSOR_MODBUS_VALUE_BYTE_COUNT ||
+ 296:Glider-Core/pressure_sensor_driver.c ****         s_response_expected_len > PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN)
+ 297:Glider-Core/pressure_sensor_driver.c ****     {
+ 298:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 12U;
+ 299:Glider-Core/pressure_sensor_driver.c ****       PressureSensorDriver_StopWaitingResponse();
+ 300:Glider-Core/pressure_sensor_driver.c ****     }
+ 301:Glider-Core/pressure_sensor_driver.c ****     return;
+ 302:Glider-Core/pressure_sensor_driver.c ****   }
+ 303:Glider-Core/pressure_sensor_driver.c **** 
+ 304:Glider-Core/pressure_sensor_driver.c ****   if (s_response_expected_len != 0U && s_response_index >= s_response_expected_len)
+ 305:Glider-Core/pressure_sensor_driver.c ****   {
+ 306:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_HandleResponseFrame(s_response_expected_len);
+ 307:Glider-Core/pressure_sensor_driver.c ****   }
+ 308:Glider-Core/pressure_sensor_driver.c **** }
+ 309:Glider-Core/pressure_sensor_driver.c **** 
+ 310:Glider-Core/pressure_sensor_driver.c **** static void PressureSensorDriver_RingPush(uint8_t data)
+ 311:Glider-Core/pressure_sensor_driver.c **** {
+ 516              		.loc 1 311 1 is_stmt 1 view -0
+ 517              		.cfi_startproc
+ 518              		@ args = 0, pretend = 0, frame = 0
+ 519              		@ frame_needed = 0, uses_anonymous_args = 0
+ 520              		.loc 1 311 1 is_stmt 0 view .LVU136
+ 521 0000 10B5     		push	{r4, lr}
+ 522              	.LCFI3:
+ 523              		.cfi_def_cfa_offset 8
+ 524              		.cfi_offset 4, -8
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 16
+
+
+ 525              		.cfi_offset 14, -4
+ 312:Glider-Core/pressure_sensor_driver.c ****   uint16_t next = (uint16_t)((s_pressure_sensor_rx_head + 1U) % PRESSURE_SENSOR_RX_RING_SIZE);
+ 526              		.loc 1 312 3 is_stmt 1 view .LVU137
+ 527              		.loc 1 312 19 is_stmt 0 view .LVU138
+ 528 0002 114B     		ldr	r3, .L50
+ 529 0004 1B88     		ldrh	r3, [r3]
+ 530 0006 9BB2     		uxth	r3, r3
+ 531 0008 0133     		adds	r3, r3, #1
+ 532              		.loc 1 312 12 view .LVU139
+ 533 000a C3F30803 		ubfx	r3, r3, #0, #9
+ 534              	.LVL33:
+ 313:Glider-Core/pressure_sensor_driver.c **** 
+ 314:Glider-Core/pressure_sensor_driver.c ****   if (next == s_pressure_sensor_rx_tail)
+ 535              		.loc 1 314 3 is_stmt 1 view .LVU140
+ 536              		.loc 1 314 12 is_stmt 0 view .LVU141
+ 537 000e 0F4A     		ldr	r2, .L50+4
+ 538 0010 1288     		ldrh	r2, [r2]
+ 539 0012 92B2     		uxth	r2, r2
+ 540              		.loc 1 314 6 view .LVU142
+ 541 0014 9A42     		cmp	r2, r3
+ 542 0016 0AD0     		beq	.L49
+ 543              	.L47:
+ 315:Glider-Core/pressure_sensor_driver.c ****   {
+ 316:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.rx_overflow_count++;
+ 317:Glider-Core/pressure_sensor_driver.c ****     s_pressure_sensor_rx_tail = (uint16_t)((s_pressure_sensor_rx_tail + 1U) % PRESSURE_SENSOR_RX_RI
+ 318:Glider-Core/pressure_sensor_driver.c ****   }
+ 319:Glider-Core/pressure_sensor_driver.c **** 
+ 320:Glider-Core/pressure_sensor_driver.c ****   s_pressure_sensor_rx_ring[s_pressure_sensor_rx_head] = data;
+ 544              		.loc 1 320 3 is_stmt 1 view .LVU143
+ 545              		.loc 1 320 28 is_stmt 0 view .LVU144
+ 546 0018 0B49     		ldr	r1, .L50
+ 547 001a 0A88     		ldrh	r2, [r1]
+ 548 001c 92B2     		uxth	r2, r2
+ 549              		.loc 1 320 56 view .LVU145
+ 550 001e 0C4C     		ldr	r4, .L50+8
+ 551 0020 A054     		strb	r0, [r4, r2]
+ 321:Glider-Core/pressure_sensor_driver.c ****   s_pressure_sensor_rx_head = next;
+ 552              		.loc 1 321 3 is_stmt 1 view .LVU146
+ 553              		.loc 1 321 29 is_stmt 0 view .LVU147
+ 554 0022 0B80     		strh	r3, [r1]	@ movhi
+ 322:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.last_irq_byte = (uint32_t)data;
+ 555              		.loc 1 322 3 is_stmt 1 view .LVU148
+ 556              		.loc 1 322 43 is_stmt 0 view .LVU149
+ 557 0024 0B4B     		ldr	r3, .L50+12
+ 558              	.LVL34:
+ 559              		.loc 1 322 43 view .LVU150
+ 560 0026 1864     		str	r0, [r3, #64]
+ 561              	.LVL35:
+ 323:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_UpdateRingAvailable();
+ 562              		.loc 1 323 3 is_stmt 1 view .LVU151
+ 563 0028 FFF7FEFF 		bl	PressureSensorDriver_UpdateRingAvailable
+ 564              	.LVL36:
+ 324:Glider-Core/pressure_sensor_driver.c **** }
+ 565              		.loc 1 324 1 is_stmt 0 view .LVU152
+ 566 002c 10BD     		pop	{r4, pc}
+ 567              	.LVL37:
+ 568              	.L49:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 17
+
+
+ 316:Glider-Core/pressure_sensor_driver.c ****     s_pressure_sensor_rx_tail = (uint16_t)((s_pressure_sensor_rx_tail + 1U) % PRESSURE_SENSOR_RX_RI
+ 569              		.loc 1 316 5 is_stmt 1 view .LVU153
+ 316:Glider-Core/pressure_sensor_driver.c ****     s_pressure_sensor_rx_tail = (uint16_t)((s_pressure_sensor_rx_tail + 1U) % PRESSURE_SENSOR_RX_RI
+ 570              		.loc 1 316 27 is_stmt 0 view .LVU154
+ 571 002e 0949     		ldr	r1, .L50+12
+ 572 0030 CA69     		ldr	r2, [r1, #28]
+ 316:Glider-Core/pressure_sensor_driver.c ****     s_pressure_sensor_rx_tail = (uint16_t)((s_pressure_sensor_rx_tail + 1U) % PRESSURE_SENSOR_RX_RI
+ 573              		.loc 1 316 45 view .LVU155
+ 574 0032 0132     		adds	r2, r2, #1
+ 575 0034 CA61     		str	r2, [r1, #28]
+ 317:Glider-Core/pressure_sensor_driver.c ****   }
+ 576              		.loc 1 317 5 is_stmt 1 view .LVU156
+ 317:Glider-Core/pressure_sensor_driver.c ****   }
+ 577              		.loc 1 317 33 is_stmt 0 view .LVU157
+ 578 0036 0549     		ldr	r1, .L50+4
+ 579 0038 0A88     		ldrh	r2, [r1]
+ 580 003a 92B2     		uxth	r2, r2
+ 581 003c 0132     		adds	r2, r2, #1
+ 582 003e C2F30802 		ubfx	r2, r2, #0, #9
+ 317:Glider-Core/pressure_sensor_driver.c ****   }
+ 583              		.loc 1 317 31 view .LVU158
+ 584 0042 0A80     		strh	r2, [r1]	@ movhi
+ 585 0044 E8E7     		b	.L47
+ 586              	.L51:
+ 587 0046 00BF     		.align	2
+ 588              	.L50:
+ 589 0048 00000000 		.word	s_pressure_sensor_rx_head
+ 590 004c 00000000 		.word	s_pressure_sensor_rx_tail
+ 591 0050 00000000 		.word	s_pressure_sensor_rx_ring
+ 592 0054 00000000 		.word	g_pressure_sensor_state
+ 593              		.cfi_endproc
+ 594              	.LFE346:
+ 596              		.section	.text.PressureSensorDriver_CommitMeasurement,"ax",%progbits
+ 597              		.align	1
+ 598              		.syntax unified
+ 599              		.thumb
+ 600              		.thumb_func
+ 602              	PressureSensorDriver_CommitMeasurement:
+ 603              	.LVL38:
+ 604              	.LFB343:
+ 160:Glider-Core/pressure_sensor_driver.c ****   if (s_active_request_kind == PRESSURE_SENSOR_REQ_PRESSURE)
+ 605              		.loc 1 160 1 is_stmt 1 view -0
+ 606              		.cfi_startproc
+ 607              		@ args = 0, pretend = 0, frame = 0
+ 608              		@ frame_needed = 0, uses_anonymous_args = 0
+ 160:Glider-Core/pressure_sensor_driver.c ****   if (s_active_request_kind == PRESSURE_SENSOR_REQ_PRESSURE)
+ 609              		.loc 1 160 1 is_stmt 0 view .LVU160
+ 610 0000 08B5     		push	{r3, lr}
+ 611              	.LCFI4:
+ 612              		.cfi_def_cfa_offset 8
+ 613              		.cfi_offset 3, -8
+ 614              		.cfi_offset 14, -4
+ 161:Glider-Core/pressure_sensor_driver.c ****   {
+ 615              		.loc 1 161 3 is_stmt 1 view .LVU161
+ 161:Glider-Core/pressure_sensor_driver.c ****   {
+ 616              		.loc 1 161 29 is_stmt 0 view .LVU162
+ 617 0002 094B     		ldr	r3, .L56
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 18
+
+
+ 618 0004 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 161:Glider-Core/pressure_sensor_driver.c ****   {
+ 619              		.loc 1 161 6 view .LVU163
+ 620 0006 4BB9     		cbnz	r3, .L53
+ 163:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.pressure_valid = 1U;
+ 621              		.loc 1 163 5 is_stmt 1 view .LVU164
+ 163:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.pressure_valid = 1U;
+ 622              		.loc 1 163 44 is_stmt 0 view .LVU165
+ 623 0008 084B     		ldr	r3, .L56+4
+ 624 000a 83ED130A 		vstr.32	s0, [r3, #76]
+ 164:Glider-Core/pressure_sensor_driver.c ****   }
+ 625              		.loc 1 164 5 is_stmt 1 view .LVU166
+ 164:Glider-Core/pressure_sensor_driver.c ****   }
+ 626              		.loc 1 164 46 is_stmt 0 view .LVU167
+ 627 000e 0122     		movs	r2, #1
+ 628 0010 9A64     		str	r2, [r3, #72]
+ 629              	.L54:
+ 172:Glider-Core/pressure_sensor_driver.c **** }
+ 630              		.loc 1 172 3 is_stmt 1 view .LVU168
+ 172:Glider-Core/pressure_sensor_driver.c **** }
+ 631              		.loc 1 172 48 is_stmt 0 view .LVU169
+ 632 0012 FFF7FEFF 		bl	HAL_GetTick
+ 633              	.LVL39:
+ 172:Glider-Core/pressure_sensor_driver.c **** }
+ 634              		.loc 1 172 46 view .LVU170
+ 635 0016 054B     		ldr	r3, .L56+4
+ 636 0018 9865     		str	r0, [r3, #88]
+ 173:Glider-Core/pressure_sensor_driver.c **** 
+ 637              		.loc 1 173 1 view .LVU171
+ 638 001a 08BD     		pop	{r3, pc}
+ 639              	.LVL40:
+ 640              	.L53:
+ 168:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.temperature_valid = 1U;
+ 641              		.loc 1 168 5 is_stmt 1 view .LVU172
+ 168:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.temperature_valid = 1U;
+ 642              		.loc 1 168 45 is_stmt 0 view .LVU173
+ 643 001c 034B     		ldr	r3, .L56+4
+ 644 001e 83ED150A 		vstr.32	s0, [r3, #84]
+ 169:Glider-Core/pressure_sensor_driver.c ****   }
+ 645              		.loc 1 169 5 is_stmt 1 view .LVU174
+ 169:Glider-Core/pressure_sensor_driver.c ****   }
+ 646              		.loc 1 169 49 is_stmt 0 view .LVU175
+ 647 0022 0122     		movs	r2, #1
+ 648 0024 1A65     		str	r2, [r3, #80]
+ 649 0026 F4E7     		b	.L54
+ 650              	.L57:
+ 651              		.align	2
+ 652              	.L56:
+ 653 0028 00000000 		.word	s_active_request_kind
+ 654 002c 00000000 		.word	g_pressure_sensor_state
+ 655              		.cfi_endproc
+ 656              	.LFE343:
+ 658              		.section	.text.PressureSensorDriver_HandleResponseFrame,"ax",%progbits
+ 659              		.align	1
+ 660              		.syntax unified
+ 661              		.thumb
+ 662              		.thumb_func
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 19
+
+
+ 664              	PressureSensorDriver_HandleResponseFrame:
+ 665              	.LVL41:
+ 666              	.LFB344:
+ 176:Glider-Core/pressure_sensor_driver.c ****   uint16_t recv_crc;
+ 667              		.loc 1 176 1 is_stmt 1 view -0
+ 668              		.cfi_startproc
+ 669              		@ args = 0, pretend = 0, frame = 8
+ 670              		@ frame_needed = 0, uses_anonymous_args = 0
+ 176:Glider-Core/pressure_sensor_driver.c ****   uint16_t recv_crc;
+ 671              		.loc 1 176 1 is_stmt 0 view .LVU177
+ 672 0000 30B5     		push	{r4, r5, lr}
+ 673              	.LCFI5:
+ 674              		.cfi_def_cfa_offset 12
+ 675              		.cfi_offset 4, -12
+ 676              		.cfi_offset 5, -8
+ 677              		.cfi_offset 14, -4
+ 678 0002 83B0     		sub	sp, sp, #12
+ 679              	.LCFI6:
+ 680              		.cfi_def_cfa_offset 24
+ 177:Glider-Core/pressure_sensor_driver.c ****   uint16_t calc_crc;
+ 681              		.loc 1 177 3 is_stmt 1 view .LVU178
+ 178:Glider-Core/pressure_sensor_driver.c ****   uint8_t func;
+ 682              		.loc 1 178 3 view .LVU179
+ 179:Glider-Core/pressure_sensor_driver.c ****   float value = 0.0f;
+ 683              		.loc 1 179 3 view .LVU180
+ 180:Glider-Core/pressure_sensor_driver.c **** 
+ 684              		.loc 1 180 3 view .LVU181
+ 180:Glider-Core/pressure_sensor_driver.c **** 
+ 685              		.loc 1 180 9 is_stmt 0 view .LVU182
+ 686 0004 0023     		movs	r3, #0
+ 687 0006 0193     		str	r3, [sp, #4]	@ float
+ 182:Glider-Core/pressure_sensor_driver.c ****   {
+ 688              		.loc 1 182 3 is_stmt 1 view .LVU183
+ 182:Glider-Core/pressure_sensor_driver.c ****   {
+ 689              		.loc 1 182 16 is_stmt 0 view .LVU184
+ 690 0008 431F     		subs	r3, r0, #5
+ 691 000a 9BB2     		uxth	r3, r3
+ 182:Glider-Core/pressure_sensor_driver.c ****   {
+ 692              		.loc 1 182 6 view .LVU185
+ 693 000c 0B2B     		cmp	r3, #11
+ 694 000e 25D8     		bhi	.L68
+ 695 0010 0446     		mov	r4, r0
+ 189:Glider-Core/pressure_sensor_driver.c **** 
+ 696              		.loc 1 189 3 is_stmt 1 view .LVU186
+ 697 0012 FFF7FEFF 		bl	PressureSensorDriver_CopyResponseFrameToState
+ 698              	.LVL42:
+ 191:Glider-Core/pressure_sensor_driver.c ****   calc_crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_response_frame, (uint16_t)(len - 2
+ 699              		.loc 1 191 3 view .LVU187
+ 191:Glider-Core/pressure_sensor_driver.c ****   calc_crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_response_frame, (uint16_t)(len - 2
+ 700              		.loc 1 191 57 is_stmt 0 view .LVU188
+ 701 0016 631E     		subs	r3, r4, #1
+ 191:Glider-Core/pressure_sensor_driver.c ****   calc_crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_response_frame, (uint16_t)(len - 2
+ 702              		.loc 1 191 52 view .LVU189
+ 703 0018 2A48     		ldr	r0, .L72
+ 704 001a C35C     		ldrb	r3, [r0, r3]	@ zero_extendqisi2
+ 191:Glider-Core/pressure_sensor_driver.c ****   calc_crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_response_frame, (uint16_t)(len - 2
+ 705              		.loc 1 191 92 view .LVU190
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 20
+
+
+ 706 001c A11E     		subs	r1, r4, #2
+ 191:Glider-Core/pressure_sensor_driver.c ****   calc_crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_response_frame, (uint16_t)(len - 2
+ 707              		.loc 1 191 87 view .LVU191
+ 708 001e 455C     		ldrb	r5, [r0, r1]	@ zero_extendqisi2
+ 191:Glider-Core/pressure_sensor_driver.c ****   calc_crc = PressureSensorDriver_ModbusCrc16((const uint8_t *)s_response_frame, (uint16_t)(len - 2
+ 709              		.loc 1 191 12 view .LVU192
+ 710 0020 45EA0325 		orr	r5, r5, r3, lsl #8
+ 711              	.LVL43:
+ 192:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_response_tick = HAL_GetTick();
+ 712              		.loc 1 192 3 is_stmt 1 view .LVU193
+ 192:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_response_tick = HAL_GetTick();
+ 713              		.loc 1 192 14 is_stmt 0 view .LVU194
+ 714 0024 89B2     		uxth	r1, r1
+ 715 0026 FFF7FEFF 		bl	PressureSensorDriver_ModbusCrc16
+ 716              	.LVL44:
+ 717 002a 0446     		mov	r4, r0
+ 718              	.LVL45:
+ 193:Glider-Core/pressure_sensor_driver.c **** 
+ 719              		.loc 1 193 3 is_stmt 1 view .LVU195
+ 193:Glider-Core/pressure_sensor_driver.c **** 
+ 720              		.loc 1 193 47 is_stmt 0 view .LVU196
+ 721 002c FFF7FEFF 		bl	HAL_GetTick
+ 722              	.LVL46:
+ 193:Glider-Core/pressure_sensor_driver.c **** 
+ 723              		.loc 1 193 45 view .LVU197
+ 724 0030 254B     		ldr	r3, .L72+4
+ 725 0032 D863     		str	r0, [r3, #60]
+ 195:Glider-Core/pressure_sensor_driver.c ****   {
+ 726              		.loc 1 195 3 is_stmt 1 view .LVU198
+ 195:Glider-Core/pressure_sensor_driver.c ****   {
+ 727              		.loc 1 195 6 is_stmt 0 view .LVU199
+ 728 0034 A542     		cmp	r5, r4
+ 729 0036 18D1     		bne	.L69
+ 203:Glider-Core/pressure_sensor_driver.c ****   if (func == (uint8_t)(PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING | 0x80U))
+ 730              		.loc 1 203 3 is_stmt 1 view .LVU200
+ 203:Glider-Core/pressure_sensor_driver.c ****   if (func == (uint8_t)(PRESSURE_SENSOR_MODBUS_FUNC_READ_HOLDING | 0x80U))
+ 731              		.loc 1 203 8 is_stmt 0 view .LVU201
+ 732 0038 224B     		ldr	r3, .L72
+ 733 003a 5B78     		ldrb	r3, [r3, #1]	@ zero_extendqisi2
+ 734 003c DBB2     		uxtb	r3, r3
+ 735              	.LVL47:
+ 204:Glider-Core/pressure_sensor_driver.c ****   {
+ 736              		.loc 1 204 3 is_stmt 1 view .LVU202
+ 204:Glider-Core/pressure_sensor_driver.c ****   {
+ 737              		.loc 1 204 6 is_stmt 0 view .LVU203
+ 738 003e 832B     		cmp	r3, #131
+ 739 0040 1BD0     		beq	.L70
+ 213:Glider-Core/pressure_sensor_driver.c ****   {
+ 740              		.loc 1 213 3 is_stmt 1 view .LVU204
+ 213:Glider-Core/pressure_sensor_driver.c ****   {
+ 741              		.loc 1 213 6 is_stmt 0 view .LVU205
+ 742 0042 032B     		cmp	r3, #3
+ 743 0044 04D1     		bne	.L63
+ 213:Glider-Core/pressure_sensor_driver.c ****   {
+ 744              		.loc 1 213 75 discriminator 1 view .LVU206
+ 745 0046 1F4B     		ldr	r3, .L72
+ 746              	.LVL48:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 21
+
+
+ 213:Glider-Core/pressure_sensor_driver.c ****   {
+ 747              		.loc 1 213 75 discriminator 1 view .LVU207
+ 748 0048 9B78     		ldrb	r3, [r3, #2]	@ zero_extendqisi2
+ 749 004a DBB2     		uxtb	r3, r3
+ 213:Glider-Core/pressure_sensor_driver.c ****   {
+ 750              		.loc 1 213 56 discriminator 1 view .LVU208
+ 751 004c 042B     		cmp	r3, #4
+ 752 004e 21D0     		beq	.L64
+ 753              	.L63:
+ 215:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 754              		.loc 1 215 5 is_stmt 1 view .LVU209
+ 215:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 755              		.loc 1 215 39 is_stmt 0 view .LVU210
+ 756 0050 1D4B     		ldr	r3, .L72+4
+ 757 0052 0A22     		movs	r2, #10
+ 758 0054 9A60     		str	r2, [r3, #8]
+ 216:Glider-Core/pressure_sensor_driver.c ****     return;
+ 759              		.loc 1 216 5 is_stmt 1 view .LVU211
+ 760 0056 FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 761              	.LVL49:
+ 217:Glider-Core/pressure_sensor_driver.c ****   }
+ 762              		.loc 1 217 5 view .LVU212
+ 763 005a 04E0     		b	.L58
+ 764              	.LVL50:
+ 765              	.L68:
+ 184:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 766              		.loc 1 184 5 view .LVU213
+ 184:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 767              		.loc 1 184 39 is_stmt 0 view .LVU214
+ 768 005c 1A4B     		ldr	r3, .L72+4
+ 769 005e 0A22     		movs	r2, #10
+ 770 0060 9A60     		str	r2, [r3, #8]
+ 185:Glider-Core/pressure_sensor_driver.c ****     return;
+ 771              		.loc 1 185 5 is_stmt 1 view .LVU215
+ 772 0062 FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 773              	.LVL51:
+ 186:Glider-Core/pressure_sensor_driver.c ****   }
+ 774              		.loc 1 186 5 view .LVU216
+ 775              	.L58:
+ 231:Glider-Core/pressure_sensor_driver.c **** 
+ 776              		.loc 1 231 1 is_stmt 0 view .LVU217
+ 777 0066 03B0     		add	sp, sp, #12
+ 778              	.LCFI7:
+ 779              		.cfi_remember_state
+ 780              		.cfi_def_cfa_offset 12
+ 781              		@ sp needed
+ 782 0068 30BD     		pop	{r4, r5, pc}
+ 783              	.LVL52:
+ 784              	.L69:
+ 785              	.LCFI8:
+ 786              		.cfi_restore_state
+ 197:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 8U;
+ 787              		.loc 1 197 5 is_stmt 1 view .LVU218
+ 197:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 8U;
+ 788              		.loc 1 197 27 is_stmt 0 view .LVU219
+ 789 006a DA6A     		ldr	r2, [r3, #44]
+ 197:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 8U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 22
+
+
+ 790              		.loc 1 197 43 view .LVU220
+ 791 006c 0132     		adds	r2, r2, #1
+ 792 006e DA62     		str	r2, [r3, #44]
+ 198:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 793              		.loc 1 198 5 is_stmt 1 view .LVU221
+ 198:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 794              		.loc 1 198 39 is_stmt 0 view .LVU222
+ 795 0070 0822     		movs	r2, #8
+ 796 0072 9A60     		str	r2, [r3, #8]
+ 199:Glider-Core/pressure_sensor_driver.c ****     return;
+ 797              		.loc 1 199 5 is_stmt 1 view .LVU223
+ 798 0074 FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 799              	.LVL53:
+ 200:Glider-Core/pressure_sensor_driver.c ****   }
+ 800              		.loc 1 200 5 view .LVU224
+ 801 0078 F5E7     		b	.L58
+ 802              	.LVL54:
+ 803              	.L70:
+ 206:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_exception_code = s_response_frame[2];
+ 804              		.loc 1 206 5 view .LVU225
+ 206:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_exception_code = s_response_frame[2];
+ 805              		.loc 1 206 27 is_stmt 0 view .LVU226
+ 806 007a 134B     		ldr	r3, .L72+4
+ 807              	.LVL55:
+ 206:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_exception_code = s_response_frame[2];
+ 808              		.loc 1 206 27 view .LVU227
+ 809 007c 1A6B     		ldr	r2, [r3, #48]
+ 206:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_exception_code = s_response_frame[2];
+ 810              		.loc 1 206 43 view .LVU228
+ 811 007e 0132     		adds	r2, r2, #1
+ 812 0080 1A63     		str	r2, [r3, #48]
+ 207:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 9U;
+ 813              		.loc 1 207 5 is_stmt 1 view .LVU229
+ 207:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 9U;
+ 814              		.loc 1 207 66 is_stmt 0 view .LVU230
+ 815 0082 104A     		ldr	r2, .L72
+ 816 0084 9278     		ldrb	r2, [r2, #2]	@ zero_extendqisi2
+ 817 0086 D2B2     		uxtb	r2, r2
+ 207:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 9U;
+ 818              		.loc 1 207 48 view .LVU231
+ 819 0088 5A63     		str	r2, [r3, #52]
+ 208:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 820              		.loc 1 208 5 is_stmt 1 view .LVU232
+ 208:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 821              		.loc 1 208 39 is_stmt 0 view .LVU233
+ 822 008a 0922     		movs	r2, #9
+ 823 008c 9A60     		str	r2, [r3, #8]
+ 209:Glider-Core/pressure_sensor_driver.c ****     return;
+ 824              		.loc 1 209 5 is_stmt 1 view .LVU234
+ 825 008e FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 826              	.LVL56:
+ 210:Glider-Core/pressure_sensor_driver.c ****   }
+ 827              		.loc 1 210 5 view .LVU235
+ 828 0092 E8E7     		b	.L58
+ 829              	.L64:
+ 220:Glider-Core/pressure_sensor_driver.c ****   {
+ 830              		.loc 1 220 3 view .LVU236
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 23
+
+
+ 220:Glider-Core/pressure_sensor_driver.c ****   {
+ 831              		.loc 1 220 7 is_stmt 0 view .LVU237
+ 832 0094 01A9     		add	r1, sp, #4
+ 833 0096 0D48     		ldr	r0, .L72+8
+ 834 0098 FFF7FEFF 		bl	PressureSensorDriver_DecodeFloat
+ 835              	.LVL57:
+ 220:Glider-Core/pressure_sensor_driver.c ****   {
+ 836              		.loc 1 220 6 view .LVU238
+ 837 009c 60B1     		cbz	r0, .L71
+ 227:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_ok_count++;
+ 838              		.loc 1 227 3 is_stmt 1 view .LVU239
+ 839 009e 9DED010A 		vldr.32	s0, [sp, #4]
+ 840 00a2 FFF7FEFF 		bl	PressureSensorDriver_CommitMeasurement
+ 841              	.LVL58:
+ 228:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 0U;
+ 842              		.loc 1 228 3 view .LVU240
+ 228:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 0U;
+ 843              		.loc 1 228 25 is_stmt 0 view .LVU241
+ 844 00a6 084B     		ldr	r3, .L72+4
+ 845 00a8 5A6A     		ldr	r2, [r3, #36]
+ 228:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 0U;
+ 846              		.loc 1 228 43 view .LVU242
+ 847 00aa 0132     		adds	r2, r2, #1
+ 848 00ac 5A62     		str	r2, [r3, #36]
+ 229:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_StopWaitingResponse();
+ 849              		.loc 1 229 3 is_stmt 1 view .LVU243
+ 229:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_StopWaitingResponse();
+ 850              		.loc 1 229 37 is_stmt 0 view .LVU244
+ 851 00ae 0022     		movs	r2, #0
+ 852 00b0 9A60     		str	r2, [r3, #8]
+ 230:Glider-Core/pressure_sensor_driver.c **** }
+ 853              		.loc 1 230 3 is_stmt 1 view .LVU245
+ 854 00b2 FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 855              	.LVL59:
+ 856 00b6 D6E7     		b	.L58
+ 857              	.L71:
+ 222:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 858              		.loc 1 222 5 view .LVU246
+ 222:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 859              		.loc 1 222 39 is_stmt 0 view .LVU247
+ 860 00b8 034B     		ldr	r3, .L72+4
+ 861 00ba 0A22     		movs	r2, #10
+ 862 00bc 9A60     		str	r2, [r3, #8]
+ 223:Glider-Core/pressure_sensor_driver.c ****     return;
+ 863              		.loc 1 223 5 is_stmt 1 view .LVU248
+ 864 00be FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 865              	.LVL60:
+ 224:Glider-Core/pressure_sensor_driver.c ****   }
+ 866              		.loc 1 224 5 view .LVU249
+ 867 00c2 D0E7     		b	.L58
+ 868              	.L73:
+ 869              		.align	2
+ 870              	.L72:
+ 871 00c4 00000000 		.word	s_response_frame
+ 872 00c8 00000000 		.word	g_pressure_sensor_state
+ 873 00cc 03000000 		.word	s_response_frame+3
+ 874              		.cfi_endproc
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 24
+
+
+ 875              	.LFE344:
+ 877              		.section	.text.PressureSensorDriver_ProcessResponseByte,"ax",%progbits
+ 878              		.align	1
+ 879              		.syntax unified
+ 880              		.thumb
+ 881              		.thumb_func
+ 883              	PressureSensorDriver_ProcessResponseByte:
+ 884              	.LVL61:
+ 885              	.LFB345:
+ 234:Glider-Core/pressure_sensor_driver.c ****   uint8_t configured_addr;
+ 886              		.loc 1 234 1 view -0
+ 887              		.cfi_startproc
+ 888              		@ args = 0, pretend = 0, frame = 0
+ 889              		@ frame_needed = 0, uses_anonymous_args = 0
+ 234:Glider-Core/pressure_sensor_driver.c ****   uint8_t configured_addr;
+ 890              		.loc 1 234 1 is_stmt 0 view .LVU251
+ 891 0000 08B5     		push	{r3, lr}
+ 892              	.LCFI9:
+ 893              		.cfi_def_cfa_offset 8
+ 894              		.cfi_offset 3, -8
+ 895              		.cfi_offset 14, -4
+ 235:Glider-Core/pressure_sensor_driver.c **** 
+ 896              		.loc 1 235 3 is_stmt 1 view .LVU252
+ 237:Glider-Core/pressure_sensor_driver.c ****   {
+ 897              		.loc 1 237 3 view .LVU253
+ 237:Glider-Core/pressure_sensor_driver.c ****   {
+ 898              		.loc 1 237 26 is_stmt 0 view .LVU254
+ 899 0002 384B     		ldr	r3, .L90
+ 900 0004 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 237:Glider-Core/pressure_sensor_driver.c ****   {
+ 901              		.loc 1 237 6 view .LVU255
+ 902 0006 6BB1     		cbz	r3, .L74
+ 242:Glider-Core/pressure_sensor_driver.c ****   if (configured_addr == 0U)
+ 903              		.loc 1 242 3 is_stmt 1 view .LVU256
+ 242:Glider-Core/pressure_sensor_driver.c ****   if (configured_addr == 0U)
+ 904              		.loc 1 242 52 is_stmt 0 view .LVU257
+ 905 0008 374B     		ldr	r3, .L90+4
+ 906 000a 5B68     		ldr	r3, [r3, #4]
+ 907              	.LVL62:
+ 243:Glider-Core/pressure_sensor_driver.c ****   {
+ 908              		.loc 1 243 3 is_stmt 1 view .LVU258
+ 243:Glider-Core/pressure_sensor_driver.c ****   {
+ 909              		.loc 1 243 6 is_stmt 0 view .LVU259
+ 910 000c 13F0FF03 		ands	r3, r3, #255
+ 911              	.LVL63:
+ 243:Glider-Core/pressure_sensor_driver.c ****   {
+ 912              		.loc 1 243 6 view .LVU260
+ 913 0010 02D1     		bne	.L76
+ 245:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.slave_address = configured_addr;
+ 914              		.loc 1 245 5 is_stmt 1 view .LVU261
+ 915              	.LVL64:
+ 246:Glider-Core/pressure_sensor_driver.c ****   }
+ 916              		.loc 1 246 5 view .LVU262
+ 246:Glider-Core/pressure_sensor_driver.c ****   }
+ 917              		.loc 1 246 42 is_stmt 0 view .LVU263
+ 918 0012 FA23     		movs	r3, #250
+ 919 0014 344A     		ldr	r2, .L90+4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 25
+
+
+ 920 0016 5360     		str	r3, [r2, #4]
+ 921              	.LVL65:
+ 922              	.L76:
+ 249:Glider-Core/pressure_sensor_driver.c ****   {
+ 923              		.loc 1 249 3 is_stmt 1 view .LVU264
+ 249:Glider-Core/pressure_sensor_driver.c ****   {
+ 924              		.loc 1 249 24 is_stmt 0 view .LVU265
+ 925 0018 344A     		ldr	r2, .L90+8
+ 926 001a 1288     		ldrh	r2, [r2]
+ 927 001c 92B2     		uxth	r2, r2
+ 249:Glider-Core/pressure_sensor_driver.c ****   {
+ 928              		.loc 1 249 6 view .LVU266
+ 929 001e 52B9     		cbnz	r2, .L77
+ 251:Glider-Core/pressure_sensor_driver.c ****     {
+ 930              		.loc 1 251 5 is_stmt 1 view .LVU267
+ 251:Glider-Core/pressure_sensor_driver.c ****     {
+ 931              		.loc 1 251 8 is_stmt 0 view .LVU268
+ 932 0020 8342     		cmp	r3, r0
+ 933 0022 00D0     		beq	.L85
+ 934              	.LVL66:
+ 935              	.L74:
+ 308:Glider-Core/pressure_sensor_driver.c **** 
+ 936              		.loc 1 308 1 view .LVU269
+ 937 0024 08BD     		pop	{r3, pc}
+ 938              	.LVL67:
+ 939              	.L85:
+ 256:Glider-Core/pressure_sensor_driver.c ****     s_response_index = 1U;
+ 940              		.loc 1 256 5 is_stmt 1 view .LVU270
+ 256:Glider-Core/pressure_sensor_driver.c ****     s_response_index = 1U;
+ 941              		.loc 1 256 21 is_stmt 0 view .LVU271
+ 942 0026 314A     		ldr	r2, .L90+8
+ 943 0028 1388     		ldrh	r3, [r2]
+ 944              	.LVL68:
+ 256:Glider-Core/pressure_sensor_driver.c ****     s_response_index = 1U;
+ 945              		.loc 1 256 21 view .LVU272
+ 946 002a 9BB2     		uxth	r3, r3
+ 256:Glider-Core/pressure_sensor_driver.c ****     s_response_index = 1U;
+ 947              		.loc 1 256 40 view .LVU273
+ 948 002c 3049     		ldr	r1, .L90+12
+ 949 002e C854     		strb	r0, [r1, r3]
+ 257:Glider-Core/pressure_sensor_driver.c ****     return;
+ 950              		.loc 1 257 5 is_stmt 1 view .LVU274
+ 257:Glider-Core/pressure_sensor_driver.c ****     return;
+ 951              		.loc 1 257 22 is_stmt 0 view .LVU275
+ 952 0030 0123     		movs	r3, #1
+ 953 0032 1380     		strh	r3, [r2]	@ movhi
+ 258:Glider-Core/pressure_sensor_driver.c ****   }
+ 954              		.loc 1 258 5 is_stmt 1 view .LVU276
+ 955 0034 F6E7     		b	.L74
+ 956              	.LVL69:
+ 957              	.L77:
+ 261:Glider-Core/pressure_sensor_driver.c ****   {
+ 958              		.loc 1 261 3 view .LVU277
+ 261:Glider-Core/pressure_sensor_driver.c ****   {
+ 959              		.loc 1 261 24 is_stmt 0 view .LVU278
+ 960 0036 2D4B     		ldr	r3, .L90+8
+ 961              	.LVL70:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 26
+
+
+ 261:Glider-Core/pressure_sensor_driver.c ****   {
+ 962              		.loc 1 261 24 view .LVU279
+ 963 0038 1B88     		ldrh	r3, [r3]
+ 964 003a 9BB2     		uxth	r3, r3
+ 261:Glider-Core/pressure_sensor_driver.c ****   {
+ 965              		.loc 1 261 6 view .LVU280
+ 966 003c 0F2B     		cmp	r3, #15
+ 967 003e 25D8     		bhi	.L86
+ 268:Glider-Core/pressure_sensor_driver.c ****   s_response_index++;
+ 968              		.loc 1 268 3 is_stmt 1 view .LVU281
+ 268:Glider-Core/pressure_sensor_driver.c ****   s_response_index++;
+ 969              		.loc 1 268 19 is_stmt 0 view .LVU282
+ 970 0040 2A4A     		ldr	r2, .L90+8
+ 971 0042 1388     		ldrh	r3, [r2]
+ 972 0044 9BB2     		uxth	r3, r3
+ 268:Glider-Core/pressure_sensor_driver.c ****   s_response_index++;
+ 973              		.loc 1 268 38 view .LVU283
+ 974 0046 2A49     		ldr	r1, .L90+12
+ 975 0048 C854     		strb	r0, [r1, r3]
+ 269:Glider-Core/pressure_sensor_driver.c **** 
+ 976              		.loc 1 269 3 is_stmt 1 view .LVU284
+ 269:Glider-Core/pressure_sensor_driver.c **** 
+ 977              		.loc 1 269 19 is_stmt 0 view .LVU285
+ 978 004a 1388     		ldrh	r3, [r2]
+ 979 004c 9BB2     		uxth	r3, r3
+ 980 004e 0133     		adds	r3, r3, #1
+ 981 0050 9BB2     		uxth	r3, r3
+ 982 0052 1380     		strh	r3, [r2]	@ movhi
+ 271:Glider-Core/pressure_sensor_driver.c ****   {
+ 983              		.loc 1 271 3 is_stmt 1 view .LVU286
+ 271:Glider-Core/pressure_sensor_driver.c ****   {
+ 984              		.loc 1 271 24 is_stmt 0 view .LVU287
+ 985 0054 1388     		ldrh	r3, [r2]
+ 986 0056 9BB2     		uxth	r3, r3
+ 271:Glider-Core/pressure_sensor_driver.c ****   {
+ 987              		.loc 1 271 6 view .LVU288
+ 988 0058 022B     		cmp	r3, #2
+ 989 005a 1DD0     		beq	.L87
+ 290:Glider-Core/pressure_sensor_driver.c ****   {
+ 990              		.loc 1 290 3 is_stmt 1 view .LVU289
+ 290:Glider-Core/pressure_sensor_driver.c ****   {
+ 991              		.loc 1 290 24 is_stmt 0 view .LVU290
+ 992 005c 234B     		ldr	r3, .L90+8
+ 993 005e 1B88     		ldrh	r3, [r3]
+ 994 0060 9BB2     		uxth	r3, r3
+ 290:Glider-Core/pressure_sensor_driver.c ****   {
+ 995              		.loc 1 290 6 view .LVU291
+ 996 0062 032B     		cmp	r3, #3
+ 997 0064 26D0     		beq	.L88
+ 998              	.L81:
+ 304:Glider-Core/pressure_sensor_driver.c ****   {
+ 999              		.loc 1 304 3 is_stmt 1 view .LVU292
+ 304:Glider-Core/pressure_sensor_driver.c ****   {
+ 1000              		.loc 1 304 31 is_stmt 0 view .LVU293
+ 1001 0066 234B     		ldr	r3, .L90+16
+ 1002 0068 1B88     		ldrh	r3, [r3]
+ 1003 006a 9BB2     		uxth	r3, r3
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 27
+
+
+ 304:Glider-Core/pressure_sensor_driver.c ****   {
+ 1004              		.loc 1 304 6 view .LVU294
+ 1005 006c 002B     		cmp	r3, #0
+ 1006 006e D9D0     		beq	.L74
+ 304:Glider-Core/pressure_sensor_driver.c ****   {
+ 1007              		.loc 1 304 57 discriminator 1 view .LVU295
+ 1008 0070 1E4B     		ldr	r3, .L90+8
+ 1009 0072 1A88     		ldrh	r2, [r3]
+ 1010 0074 92B2     		uxth	r2, r2
+ 1011 0076 1F4B     		ldr	r3, .L90+16
+ 1012 0078 1B88     		ldrh	r3, [r3]
+ 1013 007a 9BB2     		uxth	r3, r3
+ 304:Glider-Core/pressure_sensor_driver.c ****   {
+ 1014              		.loc 1 304 37 discriminator 1 view .LVU296
+ 1015 007c 9A42     		cmp	r2, r3
+ 1016 007e D1D3     		bcc	.L74
+ 306:Glider-Core/pressure_sensor_driver.c ****   }
+ 1017              		.loc 1 306 5 is_stmt 1 view .LVU297
+ 1018 0080 1C4B     		ldr	r3, .L90+16
+ 1019 0082 1888     		ldrh	r0, [r3]
+ 1020              	.LVL71:
+ 306:Glider-Core/pressure_sensor_driver.c ****   }
+ 1021              		.loc 1 306 5 is_stmt 0 view .LVU298
+ 1022 0084 80B2     		uxth	r0, r0
+ 1023 0086 FFF7FEFF 		bl	PressureSensorDriver_HandleResponseFrame
+ 1024              	.LVL72:
+ 1025 008a CBE7     		b	.L74
+ 1026              	.LVL73:
+ 1027              	.L86:
+ 263:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 1028              		.loc 1 263 5 is_stmt 1 view .LVU299
+ 263:Glider-Core/pressure_sensor_driver.c ****     PressureSensorDriver_StopWaitingResponse();
+ 1029              		.loc 1 263 39 is_stmt 0 view .LVU300
+ 1030 008c 164B     		ldr	r3, .L90+4
+ 1031 008e 0B22     		movs	r2, #11
+ 1032 0090 9A60     		str	r2, [r3, #8]
+ 264:Glider-Core/pressure_sensor_driver.c ****     return;
+ 1033              		.loc 1 264 5 is_stmt 1 view .LVU301
+ 1034 0092 FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 1035              	.LVL74:
+ 265:Glider-Core/pressure_sensor_driver.c ****   }
+ 1036              		.loc 1 265 5 view .LVU302
+ 1037 0096 C5E7     		b	.L74
+ 1038              	.LVL75:
+ 1039              	.L87:
+ 1040              	.LBB2:
+ 273:Glider-Core/pressure_sensor_driver.c **** 
+ 1041              		.loc 1 273 5 view .LVU303
+ 273:Glider-Core/pressure_sensor_driver.c **** 
+ 1042              		.loc 1 273 13 is_stmt 0 view .LVU304
+ 1043 0098 4B78     		ldrb	r3, [r1, #1]	@ zero_extendqisi2
+ 1044 009a DBB2     		uxtb	r3, r3
+ 1045              	.LVL76:
+ 275:Glider-Core/pressure_sensor_driver.c ****     {
+ 1046              		.loc 1 275 5 is_stmt 1 view .LVU305
+ 275:Glider-Core/pressure_sensor_driver.c ****     {
+ 1047              		.loc 1 275 8 is_stmt 0 view .LVU306
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 28
+
+
+ 1048 009c 032B     		cmp	r3, #3
+ 1049 009e C1D0     		beq	.L74
+ 280:Glider-Core/pressure_sensor_driver.c ****     {
+ 1050              		.loc 1 280 5 is_stmt 1 view .LVU307
+ 280:Glider-Core/pressure_sensor_driver.c ****     {
+ 1051              		.loc 1 280 8 is_stmt 0 view .LVU308
+ 1052 00a0 832B     		cmp	r3, #131
+ 1053 00a2 03D0     		beq	.L89
+ 286:Glider-Core/pressure_sensor_driver.c ****     return;
+ 1054              		.loc 1 286 5 is_stmt 1 view .LVU309
+ 286:Glider-Core/pressure_sensor_driver.c ****     return;
+ 1055              		.loc 1 286 22 is_stmt 0 view .LVU310
+ 1056 00a4 114B     		ldr	r3, .L90+8
+ 1057              	.LVL77:
+ 286:Glider-Core/pressure_sensor_driver.c ****     return;
+ 1058              		.loc 1 286 22 view .LVU311
+ 1059 00a6 0022     		movs	r2, #0
+ 1060 00a8 1A80     		strh	r2, [r3]	@ movhi
+ 287:Glider-Core/pressure_sensor_driver.c ****   }
+ 1061              		.loc 1 287 5 is_stmt 1 view .LVU312
+ 1062 00aa BBE7     		b	.L74
+ 1063              	.LVL78:
+ 1064              	.L89:
+ 282:Glider-Core/pressure_sensor_driver.c ****       return;
+ 1065              		.loc 1 282 7 view .LVU313
+ 282:Glider-Core/pressure_sensor_driver.c ****       return;
+ 1066              		.loc 1 282 31 is_stmt 0 view .LVU314
+ 1067 00ac 114B     		ldr	r3, .L90+16
+ 1068              	.LVL79:
+ 282:Glider-Core/pressure_sensor_driver.c ****       return;
+ 1069              		.loc 1 282 31 view .LVU315
+ 1070 00ae 0522     		movs	r2, #5
+ 1071 00b0 1A80     		strh	r2, [r3]	@ movhi
+ 283:Glider-Core/pressure_sensor_driver.c ****     }
+ 1072              		.loc 1 283 7 is_stmt 1 view .LVU316
+ 1073 00b2 B7E7     		b	.L74
+ 1074              	.LVL80:
+ 1075              	.L88:
+ 283:Glider-Core/pressure_sensor_driver.c ****     }
+ 1076              		.loc 1 283 7 is_stmt 0 view .LVU317
+ 1077              	.LBE2:
+ 290:Glider-Core/pressure_sensor_driver.c ****   {
+ 1078              		.loc 1 290 49 discriminator 1 view .LVU318
+ 1079 00b4 0E4B     		ldr	r3, .L90+12
+ 1080 00b6 5B78     		ldrb	r3, [r3, #1]	@ zero_extendqisi2
+ 1081 00b8 DBB2     		uxtb	r3, r3
+ 290:Glider-Core/pressure_sensor_driver.c ****   {
+ 1082              		.loc 1 290 30 discriminator 1 view .LVU319
+ 1083 00ba 032B     		cmp	r3, #3
+ 1084 00bc D3D1     		bne	.L81
+ 1085              	.LBB3:
+ 292:Glider-Core/pressure_sensor_driver.c **** 
+ 1086              		.loc 1 292 5 is_stmt 1 view .LVU320
+ 292:Glider-Core/pressure_sensor_driver.c **** 
+ 1087              		.loc 1 292 13 is_stmt 0 view .LVU321
+ 1088 00be 0C4B     		ldr	r3, .L90+12
+ 1089 00c0 9B78     		ldrb	r3, [r3, #2]	@ zero_extendqisi2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 29
+
+
+ 1090 00c2 DAB2     		uxtb	r2, r3
+ 1091              	.LVL81:
+ 294:Glider-Core/pressure_sensor_driver.c ****     if (byte_count != PRESSURE_SENSOR_MODBUS_VALUE_BYTE_COUNT ||
+ 1092              		.loc 1 294 5 is_stmt 1 view .LVU322
+ 294:Glider-Core/pressure_sensor_driver.c ****     if (byte_count != PRESSURE_SENSOR_MODBUS_VALUE_BYTE_COUNT ||
+ 1093              		.loc 1 294 31 is_stmt 0 view .LVU323
+ 1094 00c4 0533     		adds	r3, r3, #5
+ 294:Glider-Core/pressure_sensor_driver.c ****     if (byte_count != PRESSURE_SENSOR_MODBUS_VALUE_BYTE_COUNT ||
+ 1095              		.loc 1 294 29 view .LVU324
+ 1096 00c6 0B49     		ldr	r1, .L90+16
+ 1097 00c8 0B80     		strh	r3, [r1]	@ movhi
+ 295:Glider-Core/pressure_sensor_driver.c ****         s_response_expected_len > PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN)
+ 1098              		.loc 1 295 5 is_stmt 1 view .LVU325
+ 295:Glider-Core/pressure_sensor_driver.c ****         s_response_expected_len > PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN)
+ 1099              		.loc 1 295 8 is_stmt 0 view .LVU326
+ 1100 00ca 042A     		cmp	r2, #4
+ 1101 00cc 03D1     		bne	.L82
+ 296:Glider-Core/pressure_sensor_driver.c ****     {
+ 1102              		.loc 1 296 33 discriminator 1 view .LVU327
+ 1103 00ce 0B88     		ldrh	r3, [r1]
+ 1104 00d0 9BB2     		uxth	r3, r3
+ 295:Glider-Core/pressure_sensor_driver.c ****         s_response_expected_len > PRESSURE_SENSOR_MODBUS_MAX_RESPONSE_LEN)
+ 1105              		.loc 1 295 63 discriminator 1 view .LVU328
+ 1106 00d2 102B     		cmp	r3, #16
+ 1107 00d4 A6D9     		bls	.L74
+ 1108              	.L82:
+ 298:Glider-Core/pressure_sensor_driver.c ****       PressureSensorDriver_StopWaitingResponse();
+ 1109              		.loc 1 298 7 is_stmt 1 view .LVU329
+ 298:Glider-Core/pressure_sensor_driver.c ****       PressureSensorDriver_StopWaitingResponse();
+ 1110              		.loc 1 298 41 is_stmt 0 view .LVU330
+ 1111 00d6 044B     		ldr	r3, .L90+4
+ 1112 00d8 0C22     		movs	r2, #12
+ 1113              	.LVL82:
+ 298:Glider-Core/pressure_sensor_driver.c ****       PressureSensorDriver_StopWaitingResponse();
+ 1114              		.loc 1 298 41 view .LVU331
+ 1115 00da 9A60     		str	r2, [r3, #8]
+ 299:Glider-Core/pressure_sensor_driver.c ****     }
+ 1116              		.loc 1 299 7 is_stmt 1 view .LVU332
+ 1117 00dc FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 1118              	.LVL83:
+ 301:Glider-Core/pressure_sensor_driver.c ****   }
+ 1119              		.loc 1 301 5 view .LVU333
+ 1120 00e0 A0E7     		b	.L74
+ 1121              	.L91:
+ 1122 00e2 00BF     		.align	2
+ 1123              	.L90:
+ 1124 00e4 00000000 		.word	s_waiting_response
+ 1125 00e8 00000000 		.word	g_pressure_sensor_state
+ 1126 00ec 00000000 		.word	s_response_index
+ 1127 00f0 00000000 		.word	s_response_frame
+ 1128 00f4 00000000 		.word	s_response_expected_len
+ 1129              	.LBE3:
+ 1130              		.cfi_endproc
+ 1131              	.LFE345:
+ 1133              		.section	.text.PressureSensorDriver_Init,"ax",%progbits
+ 1134              		.align	1
+ 1135              		.global	PressureSensorDriver_Init
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 30
+
+
+ 1136              		.syntax unified
+ 1137              		.thumb
+ 1138              		.thumb_func
+ 1140              	PressureSensorDriver_Init:
+ 1141              	.LVL84:
+ 1142              	.LFB347:
+ 325:Glider-Core/pressure_sensor_driver.c **** 
+ 326:Glider-Core/pressure_sensor_driver.c **** void PressureSensorDriver_Init(UART_HandleTypeDef *huart)
+ 327:Glider-Core/pressure_sensor_driver.c **** {
+ 1143              		.loc 1 327 1 view -0
+ 1144              		.cfi_startproc
+ 1145              		@ args = 0, pretend = 0, frame = 0
+ 1146              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1147              		.loc 1 327 1 is_stmt 0 view .LVU335
+ 1148 0000 10B5     		push	{r4, lr}
+ 1149              	.LCFI10:
+ 1150              		.cfi_def_cfa_offset 8
+ 1151              		.cfi_offset 4, -8
+ 1152              		.cfi_offset 14, -4
+ 328:Glider-Core/pressure_sensor_driver.c ****   HAL_StatusTypeDef status;
+ 1153              		.loc 1 328 3 is_stmt 1 view .LVU336
+ 329:Glider-Core/pressure_sensor_driver.c ****   uint32_t i;
+ 1154              		.loc 1 329 3 view .LVU337
+ 330:Glider-Core/pressure_sensor_driver.c **** 
+ 331:Glider-Core/pressure_sensor_driver.c ****   s_pressure_sensor_uart = huart;
+ 1155              		.loc 1 331 3 view .LVU338
+ 1156              		.loc 1 331 26 is_stmt 0 view .LVU339
+ 1157 0002 2D4B     		ldr	r3, .L102
+ 1158 0004 1860     		str	r0, [r3]
+ 332:Glider-Core/pressure_sensor_driver.c ****   s_pressure_sensor_rx_head = 0U;
+ 1159              		.loc 1 332 3 is_stmt 1 view .LVU340
+ 1160              		.loc 1 332 29 is_stmt 0 view .LVU341
+ 1161 0006 0024     		movs	r4, #0
+ 1162 0008 2C4B     		ldr	r3, .L102+4
+ 1163 000a 1C80     		strh	r4, [r3]	@ movhi
+ 333:Glider-Core/pressure_sensor_driver.c ****   s_pressure_sensor_rx_tail = 0U;
+ 1164              		.loc 1 333 3 is_stmt 1 view .LVU342
+ 1165              		.loc 1 333 29 is_stmt 0 view .LVU343
+ 1166 000c 2C4B     		ldr	r3, .L102+8
+ 1167 000e 1C80     		strh	r4, [r3]	@ movhi
+ 334:Glider-Core/pressure_sensor_driver.c ****   s_pressure_sensor_rx_byte = 0U;
+ 1168              		.loc 1 334 3 is_stmt 1 view .LVU344
+ 1169              		.loc 1 334 29 is_stmt 0 view .LVU345
+ 1170 0010 2C4B     		ldr	r3, .L102+12
+ 1171 0012 1C70     		strb	r4, [r3]
+ 335:Glider-Core/pressure_sensor_driver.c **** 
+ 336:Glider-Core/pressure_sensor_driver.c ****   s_tx_in_flight = 0U;
+ 1172              		.loc 1 336 3 is_stmt 1 view .LVU346
+ 1173              		.loc 1 336 18 is_stmt 0 view .LVU347
+ 1174 0014 2C4B     		ldr	r3, .L102+16
+ 1175 0016 1C70     		strb	r4, [r3]
+ 337:Glider-Core/pressure_sensor_driver.c ****   s_waiting_response = 0U;
+ 1176              		.loc 1 337 3 is_stmt 1 view .LVU348
+ 1177              		.loc 1 337 22 is_stmt 0 view .LVU349
+ 1178 0018 2C4B     		ldr	r3, .L102+20
+ 1179 001a 1C70     		strb	r4, [r3]
+ 338:Glider-Core/pressure_sensor_driver.c ****   s_last_request_tick = 0U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 31
+
+
+ 1180              		.loc 1 338 3 is_stmt 1 view .LVU350
+ 1181              		.loc 1 338 23 is_stmt 0 view .LVU351
+ 1182 001c 2C4B     		ldr	r3, .L102+24
+ 1183 001e 1C60     		str	r4, [r3]
+ 339:Glider-Core/pressure_sensor_driver.c ****   s_response_start_tick = 0U;
+ 1184              		.loc 1 339 3 is_stmt 1 view .LVU352
+ 1185              		.loc 1 339 25 is_stmt 0 view .LVU353
+ 1186 0020 2C4B     		ldr	r3, .L102+28
+ 1187 0022 1C60     		str	r4, [r3]
+ 340:Glider-Core/pressure_sensor_driver.c ****   s_next_request_kind = PRESSURE_SENSOR_REQ_PRESSURE;
+ 1188              		.loc 1 340 3 is_stmt 1 view .LVU354
+ 1189              		.loc 1 340 23 is_stmt 0 view .LVU355
+ 1190 0024 2C4B     		ldr	r3, .L102+32
+ 1191 0026 1C70     		strb	r4, [r3]
+ 341:Glider-Core/pressure_sensor_driver.c ****   s_active_request_kind = PRESSURE_SENSOR_REQ_PRESSURE;
+ 1192              		.loc 1 341 3 is_stmt 1 view .LVU356
+ 1193              		.loc 1 341 25 is_stmt 0 view .LVU357
+ 1194 0028 2C4B     		ldr	r3, .L102+36
+ 1195 002a 1C70     		strb	r4, [r3]
+ 342:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_ResetResponseParser();
+ 1196              		.loc 1 342 3 is_stmt 1 view .LVU358
+ 1197 002c FFF7FEFF 		bl	PressureSensorDriver_ResetResponseParser
+ 1198              	.LVL85:
+ 343:Glider-Core/pressure_sensor_driver.c **** 
+ 344:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.initialized = 0U;
+ 1199              		.loc 1 344 3 view .LVU359
+ 1200              		.loc 1 344 38 is_stmt 0 view .LVU360
+ 1201 0030 2B4B     		ldr	r3, .L102+40
+ 1202 0032 1C60     		str	r4, [r3]
+ 345:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.slave_address = PRESSURE_SENSOR_MODBUS_DEFAULT_ADDR;
+ 1203              		.loc 1 345 3 is_stmt 1 view .LVU361
+ 1204              		.loc 1 345 40 is_stmt 0 view .LVU362
+ 1205 0034 FA22     		movs	r2, #250
+ 1206 0036 5A60     		str	r2, [r3, #4]
+ 346:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 0U;
+ 1207              		.loc 1 346 3 is_stmt 1 view .LVU363
+ 1208              		.loc 1 346 37 is_stmt 0 view .LVU364
+ 1209 0038 9C60     		str	r4, [r3, #8]
+ 347:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.uart_error_code = 0U;
+ 1210              		.loc 1 347 3 is_stmt 1 view .LVU365
+ 1211              		.loc 1 347 42 is_stmt 0 view .LVU366
+ 1212 003a DC60     		str	r4, [r3, #12]
+ 348:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.tx_in_flight = 0U;
+ 1213              		.loc 1 348 3 is_stmt 1 view .LVU367
+ 1214              		.loc 1 348 39 is_stmt 0 view .LVU368
+ 1215 003c 1C61     		str	r4, [r3, #16]
+ 349:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_waiting = 0U;
+ 1216              		.loc 1 349 3 is_stmt 1 view .LVU369
+ 1217              		.loc 1 349 43 is_stmt 0 view .LVU370
+ 1218 003e 5C61     		str	r4, [r3, #20]
+ 350:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.rx_irq_count = 0U;
+ 1219              		.loc 1 350 3 is_stmt 1 view .LVU371
+ 1220              		.loc 1 350 39 is_stmt 0 view .LVU372
+ 1221 0040 9C61     		str	r4, [r3, #24]
+ 351:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.rx_overflow_count = 0U;
+ 1222              		.loc 1 351 3 is_stmt 1 view .LVU373
+ 1223              		.loc 1 351 44 is_stmt 0 view .LVU374
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 32
+
+
+ 1224 0042 DC61     		str	r4, [r3, #28]
+ 352:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.request_count = 0U;
+ 1225              		.loc 1 352 3 is_stmt 1 view .LVU375
+ 1226              		.loc 1 352 40 is_stmt 0 view .LVU376
+ 1227 0044 1C62     		str	r4, [r3, #32]
+ 353:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_ok_count = 0U;
+ 1228              		.loc 1 353 3 is_stmt 1 view .LVU377
+ 1229              		.loc 1 353 44 is_stmt 0 view .LVU378
+ 1230 0046 5C62     		str	r4, [r3, #36]
+ 354:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.timeout_count = 0U;
+ 1231              		.loc 1 354 3 is_stmt 1 view .LVU379
+ 1232              		.loc 1 354 40 is_stmt 0 view .LVU380
+ 1233 0048 9C62     		str	r4, [r3, #40]
+ 355:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.crc_error_count = 0U;
+ 1234              		.loc 1 355 3 is_stmt 1 view .LVU381
+ 1235              		.loc 1 355 42 is_stmt 0 view .LVU382
+ 1236 004a DC62     		str	r4, [r3, #44]
+ 356:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.exception_count = 0U;
+ 1237              		.loc 1 356 3 is_stmt 1 view .LVU383
+ 1238              		.loc 1 356 42 is_stmt 0 view .LVU384
+ 1239 004c 1C63     		str	r4, [r3, #48]
+ 357:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_exception_code = 0U;
+ 1240              		.loc 1 357 3 is_stmt 1 view .LVU385
+ 1241              		.loc 1 357 46 is_stmt 0 view .LVU386
+ 1242 004e 5C63     		str	r4, [r3, #52]
+ 358:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_request_tick = 0U;
+ 1243              		.loc 1 358 3 is_stmt 1 view .LVU387
+ 1244              		.loc 1 358 44 is_stmt 0 view .LVU388
+ 1245 0050 9C63     		str	r4, [r3, #56]
+ 359:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_response_tick = 0U;
+ 1246              		.loc 1 359 3 is_stmt 1 view .LVU389
+ 1247              		.loc 1 359 45 is_stmt 0 view .LVU390
+ 1248 0052 DC63     		str	r4, [r3, #60]
+ 360:Glider-Core/pressure_sensor_driver.c **** 
+ 361:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.last_irq_byte = 0U;
+ 1249              		.loc 1 361 3 is_stmt 1 view .LVU391
+ 1250              		.loc 1 361 43 is_stmt 0 view .LVU392
+ 1251 0054 1C64     		str	r4, [r3, #64]
+ 362:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.ring_available_bytes = 0U;
+ 1252              		.loc 1 362 3 is_stmt 1 view .LVU393
+ 1253              		.loc 1 362 50 is_stmt 0 view .LVU394
+ 1254 0056 5C64     		str	r4, [r3, #68]
+ 363:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.pressure_valid = 0U;
+ 1255              		.loc 1 363 3 is_stmt 1 view .LVU395
+ 1256              		.loc 1 363 44 is_stmt 0 view .LVU396
+ 1257 0058 9C64     		str	r4, [r3, #72]
+ 364:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.pressure_bar = 0.0f;
+ 1258              		.loc 1 364 3 is_stmt 1 view .LVU397
+ 1259              		.loc 1 364 42 is_stmt 0 view .LVU398
+ 1260 005a 0022     		movs	r2, #0
+ 1261 005c DA64     		str	r2, [r3, #76]	@ float
+ 365:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.temperature_valid = 0U;
+ 1262              		.loc 1 365 3 is_stmt 1 view .LVU399
+ 1263              		.loc 1 365 47 is_stmt 0 view .LVU400
+ 1264 005e 1C65     		str	r4, [r3, #80]
+ 366:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.temperature_c = 0.0f;
+ 1265              		.loc 1 366 3 is_stmt 1 view .LVU401
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 33
+
+
+ 1266              		.loc 1 366 43 is_stmt 0 view .LVU402
+ 1267 0060 5A65     		str	r2, [r3, #84]	@ float
+ 367:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.last_update_tick = 0U;
+ 1268              		.loc 1 367 3 is_stmt 1 view .LVU403
+ 1269              		.loc 1 367 46 is_stmt 0 view .LVU404
+ 1270 0062 9C65     		str	r4, [r3, #88]
+ 368:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.last_response_len = 0U;
+ 1271              		.loc 1 368 3 is_stmt 1 view .LVU405
+ 1272              		.loc 1 368 47 is_stmt 0 view .LVU406
+ 1273 0064 DC66     		str	r4, [r3, #108]
+ 369:Glider-Core/pressure_sensor_driver.c **** 
+ 370:Glider-Core/pressure_sensor_driver.c ****   for (i = 0U; i < (uint32_t)sizeof(g_pressure_sensor_readout.last_tx_data); i++)
+ 1274              		.loc 1 370 3 is_stmt 1 view .LVU407
+ 1275              	.LVL86:
+ 1276              		.loc 1 370 10 is_stmt 0 view .LVU408
+ 1277 0066 2346     		mov	r3, r4
+ 1278              		.loc 1 370 3 view .LVU409
+ 1279 0068 05E0     		b	.L93
+ 1280              	.LVL87:
+ 1281              	.L94:
+ 371:Glider-Core/pressure_sensor_driver.c ****   {
+ 372:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.last_tx_data[i] = 0U;
+ 1282              		.loc 1 372 5 is_stmt 1 discriminator 3 view .LVU410
+ 1283              		.loc 1 372 47 is_stmt 0 discriminator 3 view .LVU411
+ 1284 006a 1D4A     		ldr	r2, .L102+40
+ 1285 006c 1A44     		add	r2, r2, r3
+ 1286 006e 0021     		movs	r1, #0
+ 1287 0070 82F85C10 		strb	r1, [r2, #92]
+ 370:Glider-Core/pressure_sensor_driver.c ****   {
+ 1288              		.loc 1 370 79 is_stmt 1 discriminator 3 view .LVU412
+ 1289 0074 0133     		adds	r3, r3, #1
+ 1290              	.LVL88:
+ 1291              	.L93:
+ 370:Glider-Core/pressure_sensor_driver.c ****   {
+ 1292              		.loc 1 370 18 discriminator 1 view .LVU413
+ 1293 0076 0F2B     		cmp	r3, #15
+ 1294 0078 F7D9     		bls	.L94
+ 373:Glider-Core/pressure_sensor_driver.c ****   }
+ 374:Glider-Core/pressure_sensor_driver.c ****   for (i = 0U; i < (uint32_t)sizeof(g_pressure_sensor_readout.last_response_data); i++)
+ 1295              		.loc 1 374 10 is_stmt 0 view .LVU414
+ 1296 007a 0023     		movs	r3, #0
+ 1297              	.LVL89:
+ 1298              		.loc 1 374 10 view .LVU415
+ 1299 007c 05E0     		b	.L95
+ 1300              	.LVL90:
+ 1301              	.L96:
+ 375:Glider-Core/pressure_sensor_driver.c ****   {
+ 376:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_readout.last_response_data[i] = 0U;
+ 1302              		.loc 1 376 5 is_stmt 1 discriminator 3 view .LVU416
+ 1303              		.loc 1 376 53 is_stmt 0 discriminator 3 view .LVU417
+ 1304 007e 184A     		ldr	r2, .L102+40
+ 1305 0080 1A44     		add	r2, r2, r3
+ 1306 0082 0021     		movs	r1, #0
+ 1307 0084 82F87010 		strb	r1, [r2, #112]
+ 374:Glider-Core/pressure_sensor_driver.c ****   {
+ 1308              		.loc 1 374 85 is_stmt 1 discriminator 3 view .LVU418
+ 1309 0088 0133     		adds	r3, r3, #1
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 34
+
+
+ 1310              	.LVL91:
+ 1311              	.L95:
+ 374:Glider-Core/pressure_sensor_driver.c ****   {
+ 1312              		.loc 1 374 18 discriminator 1 view .LVU419
+ 1313 008a 0F2B     		cmp	r3, #15
+ 1314 008c F7D9     		bls	.L96
+ 377:Glider-Core/pressure_sensor_driver.c ****   }
+ 378:Glider-Core/pressure_sensor_driver.c **** 
+ 379:Glider-Core/pressure_sensor_driver.c ****   if (s_pressure_sensor_uart == NULL)
+ 1315              		.loc 1 379 3 view .LVU420
+ 1316              		.loc 1 379 30 is_stmt 0 view .LVU421
+ 1317 008e 0A4B     		ldr	r3, .L102
+ 1318              	.LVL92:
+ 1319              		.loc 1 379 30 view .LVU422
+ 1320 0090 1868     		ldr	r0, [r3]
+ 1321              		.loc 1 379 6 view .LVU423
+ 1322 0092 40B1     		cbz	r0, .L101
+ 380:Glider-Core/pressure_sensor_driver.c ****   {
+ 381:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 1U;
+ 382:Glider-Core/pressure_sensor_driver.c ****     return;
+ 383:Glider-Core/pressure_sensor_driver.c ****   }
+ 384:Glider-Core/pressure_sensor_driver.c **** 
+ 385:Glider-Core/pressure_sensor_driver.c ****   status = HAL_UART_Receive_IT(s_pressure_sensor_uart, (uint8_t *)&s_pressure_sensor_rx_byte, 1U);
+ 1323              		.loc 1 385 3 is_stmt 1 view .LVU424
+ 1324              		.loc 1 385 12 is_stmt 0 view .LVU425
+ 1325 0094 0122     		movs	r2, #1
+ 1326 0096 0B49     		ldr	r1, .L102+12
+ 1327 0098 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 1328              	.LVL93:
+ 386:Glider-Core/pressure_sensor_driver.c ****   if (status == HAL_OK)
+ 1329              		.loc 1 386 3 is_stmt 1 view .LVU426
+ 1330              		.loc 1 386 6 is_stmt 0 view .LVU427
+ 1331 009c 38B9     		cbnz	r0, .L99
+ 387:Glider-Core/pressure_sensor_driver.c ****   {
+ 388:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.initialized = 1U;
+ 1332              		.loc 1 388 5 is_stmt 1 view .LVU428
+ 1333              		.loc 1 388 40 is_stmt 0 view .LVU429
+ 1334 009e 104B     		ldr	r3, .L102+40
+ 1335 00a0 0122     		movs	r2, #1
+ 1336 00a2 1A60     		str	r2, [r3]
+ 1337              	.LVL94:
+ 1338              	.L92:
+ 389:Glider-Core/pressure_sensor_driver.c ****   }
+ 390:Glider-Core/pressure_sensor_driver.c ****   else
+ 391:Glider-Core/pressure_sensor_driver.c ****   {
+ 392:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 2U;
+ 393:Glider-Core/pressure_sensor_driver.c ****   }
+ 394:Glider-Core/pressure_sensor_driver.c **** }
+ 1339              		.loc 1 394 1 view .LVU430
+ 1340 00a4 10BD     		pop	{r4, pc}
+ 1341              	.L101:
+ 381:Glider-Core/pressure_sensor_driver.c ****     return;
+ 1342              		.loc 1 381 5 is_stmt 1 view .LVU431
+ 381:Glider-Core/pressure_sensor_driver.c ****     return;
+ 1343              		.loc 1 381 39 is_stmt 0 view .LVU432
+ 1344 00a6 0E4B     		ldr	r3, .L102+40
+ 1345 00a8 0122     		movs	r2, #1
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 35
+
+
+ 1346 00aa 9A60     		str	r2, [r3, #8]
+ 382:Glider-Core/pressure_sensor_driver.c ****   }
+ 1347              		.loc 1 382 5 is_stmt 1 view .LVU433
+ 1348 00ac FAE7     		b	.L92
+ 1349              	.LVL95:
+ 1350              	.L99:
+ 392:Glider-Core/pressure_sensor_driver.c ****   }
+ 1351              		.loc 1 392 5 view .LVU434
+ 392:Glider-Core/pressure_sensor_driver.c ****   }
+ 1352              		.loc 1 392 39 is_stmt 0 view .LVU435
+ 1353 00ae 0C4B     		ldr	r3, .L102+40
+ 1354 00b0 0222     		movs	r2, #2
+ 1355 00b2 9A60     		str	r2, [r3, #8]
+ 1356 00b4 F6E7     		b	.L92
+ 1357              	.L103:
+ 1358 00b6 00BF     		.align	2
+ 1359              	.L102:
+ 1360 00b8 00000000 		.word	s_pressure_sensor_uart
+ 1361 00bc 00000000 		.word	s_pressure_sensor_rx_head
+ 1362 00c0 00000000 		.word	s_pressure_sensor_rx_tail
+ 1363 00c4 00000000 		.word	s_pressure_sensor_rx_byte
+ 1364 00c8 00000000 		.word	s_tx_in_flight
+ 1365 00cc 00000000 		.word	s_waiting_response
+ 1366 00d0 00000000 		.word	s_last_request_tick
+ 1367 00d4 00000000 		.word	s_response_start_tick
+ 1368 00d8 00000000 		.word	s_next_request_kind
+ 1369 00dc 00000000 		.word	s_active_request_kind
+ 1370 00e0 00000000 		.word	g_pressure_sensor_state
+ 1371              		.cfi_endproc
+ 1372              	.LFE347:
+ 1374              		.section	.text.PressureSensorDriver_OnRxComplete,"ax",%progbits
+ 1375              		.align	1
+ 1376              		.global	PressureSensorDriver_OnRxComplete
+ 1377              		.syntax unified
+ 1378              		.thumb
+ 1379              		.thumb_func
+ 1381              	PressureSensorDriver_OnRxComplete:
+ 1382              	.LVL96:
+ 1383              	.LFB348:
+ 395:Glider-Core/pressure_sensor_driver.c **** 
+ 396:Glider-Core/pressure_sensor_driver.c **** void PressureSensorDriver_OnRxComplete(UART_HandleTypeDef *huart)
+ 397:Glider-Core/pressure_sensor_driver.c **** {
+ 1384              		.loc 1 397 1 is_stmt 1 view -0
+ 1385              		.cfi_startproc
+ 1386              		@ args = 0, pretend = 0, frame = 0
+ 1387              		@ frame_needed = 0, uses_anonymous_args = 0
+ 398:Glider-Core/pressure_sensor_driver.c ****   HAL_StatusTypeDef status;
+ 1388              		.loc 1 398 3 view .LVU437
+ 399:Glider-Core/pressure_sensor_driver.c **** 
+ 400:Glider-Core/pressure_sensor_driver.c ****   if (huart == NULL || s_pressure_sensor_uart == NULL)
+ 1389              		.loc 1 400 3 view .LVU438
+ 1390              		.loc 1 400 6 is_stmt 0 view .LVU439
+ 1391 0000 30B1     		cbz	r0, .L107
+ 1392              		.loc 1 400 47 discriminator 1 view .LVU440
+ 1393 0002 114B     		ldr	r3, .L111
+ 1394 0004 1B68     		ldr	r3, [r3]
+ 1395              		.loc 1 400 21 discriminator 1 view .LVU441
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 36
+
+
+ 1396 0006 1BB1     		cbz	r3, .L107
+ 401:Glider-Core/pressure_sensor_driver.c ****   {
+ 402:Glider-Core/pressure_sensor_driver.c ****     return;
+ 403:Glider-Core/pressure_sensor_driver.c ****   }
+ 404:Glider-Core/pressure_sensor_driver.c **** 
+ 405:Glider-Core/pressure_sensor_driver.c ****   if (huart->Instance != s_pressure_sensor_uart->Instance)
+ 1397              		.loc 1 405 3 is_stmt 1 view .LVU442
+ 1398              		.loc 1 405 12 is_stmt 0 view .LVU443
+ 1399 0008 0268     		ldr	r2, [r0]
+ 1400              		.loc 1 405 48 view .LVU444
+ 1401 000a 1B68     		ldr	r3, [r3]
+ 1402              		.loc 1 405 6 view .LVU445
+ 1403 000c 9A42     		cmp	r2, r3
+ 1404 000e 00D0     		beq	.L110
+ 1405              	.L107:
+ 1406 0010 7047     		bx	lr
+ 1407              	.L110:
+ 397:Glider-Core/pressure_sensor_driver.c ****   HAL_StatusTypeDef status;
+ 1408              		.loc 1 397 1 view .LVU446
+ 1409 0012 10B5     		push	{r4, lr}
+ 1410              	.LCFI11:
+ 1411              		.cfi_def_cfa_offset 8
+ 1412              		.cfi_offset 4, -8
+ 1413              		.cfi_offset 14, -4
+ 406:Glider-Core/pressure_sensor_driver.c ****   {
+ 407:Glider-Core/pressure_sensor_driver.c ****     return;
+ 408:Glider-Core/pressure_sensor_driver.c ****   }
+ 409:Glider-Core/pressure_sensor_driver.c **** 
+ 410:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.rx_irq_count++;
+ 1414              		.loc 1 410 3 is_stmt 1 view .LVU447
+ 1415              		.loc 1 410 25 is_stmt 0 view .LVU448
+ 1416 0014 0D4A     		ldr	r2, .L111+4
+ 1417 0016 9369     		ldr	r3, [r2, #24]
+ 1418              		.loc 1 410 38 view .LVU449
+ 1419 0018 0133     		adds	r3, r3, #1
+ 1420 001a 9361     		str	r3, [r2, #24]
+ 411:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_RingPush(s_pressure_sensor_rx_byte);
+ 1421              		.loc 1 411 3 is_stmt 1 view .LVU450
+ 1422 001c 0C4C     		ldr	r4, .L111+8
+ 1423 001e 2078     		ldrb	r0, [r4]	@ zero_extendqisi2
+ 1424              	.LVL97:
+ 1425              		.loc 1 411 3 is_stmt 0 view .LVU451
+ 1426 0020 FFF7FEFF 		bl	PressureSensorDriver_RingPush
+ 1427              	.LVL98:
+ 412:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_ProcessResponseByte(s_pressure_sensor_rx_byte);
+ 1428              		.loc 1 412 3 is_stmt 1 view .LVU452
+ 1429 0024 2078     		ldrb	r0, [r4]	@ zero_extendqisi2
+ 1430 0026 FFF7FEFF 		bl	PressureSensorDriver_ProcessResponseByte
+ 1431              	.LVL99:
+ 413:Glider-Core/pressure_sensor_driver.c **** 
+ 414:Glider-Core/pressure_sensor_driver.c ****   status = HAL_UART_Receive_IT(s_pressure_sensor_uart, (uint8_t *)&s_pressure_sensor_rx_byte, 1U);
+ 1432              		.loc 1 414 3 view .LVU453
+ 1433              		.loc 1 414 12 is_stmt 0 view .LVU454
+ 1434 002a 0122     		movs	r2, #1
+ 1435 002c 2146     		mov	r1, r4
+ 1436 002e 064B     		ldr	r3, .L111
+ 1437 0030 1868     		ldr	r0, [r3]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 37
+
+
+ 1438 0032 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 1439              	.LVL100:
+ 415:Glider-Core/pressure_sensor_driver.c ****   if (status != HAL_OK && status != HAL_BUSY)
+ 1440              		.loc 1 415 3 is_stmt 1 view .LVU455
+ 1441              		.loc 1 415 6 is_stmt 0 view .LVU456
+ 1442 0036 0028     		cmp	r0, #0
+ 1443 0038 18BF     		it	ne
+ 1444 003a 0228     		cmpne	r0, #2
+ 1445 003c 02D0     		beq	.L104
+ 416:Glider-Core/pressure_sensor_driver.c ****   {
+ 417:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 3U;
+ 1446              		.loc 1 417 5 is_stmt 1 view .LVU457
+ 1447              		.loc 1 417 39 is_stmt 0 view .LVU458
+ 1448 003e 034B     		ldr	r3, .L111+4
+ 1449 0040 0322     		movs	r2, #3
+ 1450 0042 9A60     		str	r2, [r3, #8]
+ 1451              	.L104:
+ 418:Glider-Core/pressure_sensor_driver.c ****   }
+ 419:Glider-Core/pressure_sensor_driver.c **** }
+ 1452              		.loc 1 419 1 view .LVU459
+ 1453 0044 10BD     		pop	{r4, pc}
+ 1454              	.L112:
+ 1455 0046 00BF     		.align	2
+ 1456              	.L111:
+ 1457 0048 00000000 		.word	s_pressure_sensor_uart
+ 1458 004c 00000000 		.word	g_pressure_sensor_state
+ 1459 0050 00000000 		.word	s_pressure_sensor_rx_byte
+ 1460              		.cfi_endproc
+ 1461              	.LFE348:
+ 1463              		.section	.text.PressureSensorDriver_OnTxComplete,"ax",%progbits
+ 1464              		.align	1
+ 1465              		.global	PressureSensorDriver_OnTxComplete
+ 1466              		.syntax unified
+ 1467              		.thumb
+ 1468              		.thumb_func
+ 1470              	PressureSensorDriver_OnTxComplete:
+ 1471              	.LVL101:
+ 1472              	.LFB349:
+ 420:Glider-Core/pressure_sensor_driver.c **** 
+ 421:Glider-Core/pressure_sensor_driver.c **** void PressureSensorDriver_OnTxComplete(UART_HandleTypeDef *huart)
+ 422:Glider-Core/pressure_sensor_driver.c **** {
+ 1473              		.loc 1 422 1 is_stmt 1 view -0
+ 1474              		.cfi_startproc
+ 1475              		@ args = 0, pretend = 0, frame = 0
+ 1476              		@ frame_needed = 0, uses_anonymous_args = 0
+ 423:Glider-Core/pressure_sensor_driver.c ****   if (huart == NULL || s_pressure_sensor_uart == NULL)
+ 1477              		.loc 1 423 3 view .LVU461
+ 1478              		.loc 1 423 6 is_stmt 0 view .LVU462
+ 1479 0000 C0B1     		cbz	r0, .L116
+ 422:Glider-Core/pressure_sensor_driver.c ****   if (huart == NULL || s_pressure_sensor_uart == NULL)
+ 1480              		.loc 1 422 1 discriminator 1 view .LVU463
+ 1481 0002 08B5     		push	{r3, lr}
+ 1482              	.LCFI12:
+ 1483              		.cfi_def_cfa_offset 8
+ 1484              		.cfi_offset 3, -8
+ 1485              		.cfi_offset 14, -4
+ 1486              		.loc 1 423 47 discriminator 1 view .LVU464
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 38
+
+
+ 1487 0004 0C4B     		ldr	r3, .L120
+ 1488 0006 1B68     		ldr	r3, [r3]
+ 1489              		.loc 1 423 21 discriminator 1 view .LVU465
+ 1490 0008 1BB1     		cbz	r3, .L113
+ 424:Glider-Core/pressure_sensor_driver.c ****   {
+ 425:Glider-Core/pressure_sensor_driver.c ****     return;
+ 426:Glider-Core/pressure_sensor_driver.c ****   }
+ 427:Glider-Core/pressure_sensor_driver.c **** 
+ 428:Glider-Core/pressure_sensor_driver.c ****   if (huart->Instance != s_pressure_sensor_uart->Instance)
+ 1491              		.loc 1 428 3 is_stmt 1 view .LVU466
+ 1492              		.loc 1 428 12 is_stmt 0 view .LVU467
+ 1493 000a 0268     		ldr	r2, [r0]
+ 1494              		.loc 1 428 48 view .LVU468
+ 1495 000c 1B68     		ldr	r3, [r3]
+ 1496              		.loc 1 428 6 view .LVU469
+ 1497 000e 9A42     		cmp	r2, r3
+ 1498 0010 00D0     		beq	.L119
+ 1499              	.LVL102:
+ 1500              	.L113:
+ 429:Glider-Core/pressure_sensor_driver.c ****   {
+ 430:Glider-Core/pressure_sensor_driver.c ****     return;
+ 431:Glider-Core/pressure_sensor_driver.c ****   }
+ 432:Glider-Core/pressure_sensor_driver.c **** 
+ 433:Glider-Core/pressure_sensor_driver.c ****   s_tx_in_flight = 0U;
+ 434:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.tx_in_flight = 0U;
+ 435:Glider-Core/pressure_sensor_driver.c **** 
+ 436:Glider-Core/pressure_sensor_driver.c ****   s_waiting_response = 1U;
+ 437:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_waiting = 1U;
+ 438:Glider-Core/pressure_sensor_driver.c ****   s_response_start_tick = HAL_GetTick();
+ 439:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_ResetResponseParser();
+ 440:Glider-Core/pressure_sensor_driver.c **** }
+ 1501              		.loc 1 440 1 view .LVU470
+ 1502 0012 08BD     		pop	{r3, pc}
+ 1503              	.LVL103:
+ 1504              	.L119:
+ 433:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.tx_in_flight = 0U;
+ 1505              		.loc 1 433 3 is_stmt 1 view .LVU471
+ 433:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.tx_in_flight = 0U;
+ 1506              		.loc 1 433 18 is_stmt 0 view .LVU472
+ 1507 0014 0022     		movs	r2, #0
+ 1508 0016 094B     		ldr	r3, .L120+4
+ 1509 0018 1A70     		strb	r2, [r3]
+ 434:Glider-Core/pressure_sensor_driver.c **** 
+ 1510              		.loc 1 434 3 is_stmt 1 view .LVU473
+ 434:Glider-Core/pressure_sensor_driver.c **** 
+ 1511              		.loc 1 434 39 is_stmt 0 view .LVU474
+ 1512 001a 094B     		ldr	r3, .L120+8
+ 1513 001c 1A61     		str	r2, [r3, #16]
+ 436:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_waiting = 1U;
+ 1514              		.loc 1 436 3 is_stmt 1 view .LVU475
+ 436:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.response_waiting = 1U;
+ 1515              		.loc 1 436 22 is_stmt 0 view .LVU476
+ 1516 001e 0122     		movs	r2, #1
+ 1517 0020 0849     		ldr	r1, .L120+12
+ 1518 0022 0A70     		strb	r2, [r1]
+ 437:Glider-Core/pressure_sensor_driver.c ****   s_response_start_tick = HAL_GetTick();
+ 1519              		.loc 1 437 3 is_stmt 1 view .LVU477
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 39
+
+
+ 437:Glider-Core/pressure_sensor_driver.c ****   s_response_start_tick = HAL_GetTick();
+ 1520              		.loc 1 437 43 is_stmt 0 view .LVU478
+ 1521 0024 5A61     		str	r2, [r3, #20]
+ 438:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_ResetResponseParser();
+ 1522              		.loc 1 438 3 is_stmt 1 view .LVU479
+ 438:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_ResetResponseParser();
+ 1523              		.loc 1 438 27 is_stmt 0 view .LVU480
+ 1524 0026 FFF7FEFF 		bl	HAL_GetTick
+ 1525              	.LVL104:
+ 438:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_ResetResponseParser();
+ 1526              		.loc 1 438 25 view .LVU481
+ 1527 002a 074B     		ldr	r3, .L120+16
+ 1528 002c 1860     		str	r0, [r3]
+ 439:Glider-Core/pressure_sensor_driver.c **** }
+ 1529              		.loc 1 439 3 is_stmt 1 view .LVU482
+ 1530 002e FFF7FEFF 		bl	PressureSensorDriver_ResetResponseParser
+ 1531              	.LVL105:
+ 1532 0032 EEE7     		b	.L113
+ 1533              	.LVL106:
+ 1534              	.L116:
+ 1535              	.LCFI13:
+ 1536              		.cfi_def_cfa_offset 0
+ 1537              		.cfi_restore 3
+ 1538              		.cfi_restore 14
+ 439:Glider-Core/pressure_sensor_driver.c **** }
+ 1539              		.loc 1 439 3 is_stmt 0 view .LVU483
+ 1540 0034 7047     		bx	lr
+ 1541              	.L121:
+ 1542 0036 00BF     		.align	2
+ 1543              	.L120:
+ 1544 0038 00000000 		.word	s_pressure_sensor_uart
+ 1545 003c 00000000 		.word	s_tx_in_flight
+ 1546 0040 00000000 		.word	g_pressure_sensor_state
+ 1547 0044 00000000 		.word	s_waiting_response
+ 1548 0048 00000000 		.word	s_response_start_tick
+ 1549              		.cfi_endproc
+ 1550              	.LFE349:
+ 1552              		.section	.text.PressureSensorDriver_OnError,"ax",%progbits
+ 1553              		.align	1
+ 1554              		.global	PressureSensorDriver_OnError
+ 1555              		.syntax unified
+ 1556              		.thumb
+ 1557              		.thumb_func
+ 1559              	PressureSensorDriver_OnError:
+ 1560              	.LVL107:
+ 1561              	.LFB350:
+ 441:Glider-Core/pressure_sensor_driver.c **** 
+ 442:Glider-Core/pressure_sensor_driver.c **** void PressureSensorDriver_OnError(UART_HandleTypeDef *huart)
+ 443:Glider-Core/pressure_sensor_driver.c **** {
+ 1562              		.loc 1 443 1 is_stmt 1 view -0
+ 1563              		.cfi_startproc
+ 1564              		@ args = 0, pretend = 0, frame = 0
+ 1565              		@ frame_needed = 0, uses_anonymous_args = 0
+ 444:Glider-Core/pressure_sensor_driver.c ****   HAL_StatusTypeDef status;
+ 1566              		.loc 1 444 3 view .LVU485
+ 445:Glider-Core/pressure_sensor_driver.c **** 
+ 446:Glider-Core/pressure_sensor_driver.c ****   if (huart == NULL || s_pressure_sensor_uart == NULL)
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 40
+
+
+ 1567              		.loc 1 446 3 view .LVU486
+ 1568              		.loc 1 446 6 is_stmt 0 view .LVU487
+ 1569 0000 0028     		cmp	r0, #0
+ 1570 0002 31D0     		beq	.L125
+ 443:Glider-Core/pressure_sensor_driver.c ****   HAL_StatusTypeDef status;
+ 1571              		.loc 1 443 1 discriminator 1 view .LVU488
+ 1572 0004 38B5     		push	{r3, r4, r5, lr}
+ 1573              	.LCFI14:
+ 1574              		.cfi_def_cfa_offset 16
+ 1575              		.cfi_offset 3, -16
+ 1576              		.cfi_offset 4, -12
+ 1577              		.cfi_offset 5, -8
+ 1578              		.cfi_offset 14, -4
+ 1579 0006 0446     		mov	r4, r0
+ 1580              		.loc 1 446 47 discriminator 1 view .LVU489
+ 1581 0008 184B     		ldr	r3, .L129
+ 1582 000a 1B68     		ldr	r3, [r3]
+ 1583              		.loc 1 446 21 discriminator 1 view .LVU490
+ 1584 000c 1BB1     		cbz	r3, .L122
+ 447:Glider-Core/pressure_sensor_driver.c ****   {
+ 448:Glider-Core/pressure_sensor_driver.c ****     return;
+ 449:Glider-Core/pressure_sensor_driver.c ****   }
+ 450:Glider-Core/pressure_sensor_driver.c **** 
+ 451:Glider-Core/pressure_sensor_driver.c ****   if (huart->Instance != s_pressure_sensor_uart->Instance)
+ 1585              		.loc 1 451 3 is_stmt 1 view .LVU491
+ 1586              		.loc 1 451 12 is_stmt 0 view .LVU492
+ 1587 000e 0268     		ldr	r2, [r0]
+ 1588              		.loc 1 451 48 view .LVU493
+ 1589 0010 1B68     		ldr	r3, [r3]
+ 1590              		.loc 1 451 6 view .LVU494
+ 1591 0012 9A42     		cmp	r2, r3
+ 1592 0014 00D0     		beq	.L128
+ 1593              	.LVL108:
+ 1594              	.L122:
+ 452:Glider-Core/pressure_sensor_driver.c ****   {
+ 453:Glider-Core/pressure_sensor_driver.c ****     return;
+ 454:Glider-Core/pressure_sensor_driver.c ****   }
+ 455:Glider-Core/pressure_sensor_driver.c **** 
+ 456:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.uart_error_code = huart->ErrorCode;
+ 457:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 4U;
+ 458:Glider-Core/pressure_sensor_driver.c **** 
+ 459:Glider-Core/pressure_sensor_driver.c ****   s_tx_in_flight = 0U;
+ 460:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.tx_in_flight = 0U;
+ 461:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_StopWaitingResponse();
+ 462:Glider-Core/pressure_sensor_driver.c **** 
+ 463:Glider-Core/pressure_sensor_driver.c ****   __HAL_UART_CLEAR_OREFLAG(huart);
+ 464:Glider-Core/pressure_sensor_driver.c ****   __HAL_UART_CLEAR_NEFLAG(huart);
+ 465:Glider-Core/pressure_sensor_driver.c ****   __HAL_UART_CLEAR_FEFLAG(huart);
+ 466:Glider-Core/pressure_sensor_driver.c ****   __HAL_UART_CLEAR_PEFLAG(huart);
+ 467:Glider-Core/pressure_sensor_driver.c **** 
+ 468:Glider-Core/pressure_sensor_driver.c ****   (void)(huart->Instance->RDR);
+ 469:Glider-Core/pressure_sensor_driver.c ****   huart->RxState = HAL_UART_STATE_READY;
+ 470:Glider-Core/pressure_sensor_driver.c **** 
+ 471:Glider-Core/pressure_sensor_driver.c ****   status = HAL_UART_Receive_IT(s_pressure_sensor_uart, (uint8_t *)&s_pressure_sensor_rx_byte, 1U);
+ 472:Glider-Core/pressure_sensor_driver.c ****   if (status != HAL_OK && status != HAL_BUSY)
+ 473:Glider-Core/pressure_sensor_driver.c ****   {
+ 474:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 4U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 41
+
+
+ 475:Glider-Core/pressure_sensor_driver.c ****   }
+ 476:Glider-Core/pressure_sensor_driver.c **** }
+ 1595              		.loc 1 476 1 view .LVU495
+ 1596 0016 38BD     		pop	{r3, r4, r5, pc}
+ 1597              	.LVL109:
+ 1598              	.L128:
+ 456:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 4U;
+ 1599              		.loc 1 456 3 is_stmt 1 view .LVU496
+ 456:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 4U;
+ 1600              		.loc 1 456 49 is_stmt 0 view .LVU497
+ 1601 0018 D0F89020 		ldr	r2, [r0, #144]
+ 456:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.last_error = 4U;
+ 1602              		.loc 1 456 42 view .LVU498
+ 1603 001c 144B     		ldr	r3, .L129+4
+ 1604 001e DA60     		str	r2, [r3, #12]
+ 457:Glider-Core/pressure_sensor_driver.c **** 
+ 1605              		.loc 1 457 3 is_stmt 1 view .LVU499
+ 457:Glider-Core/pressure_sensor_driver.c **** 
+ 1606              		.loc 1 457 37 is_stmt 0 view .LVU500
+ 1607 0020 0425     		movs	r5, #4
+ 1608 0022 9D60     		str	r5, [r3, #8]
+ 459:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.tx_in_flight = 0U;
+ 1609              		.loc 1 459 3 is_stmt 1 view .LVU501
+ 459:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.tx_in_flight = 0U;
+ 1610              		.loc 1 459 18 is_stmt 0 view .LVU502
+ 1611 0024 0022     		movs	r2, #0
+ 1612 0026 1349     		ldr	r1, .L129+8
+ 1613 0028 0A70     		strb	r2, [r1]
+ 460:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_StopWaitingResponse();
+ 1614              		.loc 1 460 3 is_stmt 1 view .LVU503
+ 460:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_StopWaitingResponse();
+ 1615              		.loc 1 460 39 is_stmt 0 view .LVU504
+ 1616 002a 1A61     		str	r2, [r3, #16]
+ 461:Glider-Core/pressure_sensor_driver.c **** 
+ 1617              		.loc 1 461 3 is_stmt 1 view .LVU505
+ 1618 002c FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 1619              	.LVL110:
+ 463:Glider-Core/pressure_sensor_driver.c ****   __HAL_UART_CLEAR_NEFLAG(huart);
+ 1620              		.loc 1 463 3 view .LVU506
+ 1621 0030 2368     		ldr	r3, [r4]
+ 1622 0032 0822     		movs	r2, #8
+ 1623 0034 1A62     		str	r2, [r3, #32]
+ 464:Glider-Core/pressure_sensor_driver.c ****   __HAL_UART_CLEAR_FEFLAG(huart);
+ 1624              		.loc 1 464 3 view .LVU507
+ 1625 0036 2368     		ldr	r3, [r4]
+ 1626 0038 1D62     		str	r5, [r3, #32]
+ 465:Glider-Core/pressure_sensor_driver.c ****   __HAL_UART_CLEAR_PEFLAG(huart);
+ 1627              		.loc 1 465 3 view .LVU508
+ 1628 003a 2368     		ldr	r3, [r4]
+ 1629 003c 0222     		movs	r2, #2
+ 1630 003e 1A62     		str	r2, [r3, #32]
+ 466:Glider-Core/pressure_sensor_driver.c **** 
+ 1631              		.loc 1 466 3 view .LVU509
+ 1632 0040 2368     		ldr	r3, [r4]
+ 1633 0042 0122     		movs	r2, #1
+ 1634 0044 1A62     		str	r2, [r3, #32]
+ 468:Glider-Core/pressure_sensor_driver.c ****   huart->RxState = HAL_UART_STATE_READY;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 42
+
+
+ 1635              		.loc 1 468 3 view .LVU510
+ 468:Glider-Core/pressure_sensor_driver.c ****   huart->RxState = HAL_UART_STATE_READY;
+ 1636              		.loc 1 468 15 is_stmt 0 view .LVU511
+ 1637 0046 2368     		ldr	r3, [r4]
+ 468:Glider-Core/pressure_sensor_driver.c ****   huart->RxState = HAL_UART_STATE_READY;
+ 1638              		.loc 1 468 3 view .LVU512
+ 1639 0048 5B6A     		ldr	r3, [r3, #36]
+ 469:Glider-Core/pressure_sensor_driver.c **** 
+ 1640              		.loc 1 469 3 is_stmt 1 view .LVU513
+ 469:Glider-Core/pressure_sensor_driver.c **** 
+ 1641              		.loc 1 469 18 is_stmt 0 view .LVU514
+ 1642 004a 2023     		movs	r3, #32
+ 1643 004c C4F88C30 		str	r3, [r4, #140]
+ 471:Glider-Core/pressure_sensor_driver.c ****   if (status != HAL_OK && status != HAL_BUSY)
+ 1644              		.loc 1 471 3 is_stmt 1 view .LVU515
+ 471:Glider-Core/pressure_sensor_driver.c ****   if (status != HAL_OK && status != HAL_BUSY)
+ 1645              		.loc 1 471 12 is_stmt 0 view .LVU516
+ 1646 0050 0949     		ldr	r1, .L129+12
+ 1647 0052 064B     		ldr	r3, .L129
+ 1648 0054 1868     		ldr	r0, [r3]
+ 1649 0056 FFF7FEFF 		bl	HAL_UART_Receive_IT
+ 1650              	.LVL111:
+ 472:Glider-Core/pressure_sensor_driver.c ****   {
+ 1651              		.loc 1 472 3 is_stmt 1 view .LVU517
+ 472:Glider-Core/pressure_sensor_driver.c ****   {
+ 1652              		.loc 1 472 6 is_stmt 0 view .LVU518
+ 1653 005a 0028     		cmp	r0, #0
+ 1654 005c 18BF     		it	ne
+ 1655 005e 0228     		cmpne	r0, #2
+ 1656 0060 D9D0     		beq	.L122
+ 474:Glider-Core/pressure_sensor_driver.c ****   }
+ 1657              		.loc 1 474 5 is_stmt 1 view .LVU519
+ 474:Glider-Core/pressure_sensor_driver.c ****   }
+ 1658              		.loc 1 474 39 is_stmt 0 view .LVU520
+ 1659 0062 034B     		ldr	r3, .L129+4
+ 1660 0064 9D60     		str	r5, [r3, #8]
+ 1661 0066 D6E7     		b	.L122
+ 1662              	.LVL112:
+ 1663              	.L125:
+ 1664              	.LCFI15:
+ 1665              		.cfi_def_cfa_offset 0
+ 1666              		.cfi_restore 3
+ 1667              		.cfi_restore 4
+ 1668              		.cfi_restore 5
+ 1669              		.cfi_restore 14
+ 474:Glider-Core/pressure_sensor_driver.c ****   }
+ 1670              		.loc 1 474 39 view .LVU521
+ 1671 0068 7047     		bx	lr
+ 1672              	.L130:
+ 1673 006a 00BF     		.align	2
+ 1674              	.L129:
+ 1675 006c 00000000 		.word	s_pressure_sensor_uart
+ 1676 0070 00000000 		.word	g_pressure_sensor_state
+ 1677 0074 00000000 		.word	s_tx_in_flight
+ 1678 0078 00000000 		.word	s_pressure_sensor_rx_byte
+ 1679              		.cfi_endproc
+ 1680              	.LFE350:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 43
+
+
+ 1682              		.section	.text.PressureSensorDriver_Poll,"ax",%progbits
+ 1683              		.align	1
+ 1684              		.global	PressureSensorDriver_Poll
+ 1685              		.syntax unified
+ 1686              		.thumb
+ 1687              		.thumb_func
+ 1689              	PressureSensorDriver_Poll:
+ 1690              	.LVL113:
+ 1691              	.LFB351:
+ 477:Glider-Core/pressure_sensor_driver.c **** 
+ 478:Glider-Core/pressure_sensor_driver.c **** void PressureSensorDriver_Poll(uint32_t now_ms)
+ 479:Glider-Core/pressure_sensor_driver.c **** {
+ 1692              		.loc 1 479 1 is_stmt 1 view -0
+ 1693              		.cfi_startproc
+ 1694              		@ args = 0, pretend = 0, frame = 0
+ 1695              		@ frame_needed = 0, uses_anonymous_args = 0
+ 480:Glider-Core/pressure_sensor_driver.c ****   HAL_StatusTypeDef status;
+ 1696              		.loc 1 480 3 view .LVU523
+ 481:Glider-Core/pressure_sensor_driver.c ****   uint8_t addr;
+ 1697              		.loc 1 481 3 view .LVU524
+ 482:Glider-Core/pressure_sensor_driver.c ****   uint16_t start_reg;
+ 1698              		.loc 1 482 3 view .LVU525
+ 483:Glider-Core/pressure_sensor_driver.c **** 
+ 484:Glider-Core/pressure_sensor_driver.c ****   if (s_pressure_sensor_uart == NULL || g_pressure_sensor_diag.initialized == 0U)
+ 1699              		.loc 1 484 3 view .LVU526
+ 1700              		.loc 1 484 30 is_stmt 0 view .LVU527
+ 1701 0000 374B     		ldr	r3, .L148
+ 1702 0002 1B68     		ldr	r3, [r3]
+ 1703              		.loc 1 484 6 view .LVU528
+ 1704 0004 002B     		cmp	r3, #0
+ 1705 0006 6AD0     		beq	.L143
+ 479:Glider-Core/pressure_sensor_driver.c ****   HAL_StatusTypeDef status;
+ 1706              		.loc 1 479 1 discriminator 1 view .LVU529
+ 1707 0008 10B5     		push	{r4, lr}
+ 1708              	.LCFI16:
+ 1709              		.cfi_def_cfa_offset 8
+ 1710              		.cfi_offset 4, -8
+ 1711              		.cfi_offset 14, -4
+ 1712 000a 0446     		mov	r4, r0
+ 1713              		.loc 1 484 63 discriminator 1 view .LVU530
+ 1714 000c 354B     		ldr	r3, .L148+4
+ 1715 000e 1B68     		ldr	r3, [r3]
+ 1716              		.loc 1 484 38 discriminator 1 view .LVU531
+ 1717 0010 002B     		cmp	r3, #0
+ 1718 0012 49D0     		beq	.L131
+ 485:Glider-Core/pressure_sensor_driver.c ****   {
+ 486:Glider-Core/pressure_sensor_driver.c ****     return;
+ 487:Glider-Core/pressure_sensor_driver.c ****   }
+ 488:Glider-Core/pressure_sensor_driver.c **** 
+ 489:Glider-Core/pressure_sensor_driver.c ****   if (s_tx_in_flight != 0U)
+ 1719              		.loc 1 489 3 is_stmt 1 view .LVU532
+ 1720              		.loc 1 489 22 is_stmt 0 view .LVU533
+ 1721 0014 344B     		ldr	r3, .L148+8
+ 1722 0016 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 1723              		.loc 1 489 6 view .LVU534
+ 1724 0018 002B     		cmp	r3, #0
+ 1725 001a 36D1     		bne	.L146
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 44
+
+
+ 490:Glider-Core/pressure_sensor_driver.c ****   {
+ 491:Glider-Core/pressure_sensor_driver.c ****     if ((uint32_t)(now_ms - s_last_request_tick) >= PRESSURE_SENSOR_MODBUS_RESPONSE_TIMEOUT_MS)
+ 492:Glider-Core/pressure_sensor_driver.c ****     {
+ 493:Glider-Core/pressure_sensor_driver.c ****       s_tx_in_flight = 0U;
+ 494:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.tx_in_flight = 0U;
+ 495:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.timeout_count++;
+ 496:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 13U;
+ 497:Glider-Core/pressure_sensor_driver.c ****     }
+ 498:Glider-Core/pressure_sensor_driver.c ****     return;
+ 499:Glider-Core/pressure_sensor_driver.c ****   }
+ 500:Glider-Core/pressure_sensor_driver.c **** 
+ 501:Glider-Core/pressure_sensor_driver.c ****   if (s_waiting_response != 0U)
+ 1726              		.loc 1 501 3 is_stmt 1 view .LVU535
+ 1727              		.loc 1 501 26 is_stmt 0 view .LVU536
+ 1728 001c 334B     		ldr	r3, .L148+12
+ 1729 001e 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 1730              		.loc 1 501 6 view .LVU537
+ 1731 0020 002B     		cmp	r3, #0
+ 1732 0022 42D1     		bne	.L147
+ 502:Glider-Core/pressure_sensor_driver.c ****   {
+ 503:Glider-Core/pressure_sensor_driver.c ****     if ((uint32_t)(now_ms - s_response_start_tick) >= PRESSURE_SENSOR_MODBUS_RESPONSE_TIMEOUT_MS)
+ 504:Glider-Core/pressure_sensor_driver.c ****     {
+ 505:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.timeout_count++;
+ 506:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 14U;
+ 507:Glider-Core/pressure_sensor_driver.c ****       PressureSensorDriver_StopWaitingResponse();
+ 508:Glider-Core/pressure_sensor_driver.c ****     }
+ 509:Glider-Core/pressure_sensor_driver.c ****     return;
+ 510:Glider-Core/pressure_sensor_driver.c ****   }
+ 511:Glider-Core/pressure_sensor_driver.c **** 
+ 512:Glider-Core/pressure_sensor_driver.c ****   if ((uint32_t)(now_ms - s_last_request_tick) < PRESSURE_SENSOR_MODBUS_REQUEST_PERIOD_MS)
+ 1733              		.loc 1 512 3 is_stmt 1 view .LVU538
+ 1734              		.loc 1 512 25 is_stmt 0 view .LVU539
+ 1735 0024 324B     		ldr	r3, .L148+16
+ 1736 0026 1B68     		ldr	r3, [r3]
+ 1737 0028 C31A     		subs	r3, r0, r3
+ 1738              		.loc 1 512 6 view .LVU540
+ 1739 002a B3F5FA7F 		cmp	r3, #500
+ 1740 002e 3BD3     		bcc	.L131
+ 513:Glider-Core/pressure_sensor_driver.c ****   {
+ 514:Glider-Core/pressure_sensor_driver.c ****     return;
+ 515:Glider-Core/pressure_sensor_driver.c ****   }
+ 516:Glider-Core/pressure_sensor_driver.c **** 
+ 517:Glider-Core/pressure_sensor_driver.c ****   addr = (uint8_t)g_pressure_sensor_diag.slave_address;
+ 1741              		.loc 1 517 3 is_stmt 1 view .LVU541
+ 1742              		.loc 1 517 41 is_stmt 0 view .LVU542
+ 1743 0030 2C4B     		ldr	r3, .L148+4
+ 1744 0032 5868     		ldr	r0, [r3, #4]
+ 1745              	.LVL114:
+ 518:Glider-Core/pressure_sensor_driver.c ****   if (addr == 0U)
+ 1746              		.loc 1 518 3 is_stmt 1 view .LVU543
+ 1747              		.loc 1 518 6 is_stmt 0 view .LVU544
+ 1748 0034 10F0FF00 		ands	r0, r0, #255
+ 1749              	.LVL115:
+ 1750              		.loc 1 518 6 view .LVU545
+ 1751 0038 01D1     		bne	.L137
+ 519:Glider-Core/pressure_sensor_driver.c ****   {
+ 520:Glider-Core/pressure_sensor_driver.c ****     addr = PRESSURE_SENSOR_MODBUS_DEFAULT_ADDR;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 45
+
+
+ 1752              		.loc 1 520 5 is_stmt 1 view .LVU546
+ 1753              	.LVL116:
+ 521:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.slave_address = addr;
+ 1754              		.loc 1 521 5 view .LVU547
+ 1755              		.loc 1 521 42 is_stmt 0 view .LVU548
+ 1756 003a FA20     		movs	r0, #250
+ 1757 003c 5860     		str	r0, [r3, #4]
+ 1758              	.LVL117:
+ 1759              	.L137:
+ 522:Glider-Core/pressure_sensor_driver.c ****   }
+ 523:Glider-Core/pressure_sensor_driver.c **** 
+ 524:Glider-Core/pressure_sensor_driver.c ****   if (s_next_request_kind == PRESSURE_SENSOR_REQ_PRESSURE)
+ 1760              		.loc 1 524 3 is_stmt 1 view .LVU549
+ 1761              		.loc 1 524 27 is_stmt 0 view .LVU550
+ 1762 003e 2D4B     		ldr	r3, .L148+20
+ 1763 0040 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 1764              		.loc 1 524 6 view .LVU551
+ 1765 0042 002B     		cmp	r3, #0
+ 1766 0044 3FD1     		bne	.L141
+ 525:Glider-Core/pressure_sensor_driver.c ****   {
+ 526:Glider-Core/pressure_sensor_driver.c ****     start_reg = PRESSURE_SENSOR_MODBUS_PRESSURE_START_REG;
+ 1767              		.loc 1 526 15 view .LVU552
+ 1768 0046 0221     		movs	r1, #2
+ 1769              	.L138:
+ 1770              	.LVL118:
+ 527:Glider-Core/pressure_sensor_driver.c ****   }
+ 528:Glider-Core/pressure_sensor_driver.c ****   else
+ 529:Glider-Core/pressure_sensor_driver.c ****   {
+ 530:Glider-Core/pressure_sensor_driver.c ****     start_reg = PRESSURE_SENSOR_MODBUS_TEMPERATURE_START_REG;
+ 531:Glider-Core/pressure_sensor_driver.c ****   }
+ 532:Glider-Core/pressure_sensor_driver.c **** 
+ 533:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_BuildReadRequest(addr, start_reg);
+ 1771              		.loc 1 533 3 is_stmt 1 view .LVU553
+ 1772 0048 FFF7FEFF 		bl	PressureSensorDriver_BuildReadRequest
+ 1773              	.LVL119:
+ 534:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_diag.request_count++;
+ 1774              		.loc 1 534 3 view .LVU554
+ 1775              		.loc 1 534 25 is_stmt 0 view .LVU555
+ 1776 004c 254A     		ldr	r2, .L148+4
+ 1777 004e 136A     		ldr	r3, [r2, #32]
+ 1778              		.loc 1 534 39 view .LVU556
+ 1779 0050 0133     		adds	r3, r3, #1
+ 1780 0052 1362     		str	r3, [r2, #32]
+ 535:Glider-Core/pressure_sensor_driver.c **** 
+ 536:Glider-Core/pressure_sensor_driver.c ****   status = HAL_UART_Transmit_IT(s_pressure_sensor_uart, (const uint8_t *)s_modbus_request, PRESSURE
+ 1781              		.loc 1 536 3 is_stmt 1 view .LVU557
+ 1782              		.loc 1 536 12 is_stmt 0 view .LVU558
+ 1783 0054 0822     		movs	r2, #8
+ 1784 0056 2849     		ldr	r1, .L148+24
+ 1785 0058 214B     		ldr	r3, .L148
+ 1786 005a 1868     		ldr	r0, [r3]
+ 1787 005c FFF7FEFF 		bl	HAL_UART_Transmit_IT
+ 1788              	.LVL120:
+ 537:Glider-Core/pressure_sensor_driver.c ****   if (status == HAL_OK)
+ 1789              		.loc 1 537 3 is_stmt 1 view .LVU559
+ 1790              		.loc 1 537 6 is_stmt 0 view .LVU560
+ 1791 0060 0028     		cmp	r0, #0
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 46
+
+
+ 1792 0062 36D1     		bne	.L139
+ 538:Glider-Core/pressure_sensor_driver.c ****   {
+ 539:Glider-Core/pressure_sensor_driver.c ****     s_tx_in_flight = 1U;
+ 1793              		.loc 1 539 5 is_stmt 1 view .LVU561
+ 1794              		.loc 1 539 20 is_stmt 0 view .LVU562
+ 1795 0064 0122     		movs	r2, #1
+ 1796 0066 204B     		ldr	r3, .L148+8
+ 1797 0068 1A70     		strb	r2, [r3]
+ 540:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.tx_in_flight = 1U;
+ 1798              		.loc 1 540 5 is_stmt 1 view .LVU563
+ 1799              		.loc 1 540 41 is_stmt 0 view .LVU564
+ 1800 006a 1E4B     		ldr	r3, .L148+4
+ 1801 006c 1A61     		str	r2, [r3, #16]
+ 541:Glider-Core/pressure_sensor_driver.c **** 
+ 542:Glider-Core/pressure_sensor_driver.c ****     s_last_request_tick = now_ms;
+ 1802              		.loc 1 542 5 is_stmt 1 view .LVU565
+ 1803              		.loc 1 542 25 is_stmt 0 view .LVU566
+ 1804 006e 204A     		ldr	r2, .L148+16
+ 1805 0070 1460     		str	r4, [r2]
+ 543:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_request_tick = now_ms;
+ 1806              		.loc 1 543 5 is_stmt 1 view .LVU567
+ 1807              		.loc 1 543 46 is_stmt 0 view .LVU568
+ 1808 0072 9C63     		str	r4, [r3, #56]
+ 544:Glider-Core/pressure_sensor_driver.c **** 
+ 545:Glider-Core/pressure_sensor_driver.c ****     s_active_request_kind = s_next_request_kind;
+ 1809              		.loc 1 545 5 is_stmt 1 view .LVU569
+ 1810              		.loc 1 545 27 is_stmt 0 view .LVU570
+ 1811 0074 1F4A     		ldr	r2, .L148+20
+ 1812 0076 1378     		ldrb	r3, [r2]	@ zero_extendqisi2
+ 1813 0078 DBB2     		uxtb	r3, r3
+ 1814 007a 2049     		ldr	r1, .L148+28
+ 1815 007c 0B70     		strb	r3, [r1]
+ 546:Glider-Core/pressure_sensor_driver.c ****     if (s_next_request_kind == PRESSURE_SENSOR_REQ_PRESSURE)
+ 1816              		.loc 1 546 5 is_stmt 1 view .LVU571
+ 1817              		.loc 1 546 29 is_stmt 0 view .LVU572
+ 1818 007e 1378     		ldrb	r3, [r2]	@ zero_extendqisi2
+ 1819              		.loc 1 546 8 view .LVU573
+ 1820 0080 1BBB     		cbnz	r3, .L140
+ 547:Glider-Core/pressure_sensor_driver.c ****     {
+ 548:Glider-Core/pressure_sensor_driver.c ****       s_next_request_kind = PRESSURE_SENSOR_REQ_TEMPERATURE;
+ 1821              		.loc 1 548 7 is_stmt 1 view .LVU574
+ 1822              		.loc 1 548 27 is_stmt 0 view .LVU575
+ 1823 0082 1346     		mov	r3, r2
+ 1824 0084 0122     		movs	r2, #1
+ 1825 0086 1A70     		strb	r2, [r3]
+ 1826 0088 0EE0     		b	.L131
+ 1827              	.LVL121:
+ 1828              	.L146:
+ 491:Glider-Core/pressure_sensor_driver.c ****     {
+ 1829              		.loc 1 491 5 is_stmt 1 view .LVU576
+ 491:Glider-Core/pressure_sensor_driver.c ****     {
+ 1830              		.loc 1 491 27 is_stmt 0 view .LVU577
+ 1831 008a 194B     		ldr	r3, .L148+16
+ 1832 008c 1B68     		ldr	r3, [r3]
+ 1833 008e C31A     		subs	r3, r0, r3
+ 491:Glider-Core/pressure_sensor_driver.c ****     {
+ 1834              		.loc 1 491 8 view .LVU578
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 47
+
+
+ 1835 0090 772B     		cmp	r3, #119
+ 1836 0092 09D9     		bls	.L131
+ 493:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.tx_in_flight = 0U;
+ 1837              		.loc 1 493 7 is_stmt 1 view .LVU579
+ 493:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.tx_in_flight = 0U;
+ 1838              		.loc 1 493 22 is_stmt 0 view .LVU580
+ 1839 0094 0022     		movs	r2, #0
+ 1840 0096 144B     		ldr	r3, .L148+8
+ 1841 0098 1A70     		strb	r2, [r3]
+ 494:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.timeout_count++;
+ 1842              		.loc 1 494 7 is_stmt 1 view .LVU581
+ 494:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.timeout_count++;
+ 1843              		.loc 1 494 43 is_stmt 0 view .LVU582
+ 1844 009a 124B     		ldr	r3, .L148+4
+ 1845 009c 1A61     		str	r2, [r3, #16]
+ 495:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 13U;
+ 1846              		.loc 1 495 7 is_stmt 1 view .LVU583
+ 495:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 13U;
+ 1847              		.loc 1 495 29 is_stmt 0 view .LVU584
+ 1848 009e 9A6A     		ldr	r2, [r3, #40]
+ 495:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 13U;
+ 1849              		.loc 1 495 43 view .LVU585
+ 1850 00a0 0132     		adds	r2, r2, #1
+ 1851 00a2 9A62     		str	r2, [r3, #40]
+ 496:Glider-Core/pressure_sensor_driver.c ****     }
+ 1852              		.loc 1 496 7 is_stmt 1 view .LVU586
+ 496:Glider-Core/pressure_sensor_driver.c ****     }
+ 1853              		.loc 1 496 41 is_stmt 0 view .LVU587
+ 1854 00a4 0D22     		movs	r2, #13
+ 1855 00a6 9A60     		str	r2, [r3, #8]
+ 498:Glider-Core/pressure_sensor_driver.c ****   }
+ 1856              		.loc 1 498 5 is_stmt 1 view .LVU588
+ 1857              	.LVL122:
+ 1858              	.L131:
+ 549:Glider-Core/pressure_sensor_driver.c ****     }
+ 550:Glider-Core/pressure_sensor_driver.c ****     else
+ 551:Glider-Core/pressure_sensor_driver.c ****     {
+ 552:Glider-Core/pressure_sensor_driver.c ****       s_next_request_kind = PRESSURE_SENSOR_REQ_PRESSURE;
+ 553:Glider-Core/pressure_sensor_driver.c ****     }
+ 554:Glider-Core/pressure_sensor_driver.c ****   }
+ 555:Glider-Core/pressure_sensor_driver.c ****   else if (status != HAL_BUSY)
+ 556:Glider-Core/pressure_sensor_driver.c ****   {
+ 557:Glider-Core/pressure_sensor_driver.c ****     g_pressure_sensor_diag.last_error = 15U;
+ 558:Glider-Core/pressure_sensor_driver.c ****   }
+ 559:Glider-Core/pressure_sensor_driver.c **** }
+ 1859              		.loc 1 559 1 is_stmt 0 view .LVU589
+ 1860 00a8 10BD     		pop	{r4, pc}
+ 1861              	.LVL123:
+ 1862              	.L147:
+ 503:Glider-Core/pressure_sensor_driver.c ****     {
+ 1863              		.loc 1 503 5 is_stmt 1 view .LVU590
+ 503:Glider-Core/pressure_sensor_driver.c ****     {
+ 1864              		.loc 1 503 27 is_stmt 0 view .LVU591
+ 1865 00aa 154B     		ldr	r3, .L148+32
+ 1866 00ac 1B68     		ldr	r3, [r3]
+ 1867 00ae C31A     		subs	r3, r0, r3
+ 503:Glider-Core/pressure_sensor_driver.c ****     {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 48
+
+
+ 1868              		.loc 1 503 8 view .LVU592
+ 1869 00b0 772B     		cmp	r3, #119
+ 1870 00b2 F9D9     		bls	.L131
+ 505:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 14U;
+ 1871              		.loc 1 505 7 is_stmt 1 view .LVU593
+ 505:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 14U;
+ 1872              		.loc 1 505 29 is_stmt 0 view .LVU594
+ 1873 00b4 0B4B     		ldr	r3, .L148+4
+ 1874 00b6 9A6A     		ldr	r2, [r3, #40]
+ 505:Glider-Core/pressure_sensor_driver.c ****       g_pressure_sensor_diag.last_error = 14U;
+ 1875              		.loc 1 505 43 view .LVU595
+ 1876 00b8 0132     		adds	r2, r2, #1
+ 1877 00ba 9A62     		str	r2, [r3, #40]
+ 506:Glider-Core/pressure_sensor_driver.c ****       PressureSensorDriver_StopWaitingResponse();
+ 1878              		.loc 1 506 7 is_stmt 1 view .LVU596
+ 506:Glider-Core/pressure_sensor_driver.c ****       PressureSensorDriver_StopWaitingResponse();
+ 1879              		.loc 1 506 41 is_stmt 0 view .LVU597
+ 1880 00bc 0E22     		movs	r2, #14
+ 1881 00be 9A60     		str	r2, [r3, #8]
+ 507:Glider-Core/pressure_sensor_driver.c ****     }
+ 1882              		.loc 1 507 7 is_stmt 1 view .LVU598
+ 1883 00c0 FFF7FEFF 		bl	PressureSensorDriver_StopWaitingResponse
+ 1884              	.LVL124:
+ 509:Glider-Core/pressure_sensor_driver.c ****   }
+ 1885              		.loc 1 509 5 view .LVU599
+ 1886 00c4 F0E7     		b	.L131
+ 1887              	.LVL125:
+ 1888              	.L141:
+ 530:Glider-Core/pressure_sensor_driver.c ****   }
+ 1889              		.loc 1 530 15 is_stmt 0 view .LVU600
+ 1890 00c6 0821     		movs	r1, #8
+ 1891 00c8 BEE7     		b	.L138
+ 1892              	.LVL126:
+ 1893              	.L140:
+ 552:Glider-Core/pressure_sensor_driver.c ****     }
+ 1894              		.loc 1 552 7 is_stmt 1 view .LVU601
+ 552:Glider-Core/pressure_sensor_driver.c ****     }
+ 1895              		.loc 1 552 27 is_stmt 0 view .LVU602
+ 1896 00ca 0A4B     		ldr	r3, .L148+20
+ 1897 00cc 0022     		movs	r2, #0
+ 1898 00ce 1A70     		strb	r2, [r3]
+ 1899 00d0 EAE7     		b	.L131
+ 1900              	.L139:
+ 555:Glider-Core/pressure_sensor_driver.c ****   {
+ 1901              		.loc 1 555 8 is_stmt 1 view .LVU603
+ 555:Glider-Core/pressure_sensor_driver.c ****   {
+ 1902              		.loc 1 555 11 is_stmt 0 view .LVU604
+ 1903 00d2 0228     		cmp	r0, #2
+ 1904 00d4 E8D0     		beq	.L131
+ 557:Glider-Core/pressure_sensor_driver.c ****   }
+ 1905              		.loc 1 557 5 is_stmt 1 view .LVU605
+ 557:Glider-Core/pressure_sensor_driver.c ****   }
+ 1906              		.loc 1 557 39 is_stmt 0 view .LVU606
+ 1907 00d6 034B     		ldr	r3, .L148+4
+ 1908 00d8 0F22     		movs	r2, #15
+ 1909 00da 9A60     		str	r2, [r3, #8]
+ 1910 00dc E4E7     		b	.L131
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 49
+
+
+ 1911              	.LVL127:
+ 1912              	.L143:
+ 1913              	.LCFI17:
+ 1914              		.cfi_def_cfa_offset 0
+ 1915              		.cfi_restore 4
+ 1916              		.cfi_restore 14
+ 557:Glider-Core/pressure_sensor_driver.c ****   }
+ 1917              		.loc 1 557 39 view .LVU607
+ 1918 00de 7047     		bx	lr
+ 1919              	.L149:
+ 1920              		.align	2
+ 1921              	.L148:
+ 1922 00e0 00000000 		.word	s_pressure_sensor_uart
+ 1923 00e4 00000000 		.word	g_pressure_sensor_state
+ 1924 00e8 00000000 		.word	s_tx_in_flight
+ 1925 00ec 00000000 		.word	s_waiting_response
+ 1926 00f0 00000000 		.word	s_last_request_tick
+ 1927 00f4 00000000 		.word	s_next_request_kind
+ 1928 00f8 00000000 		.word	s_modbus_request
+ 1929 00fc 00000000 		.word	s_active_request_kind
+ 1930 0100 00000000 		.word	s_response_start_tick
+ 1931              		.cfi_endproc
+ 1932              	.LFE351:
+ 1934              		.section	.text.PressureSensorDriver_Available,"ax",%progbits
+ 1935              		.align	1
+ 1936              		.global	PressureSensorDriver_Available
+ 1937              		.syntax unified
+ 1938              		.thumb
+ 1939              		.thumb_func
+ 1941              	PressureSensorDriver_Available:
+ 1942              	.LFB352:
+ 560:Glider-Core/pressure_sensor_driver.c **** 
+ 561:Glider-Core/pressure_sensor_driver.c **** uint16_t PressureSensorDriver_Available(void)
+ 562:Glider-Core/pressure_sensor_driver.c **** {
+ 1943              		.loc 1 562 1 is_stmt 1 view -0
+ 1944              		.cfi_startproc
+ 1945              		@ args = 0, pretend = 0, frame = 0
+ 1946              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1947              		@ link register save eliminated.
+ 563:Glider-Core/pressure_sensor_driver.c ****   uint16_t head = s_pressure_sensor_rx_head;
+ 1948              		.loc 1 563 3 view .LVU609
+ 1949              		.loc 1 563 12 is_stmt 0 view .LVU610
+ 1950 0000 084B     		ldr	r3, .L154
+ 1951 0002 1888     		ldrh	r0, [r3]
+ 1952 0004 80B2     		uxth	r0, r0
+ 1953              	.LVL128:
+ 564:Glider-Core/pressure_sensor_driver.c ****   uint16_t tail = s_pressure_sensor_rx_tail;
+ 1954              		.loc 1 564 3 is_stmt 1 view .LVU611
+ 1955              		.loc 1 564 12 is_stmt 0 view .LVU612
+ 1956 0006 084B     		ldr	r3, .L154+4
+ 1957 0008 1B88     		ldrh	r3, [r3]
+ 1958 000a 9BB2     		uxth	r3, r3
+ 1959              	.LVL129:
+ 565:Glider-Core/pressure_sensor_driver.c **** 
+ 566:Glider-Core/pressure_sensor_driver.c ****   if (head >= tail)
+ 1960              		.loc 1 566 3 is_stmt 1 view .LVU613
+ 1961              		.loc 1 566 6 is_stmt 0 view .LVU614
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 50
+
+
+ 1962 000c 9842     		cmp	r0, r3
+ 1963 000e 05D2     		bcs	.L153
+ 567:Glider-Core/pressure_sensor_driver.c ****   {
+ 568:Glider-Core/pressure_sensor_driver.c ****     return (uint16_t)(head - tail);
+ 569:Glider-Core/pressure_sensor_driver.c ****   }
+ 570:Glider-Core/pressure_sensor_driver.c **** 
+ 571:Glider-Core/pressure_sensor_driver.c ****   return (uint16_t)(PRESSURE_SENSOR_RX_RING_SIZE - tail + head);
+ 1964              		.loc 1 571 3 is_stmt 1 view .LVU615
+ 1965              		.loc 1 571 57 is_stmt 0 view .LVU616
+ 1966 0010 C01A     		subs	r0, r0, r3
+ 1967              	.LVL130:
+ 1968              		.loc 1 571 57 view .LVU617
+ 1969 0012 80B2     		uxth	r0, r0
+ 1970              		.loc 1 571 10 view .LVU618
+ 1971 0014 00F50070 		add	r0, r0, #512
+ 1972 0018 80B2     		uxth	r0, r0
+ 572:Glider-Core/pressure_sensor_driver.c **** }
+ 1973              		.loc 1 572 1 view .LVU619
+ 1974 001a 7047     		bx	lr
+ 1975              	.LVL131:
+ 1976              	.L153:
+ 568:Glider-Core/pressure_sensor_driver.c ****   }
+ 1977              		.loc 1 568 5 is_stmt 1 view .LVU620
+ 568:Glider-Core/pressure_sensor_driver.c ****   }
+ 1978              		.loc 1 568 12 is_stmt 0 view .LVU621
+ 1979 001c C01A     		subs	r0, r0, r3
+ 1980              	.LVL132:
+ 568:Glider-Core/pressure_sensor_driver.c ****   }
+ 1981              		.loc 1 568 12 view .LVU622
+ 1982 001e 80B2     		uxth	r0, r0
+ 1983 0020 7047     		bx	lr
+ 1984              	.L155:
+ 1985 0022 00BF     		.align	2
+ 1986              	.L154:
+ 1987 0024 00000000 		.word	s_pressure_sensor_rx_head
+ 1988 0028 00000000 		.word	s_pressure_sensor_rx_tail
+ 1989              		.cfi_endproc
+ 1990              	.LFE352:
+ 1992              		.section	.text.PressureSensorDriver_Read,"ax",%progbits
+ 1993              		.align	1
+ 1994              		.global	PressureSensorDriver_Read
+ 1995              		.syntax unified
+ 1996              		.thumb
+ 1997              		.thumb_func
+ 1999              	PressureSensorDriver_Read:
+ 2000              	.LVL133:
+ 2001              	.LFB353:
+ 573:Glider-Core/pressure_sensor_driver.c **** 
+ 574:Glider-Core/pressure_sensor_driver.c **** uint16_t PressureSensorDriver_Read(uint8_t *dst, uint16_t max_len)
+ 575:Glider-Core/pressure_sensor_driver.c **** {
+ 2002              		.loc 1 575 1 is_stmt 1 view -0
+ 2003              		.cfi_startproc
+ 2004              		@ args = 0, pretend = 0, frame = 0
+ 2005              		@ frame_needed = 0, uses_anonymous_args = 0
+ 2006              		.loc 1 575 1 is_stmt 0 view .LVU624
+ 2007 0000 10B5     		push	{r4, lr}
+ 2008              	.LCFI18:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 51
+
+
+ 2009              		.cfi_def_cfa_offset 8
+ 2010              		.cfi_offset 4, -8
+ 2011              		.cfi_offset 14, -4
+ 576:Glider-Core/pressure_sensor_driver.c ****   uint16_t count = 0U;
+ 2012              		.loc 1 576 3 is_stmt 1 view .LVU625
+ 2013              	.LVL134:
+ 577:Glider-Core/pressure_sensor_driver.c **** 
+ 578:Glider-Core/pressure_sensor_driver.c ****   if (dst == NULL || max_len == 0U)
+ 2014              		.loc 1 578 3 view .LVU626
+ 2015              		.loc 1 578 6 is_stmt 0 view .LVU627
+ 2016 0002 0029     		cmp	r1, #0
+ 2017 0004 18BF     		it	ne
+ 2018 0006 0028     		cmpne	r0, #0
+ 2019 0008 1CD0     		beq	.L161
+ 2020 000a 8646     		mov	lr, r0
+ 2021 000c 8C46     		mov	ip, r1
+ 576:Glider-Core/pressure_sensor_driver.c ****   uint16_t count = 0U;
+ 2022              		.loc 1 576 12 view .LVU628
+ 2023 000e 0024     		movs	r4, #0
+ 2024              	.LVL135:
+ 2025              	.L158:
+ 579:Glider-Core/pressure_sensor_driver.c ****   {
+ 580:Glider-Core/pressure_sensor_driver.c ****     return 0U;
+ 581:Glider-Core/pressure_sensor_driver.c ****   }
+ 582:Glider-Core/pressure_sensor_driver.c **** 
+ 583:Glider-Core/pressure_sensor_driver.c ****   while (count < max_len)
+ 2026              		.loc 1 583 16 is_stmt 1 view .LVU629
+ 2027 0010 6445     		cmp	r4, ip
+ 2028 0012 13D2     		bcs	.L159
+ 2029              	.LBB4:
+ 584:Glider-Core/pressure_sensor_driver.c ****   {
+ 585:Glider-Core/pressure_sensor_driver.c ****     uint16_t tail = s_pressure_sensor_rx_tail;
+ 2030              		.loc 1 585 5 view .LVU630
+ 2031              		.loc 1 585 14 is_stmt 0 view .LVU631
+ 2032 0014 0C4B     		ldr	r3, .L163
+ 2033 0016 1B88     		ldrh	r3, [r3]
+ 2034 0018 9BB2     		uxth	r3, r3
+ 2035              	.LVL136:
+ 586:Glider-Core/pressure_sensor_driver.c **** 
+ 587:Glider-Core/pressure_sensor_driver.c ****     if (tail == s_pressure_sensor_rx_head)
+ 2036              		.loc 1 587 5 is_stmt 1 view .LVU632
+ 2037              		.loc 1 587 14 is_stmt 0 view .LVU633
+ 2038 001a 0C4A     		ldr	r2, .L163+4
+ 2039 001c 1288     		ldrh	r2, [r2]
+ 2040 001e 92B2     		uxth	r2, r2
+ 2041              		.loc 1 587 8 view .LVU634
+ 2042 0020 9A42     		cmp	r2, r3
+ 2043 0022 0BD0     		beq	.L159
+ 588:Glider-Core/pressure_sensor_driver.c ****     {
+ 589:Glider-Core/pressure_sensor_driver.c ****       break;
+ 590:Glider-Core/pressure_sensor_driver.c ****     }
+ 591:Glider-Core/pressure_sensor_driver.c **** 
+ 592:Glider-Core/pressure_sensor_driver.c ****     dst[count] = s_pressure_sensor_rx_ring[tail];
+ 2044              		.loc 1 592 5 is_stmt 1 view .LVU635
+ 2045              		.loc 1 592 43 is_stmt 0 view .LVU636
+ 2046 0024 0A4A     		ldr	r2, .L163+8
+ 2047 0026 D25C     		ldrb	r2, [r2, r3]	@ zero_extendqisi2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 52
+
+
+ 2048              		.loc 1 592 16 view .LVU637
+ 2049 0028 0EF80420 		strb	r2, [lr, r4]
+ 593:Glider-Core/pressure_sensor_driver.c ****     s_pressure_sensor_rx_tail = (uint16_t)((tail + 1U) % PRESSURE_SENSOR_RX_RING_SIZE);
+ 2050              		.loc 1 593 5 is_stmt 1 view .LVU638
+ 2051              		.loc 1 593 33 is_stmt 0 view .LVU639
+ 2052 002c 0133     		adds	r3, r3, #1
+ 2053              	.LVL137:
+ 2054              		.loc 1 593 33 view .LVU640
+ 2055 002e C3F30803 		ubfx	r3, r3, #0, #9
+ 2056              	.LVL138:
+ 2057              		.loc 1 593 31 view .LVU641
+ 2058 0032 054A     		ldr	r2, .L163
+ 2059 0034 1380     		strh	r3, [r2]	@ movhi
+ 594:Glider-Core/pressure_sensor_driver.c ****     count++;
+ 2060              		.loc 1 594 5 is_stmt 1 view .LVU642
+ 2061              		.loc 1 594 10 is_stmt 0 view .LVU643
+ 2062 0036 0134     		adds	r4, r4, #1
+ 2063              	.LVL139:
+ 2064              		.loc 1 594 10 view .LVU644
+ 2065 0038 A4B2     		uxth	r4, r4
+ 2066              	.LVL140:
+ 2067              		.loc 1 594 10 view .LVU645
+ 2068 003a E9E7     		b	.L158
+ 2069              	.LVL141:
+ 2070              	.L159:
+ 2071              		.loc 1 594 10 view .LVU646
+ 2072              	.LBE4:
+ 595:Glider-Core/pressure_sensor_driver.c ****   }
+ 596:Glider-Core/pressure_sensor_driver.c **** 
+ 597:Glider-Core/pressure_sensor_driver.c ****   PressureSensorDriver_UpdateRingAvailable();
+ 2073              		.loc 1 597 3 is_stmt 1 view .LVU647
+ 2074 003c FFF7FEFF 		bl	PressureSensorDriver_UpdateRingAvailable
+ 2075              	.LVL142:
+ 598:Glider-Core/pressure_sensor_driver.c ****   return count;
+ 2076              		.loc 1 598 3 view .LVU648
+ 2077              	.L157:
+ 599:Glider-Core/pressure_sensor_driver.c **** }
+ 2078              		.loc 1 599 1 is_stmt 0 view .LVU649
+ 2079 0040 2046     		mov	r0, r4
+ 2080 0042 10BD     		pop	{r4, pc}
+ 2081              	.LVL143:
+ 2082              	.L161:
+ 580:Glider-Core/pressure_sensor_driver.c ****   }
+ 2083              		.loc 1 580 12 view .LVU650
+ 2084 0044 0024     		movs	r4, #0
+ 2085 0046 FBE7     		b	.L157
+ 2086              	.L164:
+ 2087              		.align	2
+ 2088              	.L163:
+ 2089 0048 00000000 		.word	s_pressure_sensor_rx_tail
+ 2090 004c 00000000 		.word	s_pressure_sensor_rx_head
+ 2091 0050 00000000 		.word	s_pressure_sensor_rx_ring
+ 2092              		.cfi_endproc
+ 2093              	.LFE353:
+ 2095              		.section	.text.PressureSensorDriver_ClearRxBuffer,"ax",%progbits
+ 2096              		.align	1
+ 2097              		.global	PressureSensorDriver_ClearRxBuffer
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 53
+
+
+ 2098              		.syntax unified
+ 2099              		.thumb
+ 2100              		.thumb_func
+ 2102              	PressureSensorDriver_ClearRxBuffer:
+ 2103              	.LFB354:
+ 600:Glider-Core/pressure_sensor_driver.c **** 
+ 601:Glider-Core/pressure_sensor_driver.c **** void PressureSensorDriver_ClearRxBuffer(void)
+ 602:Glider-Core/pressure_sensor_driver.c **** {
+ 2104              		.loc 1 602 1 is_stmt 1 view -0
+ 2105              		.cfi_startproc
+ 2106              		@ args = 0, pretend = 0, frame = 0
+ 2107              		@ frame_needed = 0, uses_anonymous_args = 0
+ 2108              		@ link register save eliminated.
+ 603:Glider-Core/pressure_sensor_driver.c ****   s_pressure_sensor_rx_tail = s_pressure_sensor_rx_head;
+ 2109              		.loc 1 603 3 view .LVU652
+ 2110              		.loc 1 603 29 is_stmt 0 view .LVU653
+ 2111 0000 044B     		ldr	r3, .L166
+ 2112 0002 1B88     		ldrh	r3, [r3]
+ 2113 0004 9BB2     		uxth	r3, r3
+ 2114 0006 044A     		ldr	r2, .L166+4
+ 2115 0008 1380     		strh	r3, [r2]	@ movhi
+ 604:Glider-Core/pressure_sensor_driver.c ****   g_pressure_sensor_readout.ring_available_bytes = 0U;
+ 2116              		.loc 1 604 3 is_stmt 1 view .LVU654
+ 2117              		.loc 1 604 50 is_stmt 0 view .LVU655
+ 2118 000a 044B     		ldr	r3, .L166+8
+ 2119 000c 0022     		movs	r2, #0
+ 2120 000e 5A64     		str	r2, [r3, #68]
+ 605:Glider-Core/pressure_sensor_driver.c **** }
+ 2121              		.loc 1 605 1 view .LVU656
+ 2122 0010 7047     		bx	lr
+ 2123              	.L167:
+ 2124 0012 00BF     		.align	2
+ 2125              	.L166:
+ 2126 0014 00000000 		.word	s_pressure_sensor_rx_head
+ 2127 0018 00000000 		.word	s_pressure_sensor_rx_tail
+ 2128 001c 00000000 		.word	g_pressure_sensor_state
+ 2129              		.cfi_endproc
+ 2130              	.LFE354:
+ 2132              		.global	g_pressure_sensor_state
+ 2133              		.section	.bss.g_pressure_sensor_state,"aw",%nobits
+ 2134              		.align	2
+ 2137              	g_pressure_sensor_state:
+ 2138 0000 00000000 		.space	128
+ 2138      00000000 
+ 2138      00000000 
+ 2138      00000000 
+ 2138      00000000 
+ 2139              		.section	.bss.s_active_request_kind,"aw",%nobits
+ 2142              	s_active_request_kind:
+ 2143 0000 00       		.space	1
+ 2144              		.section	.bss.s_next_request_kind,"aw",%nobits
+ 2147              	s_next_request_kind:
+ 2148 0000 00       		.space	1
+ 2149              		.section	.bss.s_response_start_tick,"aw",%nobits
+ 2150              		.align	2
+ 2153              	s_response_start_tick:
+ 2154 0000 00000000 		.space	4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 54
+
+
+ 2155              		.section	.bss.s_last_request_tick,"aw",%nobits
+ 2156              		.align	2
+ 2159              	s_last_request_tick:
+ 2160 0000 00000000 		.space	4
+ 2161              		.section	.bss.s_waiting_response,"aw",%nobits
+ 2164              	s_waiting_response:
+ 2165 0000 00       		.space	1
+ 2166              		.section	.bss.s_tx_in_flight,"aw",%nobits
+ 2169              	s_tx_in_flight:
+ 2170 0000 00       		.space	1
+ 2171              		.section	.bss.s_response_expected_len,"aw",%nobits
+ 2172              		.align	1
+ 2175              	s_response_expected_len:
+ 2176 0000 0000     		.space	2
+ 2177              		.section	.bss.s_response_index,"aw",%nobits
+ 2178              		.align	1
+ 2181              	s_response_index:
+ 2182 0000 0000     		.space	2
+ 2183              		.section	.bss.s_response_frame,"aw",%nobits
+ 2184              		.align	2
+ 2187              	s_response_frame:
+ 2188 0000 00000000 		.space	16
+ 2188      00000000 
+ 2188      00000000 
+ 2188      00000000 
+ 2189              		.section	.bss.s_modbus_request,"aw",%nobits
+ 2190              		.align	2
+ 2193              	s_modbus_request:
+ 2194 0000 00000000 		.space	8
+ 2194      00000000 
+ 2195              		.section	.bss.s_pressure_sensor_rx_byte,"aw",%nobits
+ 2198              	s_pressure_sensor_rx_byte:
+ 2199 0000 00       		.space	1
+ 2200              		.section	.bss.s_pressure_sensor_rx_tail,"aw",%nobits
+ 2201              		.align	1
+ 2204              	s_pressure_sensor_rx_tail:
+ 2205 0000 0000     		.space	2
+ 2206              		.section	.bss.s_pressure_sensor_rx_head,"aw",%nobits
+ 2207              		.align	1
+ 2210              	s_pressure_sensor_rx_head:
+ 2211 0000 0000     		.space	2
+ 2212              		.section	.bss.s_pressure_sensor_rx_ring,"aw",%nobits
+ 2213              		.align	2
+ 2216              	s_pressure_sensor_rx_ring:
+ 2217 0000 00000000 		.space	512
+ 2217      00000000 
+ 2217      00000000 
+ 2217      00000000 
+ 2217      00000000 
+ 2218              		.section	.bss.s_pressure_sensor_uart,"aw",%nobits
+ 2219              		.align	2
+ 2222              	s_pressure_sensor_uart:
+ 2223 0000 00000000 		.space	4
+ 2224              		.text
+ 2225              	.Letext0:
+ 2226              		.file 2 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 2227              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 55
+
+
+ 2228              		.file 4 "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h743xx.h"
+ 2229              		.file 5 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h"
+ 2230              		.file 6 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma.h"
+ 2231              		.file 7 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h"
+ 2232              		.file 8 "Glider-Core/pressure_sensor_driver.h"
+ 2233              		.file 9 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 56
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 pressure_sensor_driver.c
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:20     .text.PressureSensorDriver_ModbusCrc16:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:25     .text.PressureSensorDriver_ModbusCrc16:00000000 PressureSensorDriver_ModbusCrc16
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:109    .text.PressureSensorDriver_UpdateRingAvailable:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:114    .text.PressureSensorDriver_UpdateRingAvailable:00000000 PressureSensorDriver_UpdateRingAvailable
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:164    .text.PressureSensorDriver_UpdateRingAvailable:0000003c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2210   .bss.s_pressure_sensor_rx_head:00000000 s_pressure_sensor_rx_head
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2204   .bss.s_pressure_sensor_rx_tail:00000000 s_pressure_sensor_rx_tail
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2137   .bss.g_pressure_sensor_state:00000000 g_pressure_sensor_state
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:171    .text.PressureSensorDriver_ResetResponseParser:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:176    .text.PressureSensorDriver_ResetResponseParser:00000000 PressureSensorDriver_ResetResponseParser
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:197    .text.PressureSensorDriver_ResetResponseParser:0000000c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2181   .bss.s_response_index:00000000 s_response_index
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2175   .bss.s_response_expected_len:00000000 s_response_expected_len
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:203    .text.PressureSensorDriver_StopWaitingResponse:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:208    .text.PressureSensorDriver_StopWaitingResponse:00000000 PressureSensorDriver_StopWaitingResponse
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:236    .text.PressureSensorDriver_StopWaitingResponse:00000014 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2164   .bss.s_waiting_response:00000000 s_waiting_response
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:242    .text.PressureSensorDriver_CopyTxFrameToState:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:247    .text.PressureSensorDriver_CopyTxFrameToState:00000000 PressureSensorDriver_CopyTxFrameToState
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:297    .text.PressureSensorDriver_CopyTxFrameToState:0000002c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2193   .bss.s_modbus_request:00000000 s_modbus_request
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:303    .text.PressureSensorDriver_CopyResponseFrameToState:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:308    .text.PressureSensorDriver_CopyResponseFrameToState:00000000 PressureSensorDriver_CopyResponseFrameToState
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:363    .text.PressureSensorDriver_CopyResponseFrameToState:00000030 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2187   .bss.s_response_frame:00000000 s_response_frame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:369    .text.PressureSensorDriver_BuildReadRequest:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:374    .text.PressureSensorDriver_BuildReadRequest:00000000 PressureSensorDriver_BuildReadRequest
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:442    .text.PressureSensorDriver_BuildReadRequest:00000034 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:447    .text.PressureSensorDriver_DecodeFloat:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:452    .text.PressureSensorDriver_DecodeFloat:00000000 PressureSensorDriver_DecodeFloat
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:508    .text.PressureSensorDriver_RingPush:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:513    .text.PressureSensorDriver_RingPush:00000000 PressureSensorDriver_RingPush
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:589    .text.PressureSensorDriver_RingPush:00000048 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2216   .bss.s_pressure_sensor_rx_ring:00000000 s_pressure_sensor_rx_ring
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:597    .text.PressureSensorDriver_CommitMeasurement:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:602    .text.PressureSensorDriver_CommitMeasurement:00000000 PressureSensorDriver_CommitMeasurement
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:653    .text.PressureSensorDriver_CommitMeasurement:00000028 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2142   .bss.s_active_request_kind:00000000 s_active_request_kind
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:659    .text.PressureSensorDriver_HandleResponseFrame:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:664    .text.PressureSensorDriver_HandleResponseFrame:00000000 PressureSensorDriver_HandleResponseFrame
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:871    .text.PressureSensorDriver_HandleResponseFrame:000000c4 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:878    .text.PressureSensorDriver_ProcessResponseByte:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:883    .text.PressureSensorDriver_ProcessResponseByte:00000000 PressureSensorDriver_ProcessResponseByte
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1124   .text.PressureSensorDriver_ProcessResponseByte:000000e4 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1134   .text.PressureSensorDriver_Init:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1140   .text.PressureSensorDriver_Init:00000000 PressureSensorDriver_Init
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1360   .text.PressureSensorDriver_Init:000000b8 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2222   .bss.s_pressure_sensor_uart:00000000 s_pressure_sensor_uart
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2198   .bss.s_pressure_sensor_rx_byte:00000000 s_pressure_sensor_rx_byte
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2169   .bss.s_tx_in_flight:00000000 s_tx_in_flight
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2159   .bss.s_last_request_tick:00000000 s_last_request_tick
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2153   .bss.s_response_start_tick:00000000 s_response_start_tick
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2147   .bss.s_next_request_kind:00000000 s_next_request_kind
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1375   .text.PressureSensorDriver_OnRxComplete:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1381   .text.PressureSensorDriver_OnRxComplete:00000000 PressureSensorDriver_OnRxComplete
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s 			page 57
+
+
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1457   .text.PressureSensorDriver_OnRxComplete:00000048 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1464   .text.PressureSensorDriver_OnTxComplete:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1470   .text.PressureSensorDriver_OnTxComplete:00000000 PressureSensorDriver_OnTxComplete
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1544   .text.PressureSensorDriver_OnTxComplete:00000038 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1553   .text.PressureSensorDriver_OnError:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1559   .text.PressureSensorDriver_OnError:00000000 PressureSensorDriver_OnError
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1675   .text.PressureSensorDriver_OnError:0000006c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1683   .text.PressureSensorDriver_Poll:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1689   .text.PressureSensorDriver_Poll:00000000 PressureSensorDriver_Poll
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1922   .text.PressureSensorDriver_Poll:000000e0 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1935   .text.PressureSensorDriver_Available:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1941   .text.PressureSensorDriver_Available:00000000 PressureSensorDriver_Available
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1987   .text.PressureSensorDriver_Available:00000024 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1993   .text.PressureSensorDriver_Read:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:1999   .text.PressureSensorDriver_Read:00000000 PressureSensorDriver_Read
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2089   .text.PressureSensorDriver_Read:00000048 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2096   .text.PressureSensorDriver_ClearRxBuffer:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2102   .text.PressureSensorDriver_ClearRxBuffer:00000000 PressureSensorDriver_ClearRxBuffer
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2126   .text.PressureSensorDriver_ClearRxBuffer:00000014 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2134   .bss.g_pressure_sensor_state:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2143   .bss.s_active_request_kind:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2148   .bss.s_next_request_kind:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2150   .bss.s_response_start_tick:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2156   .bss.s_last_request_tick:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2165   .bss.s_waiting_response:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2170   .bss.s_tx_in_flight:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2172   .bss.s_response_expected_len:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2178   .bss.s_response_index:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2184   .bss.s_response_frame:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2190   .bss.s_modbus_request:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2199   .bss.s_pressure_sensor_rx_byte:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2201   .bss.s_pressure_sensor_rx_tail:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2207   .bss.s_pressure_sensor_rx_head:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2213   .bss.s_pressure_sensor_rx_ring:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccZlLCuL.s:2219   .bss.s_pressure_sensor_uart:00000000 $d
+
+UNDEFINED SYMBOLS
+HAL_GetTick
+HAL_UART_Receive_IT
+HAL_UART_Transmit_IT

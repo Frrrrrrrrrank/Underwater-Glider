@@ -28,6 +28,7 @@
 #include "servo_driver.h"
 #include "displacement_sensor.h"
 #include "motor_driver.h"
+#include "pressure_sensor_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -440,6 +441,9 @@ int main(void)
   
   /* Initialize IMU module on UART4 */
   IMU_Core_Init(&huart4);
+
+  /* Initialize pressure sensor non-blocking RX driver */
+  PressureSensorDriver_Init(&huart1);
 
   /* USER CODE END 2 */
 
@@ -1158,7 +1162,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 9600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -1827,6 +1831,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     /* Optionally clear the DMA/reception state to allow recovery */
     huart->RxState = HAL_UART_STATE_READY;
   }
+
+  PressureSensorDriver_OnError(huart);
 }
 
 void vAssertCalled(const char *file, int line)
@@ -1990,6 +1996,8 @@ void StartDefaultTask(void *argument)
       }
       g_dbg_quick.target_card_id[card_i] = '\0';
     }
+
+    PressureSensorDriver_Poll(g_dbg_rtos_tick);
 
     osDelay(100);
   }

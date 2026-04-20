@@ -3,6 +3,7 @@
 #include "cmsis_os.h"
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
+#include "pressure_sensor_driver.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -1229,6 +1230,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     (void)HAL_UART_Receive_IT(s_uart, (uint8_t *)&s_rx_byte, 1U);
   }
 
+  PressureSensorDriver_OnRxComplete(huart);
+
   /* Forward to IMU module if it's UART4 */
   IMU_OnUART_RxComplete(huart);
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+  PressureSensorDriver_OnTxComplete(huart);
 }
