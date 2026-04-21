@@ -1,4 +1,4 @@
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 1
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 1
 
 
    1              		.cpu cortex-m7
@@ -19,1322 +19,1940 @@ ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 1
   16              	.Ltext0:
   17              		.cfi_sections	.debug_frame
   18              		.file 1 "Glider-Core/stepper_driver.c"
-  19              		.section	.text.Stepper_UpdateARR,"ax",%progbits
+  19              		.section	.text.Stepper_ClampSignedRpm,"ax",%progbits
   20              		.align	1
   21              		.syntax unified
   22              		.thumb
   23              		.thumb_func
-  25              	Stepper_UpdateARR:
+  25              	Stepper_ClampSignedRpm:
   26              	.LVL0:
-  27              	.LFB340:
+  27              	.LFB339:
    1:Glider-Core/stepper_driver.c **** #include "stepper_driver.h"
    2:Glider-Core/stepper_driver.c **** #include "stm32h7xx_hal.h"
    3:Glider-Core/stepper_driver.c **** #include "cmsis_os.h"
-   4:Glider-Core/stepper_driver.c **** 
-   5:Glider-Core/stepper_driver.c **** /* 
-   6:Glider-Core/stepper_driver.c ****  * 硬件资源映射：
-   7:Glider-Core/stepper_driver.c ****  * PE11 (TIM1_CH2)  -> PUL+  (脉冲发送端)
-   8:Glider-Core/stepper_driver.c ****  * PE13 (GPIO_Out)  -> DIR+  (方向控制端)
-   9:Glider-Core/stepper_driver.c ****  * 
-  10:Glider-Core/stepper_driver.c ****  * 共阴极接法，负极永远在STM32这边拉低：
-  11:Glider-Core/stepper_driver.c ****  * PE10 (GPIO_Out)  -> PUL-  (接地处理)
-  12:Glider-Core/stepper_driver.c ****  * PE12 (GPIO_Out)  -> DIR-  (接地处理)
-  13:Glider-Core/stepper_driver.c ****  */
-  14:Glider-Core/stepper_driver.c **** 
-  15:Glider-Core/stepper_driver.c **** extern TIM_HandleTypeDef htim1;
-  16:Glider-Core/stepper_driver.c **** 
-  17:Glider-Core/stepper_driver.c **** #define STEPPER_TIM            (&htim1)
-  18:Glider-Core/stepper_driver.c **** #define STEPPER_TIM_CH         TIM_CHANNEL_2
-  19:Glider-Core/stepper_driver.c **** 
-  20:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_PORT       GPIOE
-  21:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_PIN        GPIO_PIN_13
-  22:Glider-Core/stepper_driver.c **** 
-  23:Glider-Core/stepper_driver.c **** #define STEPPER_PUL_N_PORT     GPIOE
-  24:Glider-Core/stepper_driver.c **** #define STEPPER_PUL_N_PIN      GPIO_PIN_10
-  25:Glider-Core/stepper_driver.c **** 
-  26:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_N_PORT     GPIOE
-  27:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_N_PIN      GPIO_PIN_12
-  28:Glider-Core/stepper_driver.c **** 
-  29:Glider-Core/stepper_driver.c **** /* 电机驱动器细分：改成你现在的 1600 */
-  30:Glider-Core/stepper_driver.c **** #define STEPPER_PULSES_PER_REV 1600U
-  31:Glider-Core/stepper_driver.c **** /* TIM1 的基准计数频率：你在 IOC 里配了 Prescaler 使得它变为 1 MHz (1微秒一次
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 2
+   4:Glider-Core/stepper_driver.c **** #include "sbus_driver.h"
+   5:Glider-Core/stepper_driver.c **** 
+   6:Glider-Core/stepper_driver.c **** /* 
+   7:Glider-Core/stepper_driver.c ****  * 硬件资源映射：
+   8:Glider-Core/stepper_driver.c ****  * PE11 (TIM1_CH2)  -> PUL+  (脉冲发送端)
+   9:Glider-Core/stepper_driver.c ****  * PE13 (GPIO_Out)  -> DIR+  (方向控制端)
+  10:Glider-Core/stepper_driver.c ****  * 
+  11:Glider-Core/stepper_driver.c ****  * 共阴极接法，负极永远在STM32这边拉低：
+  12:Glider-Core/stepper_driver.c ****  * PE10 (GPIO_Out)  -> PUL-  (接地处理)
+  13:Glider-Core/stepper_driver.c ****  * PE12 (GPIO_Out)  -> DIR-  (接地处理)
+  14:Glider-Core/stepper_driver.c ****  */
+  15:Glider-Core/stepper_driver.c **** 
+  16:Glider-Core/stepper_driver.c **** extern TIM_HandleTypeDef htim1;
+  17:Glider-Core/stepper_driver.c **** 
+  18:Glider-Core/stepper_driver.c **** #define STEPPER_TIM            (&htim1)
+  19:Glider-Core/stepper_driver.c **** #define STEPPER_TIM_CH         TIM_CHANNEL_2
+  20:Glider-Core/stepper_driver.c **** 
+  21:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_PORT       GPIOE
+  22:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_PIN        GPIO_PIN_13
+  23:Glider-Core/stepper_driver.c **** 
+  24:Glider-Core/stepper_driver.c **** #define STEPPER_PUL_N_PORT     GPIOE
+  25:Glider-Core/stepper_driver.c **** #define STEPPER_PUL_N_PIN      GPIO_PIN_10
+  26:Glider-Core/stepper_driver.c **** 
+  27:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_N_PORT     GPIOE
+  28:Glider-Core/stepper_driver.c **** #define STEPPER_DIR_N_PIN      GPIO_PIN_12
+  29:Glider-Core/stepper_driver.c **** 
+  30:Glider-Core/stepper_driver.c **** /* 电机驱动器细分：改成你现在的 1600 */
+  31:Glider-Core/stepper_driver.c **** #define STEPPER_PULSES_PER_REV 1600U
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 2
 
 
-  32:Glider-Core/stepper_driver.c **** #define STEPPER_TIM_FREQ_HZ    1000000U
-  33:Glider-Core/stepper_driver.c **** 
-  34:Glider-Core/stepper_driver.c **** /* 步进电机起步/停止时的最小转速 (防止定时器溢出或堵转) */
-  35:Glider-Core/stepper_driver.c **** #define STEPPER_START_RPM      30U
-  36:Glider-Core/stepper_driver.c **** /* 默认梯形加减速段所消耗的脉冲数 (比如 400个脉冲相当于1/4圈用来加速) *
-  37:Glider-Core/stepper_driver.c **** #define STEPPER_ACCEL_PULSES   400U
-  38:Glider-Core/stepper_driver.c **** 
-  39:Glider-Core/stepper_driver.c **** typedef struct {
-  40:Glider-Core/stepper_driver.c ****     volatile int32_t current_pos;
-  41:Glider-Core/stepper_driver.c ****     volatile int32_t target_pos;
-  42:Glider-Core/stepper_driver.c ****     volatile uint32_t pulses_remaining;
-  43:Glider-Core/stepper_driver.c ****     volatile uint8_t is_running;
-  44:Glider-Core/stepper_driver.c ****     volatile int8_t direction;
-  45:Glider-Core/stepper_driver.c ****     volatile uint32_t target_rpm;
-  46:Glider-Core/stepper_driver.c ****     volatile uint32_t current_rpm;
-  47:Glider-Core/stepper_driver.c ****     volatile uint32_t step_count;    // 当前已触发的脉冲数
-  48:Glider-Core/stepper_driver.c ****     volatile uint32_t total_pulses;  // 本次运动设定的总脉冲数
-  49:Glider-Core/stepper_driver.c **** } StepperCtrl_t;
-  50:Glider-Core/stepper_driver.c **** 
-  51:Glider-Core/stepper_driver.c **** static StepperCtrl_t g_stepper = {0};
-  52:Glider-Core/stepper_driver.c **** 
-  53:Glider-Core/stepper_driver.c **** void Stepper_Init(void) 
-  54:Glider-Core/stepper_driver.c **** {
-  55:Glider-Core/stepper_driver.c ****     g_stepper.current_pos = 0;
-  56:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = 0;
-  57:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
-  58:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
+  32:Glider-Core/stepper_driver.c **** /* TIM1 的基准计数频率：你在 IOC 里配了 Prescaler 使得它变为 1 MHz (1微秒一次
+  33:Glider-Core/stepper_driver.c **** #define STEPPER_TIM_FREQ_HZ    1000000U
+  34:Glider-Core/stepper_driver.c **** 
+  35:Glider-Core/stepper_driver.c **** /* 步进电机起步/停止时的最小转速 (防止定时器溢出或堵转) */
+  36:Glider-Core/stepper_driver.c **** #define STEPPER_START_RPM      30U
+  37:Glider-Core/stepper_driver.c **** /* 默认梯形加减速段所消耗的脉冲数 (比如 400个脉冲相当于1/4圈用来加速) *
+  38:Glider-Core/stepper_driver.c **** #define STEPPER_ACCEL_PULSES   400U
+  39:Glider-Core/stepper_driver.c **** 
+  40:Glider-Core/stepper_driver.c **** #define STEPPER_TEST_MAX_RPM            800U
+  41:Glider-Core/stepper_driver.c **** #define STEPPER_TEST_STICK_DEADBAND     40U
+  42:Glider-Core/stepper_driver.c **** #define STEPPER_TEST_POLL_MS            20U
+  43:Glider-Core/stepper_driver.c **** #define STEPPER_TEST_FRAME_TIMEOUT_MS   150U
+  44:Glider-Core/stepper_driver.c **** #define STEPPER_TEST_CONTINUOUS_PULSES  ((int32_t)1000000000)
+  45:Glider-Core/stepper_driver.c **** 
+  46:Glider-Core/stepper_driver.c **** typedef struct {
+  47:Glider-Core/stepper_driver.c ****     volatile int32_t current_pos;
+  48:Glider-Core/stepper_driver.c ****     volatile int32_t target_pos;
+  49:Glider-Core/stepper_driver.c ****     volatile uint32_t pulses_remaining;
+  50:Glider-Core/stepper_driver.c ****     volatile uint8_t is_running;
+  51:Glider-Core/stepper_driver.c ****     volatile int8_t direction;
+  52:Glider-Core/stepper_driver.c ****     volatile uint32_t target_rpm;
+  53:Glider-Core/stepper_driver.c ****     volatile uint32_t current_rpm;
+  54:Glider-Core/stepper_driver.c ****     volatile uint32_t step_count;    // 当前已触发的脉冲数
+  55:Glider-Core/stepper_driver.c ****     volatile uint32_t total_pulses;  // 本次运动设定的总脉冲数
+  56:Glider-Core/stepper_driver.c **** } StepperCtrl_t;
+  57:Glider-Core/stepper_driver.c **** 
+  58:Glider-Core/stepper_driver.c **** static StepperCtrl_t g_stepper = {0};
   59:Glider-Core/stepper_driver.c **** 
-  60:Glider-Core/stepper_driver.c ****     /* 初始化负极端恒定为低电平，模拟 GND */
-  61:Glider-Core/stepper_driver.c ****     HAL_GPIO_WritePin(STEPPER_PUL_N_PORT, STEPPER_PUL_N_PIN, GPIO_PIN_RESET);
-  62:Glider-Core/stepper_driver.c ****     HAL_GPIO_WritePin(STEPPER_DIR_N_PORT, STEPPER_DIR_N_PIN, GPIO_PIN_RESET);
+  60:Glider-Core/stepper_driver.c **** /* Debug watch helpers for SBUS-controlled test */
+  61:Glider-Core/stepper_driver.c **** static volatile uint16_t g_stepper_test_raw_left_y = SBUS_VALUE_CENTER_OBSERVED;
+  62:Glider-Core/stepper_driver.c **** static volatile int32_t g_stepper_test_cmd_rpm = 0;
   63:Glider-Core/stepper_driver.c **** 
-  64:Glider-Core/stepper_driver.c ****     __HAL_TIM_DISABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
-  65:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Stop(STEPPER_TIM, STEPPER_TIM_CH);
-  66:Glider-Core/stepper_driver.c **** }
-  67:Glider-Core/stepper_driver.c **** 
-  68:Glider-Core/stepper_driver.c **** /* 内部辅助函数：根据转速实时设置定时器频率以实现加减速 (直接写寄存�
-  69:Glider-Core/stepper_driver.c **** static void Stepper_UpdateARR(uint32_t rpm) 
-  70:Glider-Core/stepper_driver.c **** {
-  28              		.loc 1 70 1 view -0
+  64:Glider-Core/stepper_driver.c **** static int32_t Stepper_ClampSignedRpm(int32_t value)
+  65:Glider-Core/stepper_driver.c **** {
+  28              		.loc 1 65 1 view -0
   29              		.cfi_startproc
   30              		@ args = 0, pretend = 0, frame = 0
   31              		@ frame_needed = 0, uses_anonymous_args = 0
   32              		@ link register save eliminated.
-  71:Glider-Core/stepper_driver.c ****     if (rpm == 0) rpm = 1;
-  33              		.loc 1 71 5 view .LVU1
-  34              		.loc 1 71 8 is_stmt 0 view .LVU2
-  35 0000 0346     		mov	r3, r0
-  36 0002 00B9     		cbnz	r0, .L2
-  37              		.loc 1 71 23 view .LVU3
-  38 0004 0123     		movs	r3, #1
-  39              	.L2:
-  40              	.LVL1:
-  72:Glider-Core/stepper_driver.c ****     
-  73:Glider-Core/stepper_driver.c ****     /* 算出每秒需要发多少个脉冲 */
-  74:Glider-Core/stepper_driver.c ****     uint32_t pulses_per_sec = rpm * STEPPER_PULSES_PER_REV / 60U;
-  41              		.loc 1 74 5 is_stmt 1 view .LVU4
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 3
+  66:Glider-Core/stepper_driver.c ****     if (value > (int32_t)STEPPER_TEST_MAX_RPM)
+  33              		.loc 1 66 5 view .LVU1
+  34              		.loc 1 66 8 is_stmt 0 view .LVU2
+  35 0000 B0F5487F 		cmp	r0, #800
+  36 0004 03DC     		bgt	.L3
+  67:Glider-Core/stepper_driver.c ****     {
+  68:Glider-Core/stepper_driver.c ****         return (int32_t)STEPPER_TEST_MAX_RPM;
+  69:Glider-Core/stepper_driver.c ****     }
+  70:Glider-Core/stepper_driver.c ****     if (value < -(int32_t)STEPPER_TEST_MAX_RPM)
+  37              		.loc 1 70 5 is_stmt 1 view .LVU3
+  38              		.loc 1 70 8 is_stmt 0 view .LVU4
+  39 0006 10F5487F 		cmn	r0, #800
+  40 000a 03DB     		blt	.L4
+  41 000c 7047     		bx	lr
+  42              	.L3:
+  68:Glider-Core/stepper_driver.c ****     }
+  43              		.loc 1 68 16 view .LVU5
+  44 000e 4FF44870 		mov	r0, #800
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 3
 
 
-  42              		.loc 1 74 35 is_stmt 0 view .LVU5
-  43 0006 4FF4C862 		mov	r2, #1600
-  44 000a 02FB03F3 		mul	r3, r2, r3
-  45              	.LVL2:
-  46              		.loc 1 74 14 view .LVU6
-  47 000e 0A4A     		ldr	r2, .L9
-  48 0010 A2FB0312 		umull	r1, r2, r2, r3
-  49 0014 5209     		lsrs	r2, r2, #5
-  50              	.LVL3:
-  75:Glider-Core/stepper_driver.c ****     if (pulses_per_sec == 0) pulses_per_sec = 1;
-  51              		.loc 1 75 5 is_stmt 1 view .LVU7
-  52              		.loc 1 75 8 is_stmt 0 view .LVU8
-  53 0016 3B2B     		cmp	r3, #59
-  54 0018 00D8     		bhi	.L3
-  55              		.loc 1 75 45 view .LVU9
-  56 001a 0122     		movs	r2, #1
-  57              	.LVL4:
-  58              	.L3:
-  76:Glider-Core/stepper_driver.c ****     
-  77:Glider-Core/stepper_driver.c ****     /* 重装载值 ARR 计算 */
-  78:Glider-Core/stepper_driver.c ****     uint32_t arr = STEPPER_TIM_FREQ_HZ / pulses_per_sec;
-  59              		.loc 1 78 5 is_stmt 1 view .LVU10
-  60              		.loc 1 78 14 is_stmt 0 view .LVU11
-  61 001c 074B     		ldr	r3, .L9+4
-  62 001e B3FBF2F3 		udiv	r3, r3, r2
-  63              	.LVL5:
-  79:Glider-Core/stepper_driver.c ****     if (arr < 2) arr = 2;
-  64              		.loc 1 79 5 is_stmt 1 view .LVU12
-  65              		.loc 1 79 8 is_stmt 0 view .LVU13
-  66 0022 012B     		cmp	r3, #1
-  67 0024 06D9     		bls	.L8
-  68              	.LVL6:
-  69              	.L4:
-  80:Glider-Core/stepper_driver.c ****     
-  81:Glider-Core/stepper_driver.c ****     /* 直接修改定时器寄存器生效。这比调用 `__HAL_TIM_SET_AUTORELOAD` 更快更纯�
-  82:Glider-Core/stepper_driver.c ****     STEPPER_TIM->Instance->ARR = arr - 1;
-  70              		.loc 1 82 5 is_stmt 1 view .LVU14
-  71              		.loc 1 82 16 is_stmt 0 view .LVU15
-  72 0026 064A     		ldr	r2, .L9+8
-  73              	.LVL7:
-  74              		.loc 1 82 16 view .LVU16
-  75 0028 1268     		ldr	r2, [r2]
-  76              		.loc 1 82 38 view .LVU17
-  77 002a 591E     		subs	r1, r3, #1
-  78              		.loc 1 82 32 view .LVU18
-  79 002c D162     		str	r1, [r2, #44]
-  83:Glider-Core/stepper_driver.c ****     STEPPER_TIM->Instance->CCR2 = arr / 2; // 维持 50% 的脉宽占空比
-  80              		.loc 1 83 5 is_stmt 1 view .LVU19
-  81              		.loc 1 83 39 is_stmt 0 view .LVU20
-  82 002e 5B08     		lsrs	r3, r3, #1
-  83              	.LVL8:
-  84              		.loc 1 83 33 view .LVU21
-  85 0030 9363     		str	r3, [r2, #56]
-  84:Glider-Core/stepper_driver.c **** }
-  86              		.loc 1 84 1 view .LVU22
-  87 0032 7047     		bx	lr
-  88              	.LVL9:
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 4
-
-
-  89              	.L8:
-  79:Glider-Core/stepper_driver.c ****     
-  90              		.loc 1 79 22 view .LVU23
-  91 0034 0223     		movs	r3, #2
-  92              	.LVL10:
-  79:Glider-Core/stepper_driver.c ****     
-  93              		.loc 1 79 22 view .LVU24
-  94 0036 F6E7     		b	.L4
-  95              	.L10:
-  96              		.align	2
-  97              	.L9:
-  98 0038 89888888 		.word	-2004318071
-  99 003c 40420F00 		.word	1000000
- 100 0040 00000000 		.word	htim1
- 101              		.cfi_endproc
- 102              	.LFE340:
- 104              		.section	.text.Stepper_Init,"ax",%progbits
- 105              		.align	1
- 106              		.global	Stepper_Init
- 107              		.syntax unified
- 108              		.thumb
- 109              		.thumb_func
- 111              	Stepper_Init:
- 112              	.LFB339:
-  54:Glider-Core/stepper_driver.c ****     g_stepper.current_pos = 0;
- 113              		.loc 1 54 1 is_stmt 1 view -0
- 114              		.cfi_startproc
- 115              		@ args = 0, pretend = 0, frame = 0
- 116              		@ frame_needed = 0, uses_anonymous_args = 0
- 117 0000 38B5     		push	{r3, r4, r5, lr}
- 118              	.LCFI0:
- 119              		.cfi_def_cfa_offset 16
- 120              		.cfi_offset 3, -16
- 121              		.cfi_offset 4, -12
- 122              		.cfi_offset 5, -8
- 123              		.cfi_offset 14, -4
-  55:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = 0;
- 124              		.loc 1 55 5 view .LVU26
-  55:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = 0;
- 125              		.loc 1 55 27 is_stmt 0 view .LVU27
- 126 0002 0E4B     		ldr	r3, .L13
- 127 0004 0024     		movs	r4, #0
- 128 0006 1C60     		str	r4, [r3]
-  56:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
- 129              		.loc 1 56 5 is_stmt 1 view .LVU28
-  56:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
- 130              		.loc 1 56 26 is_stmt 0 view .LVU29
- 131 0008 5C60     		str	r4, [r3, #4]
-  57:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
- 132              		.loc 1 57 5 is_stmt 1 view .LVU30
-  57:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
- 133              		.loc 1 57 32 is_stmt 0 view .LVU31
- 134 000a 9C60     		str	r4, [r3, #8]
-  58:Glider-Core/stepper_driver.c **** 
- 135              		.loc 1 58 5 is_stmt 1 view .LVU32
-  58:Glider-Core/stepper_driver.c **** 
- 136              		.loc 1 58 26 is_stmt 0 view .LVU33
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 5
-
-
- 137 000c 1C73     		strb	r4, [r3, #12]
-  61:Glider-Core/stepper_driver.c ****     HAL_GPIO_WritePin(STEPPER_DIR_N_PORT, STEPPER_DIR_N_PIN, GPIO_PIN_RESET);
- 138              		.loc 1 61 5 is_stmt 1 view .LVU34
- 139 000e 0C4D     		ldr	r5, .L13+4
- 140 0010 2246     		mov	r2, r4
- 141 0012 4FF48061 		mov	r1, #1024
- 142 0016 2846     		mov	r0, r5
- 143 0018 FFF7FEFF 		bl	HAL_GPIO_WritePin
- 144              	.LVL11:
-  62:Glider-Core/stepper_driver.c **** 
- 145              		.loc 1 62 5 view .LVU35
- 146 001c 2246     		mov	r2, r4
- 147 001e 4FF48051 		mov	r1, #4096
- 148 0022 2846     		mov	r0, r5
- 149 0024 FFF7FEFF 		bl	HAL_GPIO_WritePin
- 150              	.LVL12:
-  64:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Stop(STEPPER_TIM, STEPPER_TIM_CH);
- 151              		.loc 1 64 5 view .LVU36
- 152 0028 0648     		ldr	r0, .L13+8
- 153 002a 0268     		ldr	r2, [r0]
- 154 002c D368     		ldr	r3, [r2, #12]
- 155 002e 23F00103 		bic	r3, r3, #1
- 156 0032 D360     		str	r3, [r2, #12]
-  65:Glider-Core/stepper_driver.c **** }
- 157              		.loc 1 65 5 view .LVU37
- 158 0034 0421     		movs	r1, #4
- 159 0036 FFF7FEFF 		bl	HAL_TIM_PWM_Stop
- 160              	.LVL13:
-  66:Glider-Core/stepper_driver.c **** 
- 161              		.loc 1 66 1 is_stmt 0 view .LVU38
- 162 003a 38BD     		pop	{r3, r4, r5, pc}
- 163              	.L14:
- 164              		.align	2
- 165              	.L13:
- 166 003c 00000000 		.word	g_stepper
- 167 0040 00100258 		.word	1476530176
- 168 0044 00000000 		.word	htim1
- 169              		.cfi_endproc
- 170              	.LFE339:
- 172              		.section	.text.Stepper_Stop,"ax",%progbits
- 173              		.align	1
- 174              		.global	Stepper_Stop
- 175              		.syntax unified
- 176              		.thumb
- 177              		.thumb_func
- 179              	Stepper_Stop:
- 180              	.LFB343:
+  45              	.LVL1:
+  68:Glider-Core/stepper_driver.c ****     }
+  46              		.loc 1 68 16 view .LVU6
+  47 0012 7047     		bx	lr
+  48              	.LVL2:
+  49              	.L4:
+  71:Glider-Core/stepper_driver.c ****     {
+  72:Glider-Core/stepper_driver.c ****         return -(int32_t)STEPPER_TEST_MAX_RPM;
+  50              		.loc 1 72 16 view .LVU7
+  51 0014 0048     		ldr	r0, .L5
+  52              	.LVL3:
+  73:Glider-Core/stepper_driver.c ****     }
+  74:Glider-Core/stepper_driver.c ****     return value;
+  75:Glider-Core/stepper_driver.c **** }
+  53              		.loc 1 75 1 view .LVU8
+  54 0016 7047     		bx	lr
+  55              	.L6:
+  56              		.align	2
+  57              	.L5:
+  58 0018 E0FCFFFF 		.word	-800
+  59              		.cfi_endproc
+  60              	.LFE339:
+  62              		.section	.text.Stepper_MapLeftStickToSignedRpm,"ax",%progbits
+  63              		.align	1
+  64              		.syntax unified
+  65              		.thumb
+  66              		.thumb_func
+  68              	Stepper_MapLeftStickToSignedRpm:
+  69              	.LVL4:
+  70              	.LFB340:
+  76:Glider-Core/stepper_driver.c **** 
+  77:Glider-Core/stepper_driver.c **** static int32_t Stepper_MapLeftStickToSignedRpm(uint16_t raw)
+  78:Glider-Core/stepper_driver.c **** {
+  71              		.loc 1 78 1 is_stmt 1 view -0
+  72              		.cfi_startproc
+  73              		@ args = 0, pretend = 0, frame = 0
+  74              		@ frame_needed = 0, uses_anonymous_args = 0
+  75              		.loc 1 78 1 is_stmt 0 view .LVU10
+  76 0000 08B5     		push	{r3, lr}
+  77              	.LCFI0:
+  78              		.cfi_def_cfa_offset 8
+  79              		.cfi_offset 3, -8
+  80              		.cfi_offset 14, -4
+  79:Glider-Core/stepper_driver.c ****     const uint32_t center = SBUS_VALUE_CENTER_OBSERVED;
+  81              		.loc 1 79 5 is_stmt 1 view .LVU11
+  82              	.LVL5:
+  80:Glider-Core/stepper_driver.c ****     const uint32_t min_v = SBUS_VALUE_MIN_OBSERVED;
+  83              		.loc 1 80 5 view .LVU12
+  81:Glider-Core/stepper_driver.c ****     const uint32_t max_v = SBUS_VALUE_MAX_OBSERVED;
+  84              		.loc 1 81 5 view .LVU13
+  82:Glider-Core/stepper_driver.c ****     const uint32_t deadband = STEPPER_TEST_STICK_DEADBAND;
+  85              		.loc 1 82 5 view .LVU14
+  83:Glider-Core/stepper_driver.c ****     uint32_t threshold_high;
+  86              		.loc 1 83 5 view .LVU15
+  84:Glider-Core/stepper_driver.c ****     uint32_t threshold_low;
+  87              		.loc 1 84 5 view .LVU16
   85:Glider-Core/stepper_driver.c **** 
-  86:Glider-Core/stepper_driver.c **** void Stepper_MoveRelative(int32_t pulses, uint16_t rpm) 
-  87:Glider-Core/stepper_driver.c **** {
-  88:Glider-Core/stepper_driver.c ****     if (pulses == 0 || rpm == 0) return;
-  89:Glider-Core/stepper_driver.c ****     
-  90:Glider-Core/stepper_driver.c ****     Stepper_Stop(); // 停止当前正在进行的其他任务
-  91:Glider-Core/stepper_driver.c ****     
-  92:Glider-Core/stepper_driver.c ****     if (pulses > 0) 
-  93:Glider-Core/stepper_driver.c ****     {
-  94:Glider-Core/stepper_driver.c ****         g_stepper.direction = 1;
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 6
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 4
 
 
-  95:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_SET);
-  96:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)pulses;
-  97:Glider-Core/stepper_driver.c ****     } 
-  98:Glider-Core/stepper_driver.c ****     else 
-  99:Glider-Core/stepper_driver.c ****     {
- 100:Glider-Core/stepper_driver.c ****         g_stepper.direction = -1;
- 101:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_RESET);
- 102:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)(-pulses);
+  86:Glider-Core/stepper_driver.c ****     threshold_high = center + deadband;
+  88              		.loc 1 86 5 view .LVU17
+  87:Glider-Core/stepper_driver.c ****     threshold_low = center - deadband;
+  89              		.loc 1 87 5 view .LVU18
+  88:Glider-Core/stepper_driver.c **** 
+  89:Glider-Core/stepper_driver.c ****     if ((uint32_t)raw > threshold_high)
+  90              		.loc 1 89 5 view .LVU19
+  91              		.loc 1 89 8 is_stmt 0 view .LVU20
+  92 0002 B0F5856F 		cmp	r0, #1064
+  93 0006 04D8     		bhi	.L16
+  90:Glider-Core/stepper_driver.c ****     {
+  91:Glider-Core/stepper_driver.c ****         uint32_t num = (uint32_t)raw - threshold_high;
+  92:Glider-Core/stepper_driver.c ****         uint32_t den = max_v - threshold_high;
+  93:Glider-Core/stepper_driver.c ****         uint32_t rpm = 0U;
+  94:Glider-Core/stepper_driver.c **** 
+  95:Glider-Core/stepper_driver.c ****         if (den != 0U)
+  96:Glider-Core/stepper_driver.c ****         {
+  97:Glider-Core/stepper_driver.c ****             rpm = (num * STEPPER_TEST_MAX_RPM) / den;
+  98:Glider-Core/stepper_driver.c ****         }
+  99:Glider-Core/stepper_driver.c ****         if (rpm > 0U && rpm < STEPPER_START_RPM)
+ 100:Glider-Core/stepper_driver.c ****         {
+ 101:Glider-Core/stepper_driver.c ****             rpm = STEPPER_START_RPM;
+ 102:Glider-Core/stepper_driver.c ****         }
+ 103:Glider-Core/stepper_driver.c ****         return Stepper_ClampSignedRpm((int32_t)rpm);
+ 104:Glider-Core/stepper_driver.c ****     }
+ 105:Glider-Core/stepper_driver.c **** 
+ 106:Glider-Core/stepper_driver.c ****     if ((uint32_t)raw < threshold_low)
+  94              		.loc 1 106 5 is_stmt 1 view .LVU21
+  95              		.loc 1 106 8 is_stmt 0 view .LVU22
+  96 0008 B0F5767F 		cmp	r0, #984
+  97 000c 12D3     		bcc	.L17
+ 107:Glider-Core/stepper_driver.c ****     {
+ 108:Glider-Core/stepper_driver.c ****         uint32_t num = threshold_low - (uint32_t)raw;
+ 109:Glider-Core/stepper_driver.c ****         uint32_t den = threshold_low - min_v;
+ 110:Glider-Core/stepper_driver.c ****         uint32_t rpm = 0U;
+ 111:Glider-Core/stepper_driver.c **** 
+ 112:Glider-Core/stepper_driver.c ****         if (den != 0U)
+ 113:Glider-Core/stepper_driver.c ****         {
+ 114:Glider-Core/stepper_driver.c ****             rpm = (num * STEPPER_TEST_MAX_RPM) / den;
+ 115:Glider-Core/stepper_driver.c ****         }
+ 116:Glider-Core/stepper_driver.c ****         if (rpm > 0U && rpm < STEPPER_START_RPM)
+ 117:Glider-Core/stepper_driver.c ****         {
+ 118:Glider-Core/stepper_driver.c ****             rpm = STEPPER_START_RPM;
+ 119:Glider-Core/stepper_driver.c ****         }
+ 120:Glider-Core/stepper_driver.c ****         return Stepper_ClampSignedRpm(-(int32_t)rpm);
+ 121:Glider-Core/stepper_driver.c ****     }
+ 122:Glider-Core/stepper_driver.c **** 
+ 123:Glider-Core/stepper_driver.c ****     return 0;
+  98              		.loc 1 123 12 view .LVU23
+  99 000e 0020     		movs	r0, #0
+ 100              	.LVL6:
+ 101              	.L7:
+ 124:Glider-Core/stepper_driver.c **** }
+ 102              		.loc 1 124 1 view .LVU24
+ 103 0010 08BD     		pop	{r3, pc}
+ 104              	.LVL7:
+ 105              	.L16:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 5
+
+
+ 106              	.LBB2:
+  91:Glider-Core/stepper_driver.c ****         uint32_t den = max_v - threshold_high;
+ 107              		.loc 1 91 9 is_stmt 1 view .LVU25
+  91:Glider-Core/stepper_driver.c ****         uint32_t den = max_v - threshold_high;
+ 108              		.loc 1 91 18 is_stmt 0 view .LVU26
+ 109 0012 A0F58560 		sub	r0, r0, #1064
+ 110              	.LVL8:
+  92:Glider-Core/stepper_driver.c ****         uint32_t rpm = 0U;
+ 111              		.loc 1 92 9 is_stmt 1 view .LVU27
+  93:Glider-Core/stepper_driver.c **** 
+ 112              		.loc 1 93 9 view .LVU28
+  95:Glider-Core/stepper_driver.c ****         {
+ 113              		.loc 1 95 9 view .LVU29
+  97:Glider-Core/stepper_driver.c ****         }
+ 114              		.loc 1 97 13 view .LVU30
+  97:Glider-Core/stepper_driver.c ****         }
+ 115              		.loc 1 97 24 is_stmt 0 view .LVU31
+ 116 0016 4FF44873 		mov	r3, #800
+ 117 001a 03FB00F0 		mul	r0, r3, r0
+ 118              	.LVL9:
+  97:Glider-Core/stepper_driver.c ****         }
+ 119              		.loc 1 97 17 view .LVU32
+ 120 001e 0E4B     		ldr	r3, .L18
+ 121 0020 A3FB0030 		umull	r3, r0, r3, r0
+ 122 0024 400A     		lsrs	r0, r0, #9
+ 123              	.LVL10:
+  99:Glider-Core/stepper_driver.c ****         {
+ 124              		.loc 1 99 9 is_stmt 1 view .LVU33
+  99:Glider-Core/stepper_driver.c ****         {
+ 125              		.loc 1 99 22 is_stmt 0 view .LVU34
+ 126 0026 431E     		subs	r3, r0, #1
+  99:Glider-Core/stepper_driver.c ****         {
+ 127              		.loc 1 99 12 view .LVU35
+ 128 0028 1C2B     		cmp	r3, #28
+ 129 002a 00D8     		bhi	.L9
+ 101:Glider-Core/stepper_driver.c ****         }
+ 130              		.loc 1 101 17 view .LVU36
+ 131 002c 1E20     		movs	r0, #30
+ 132              	.LVL11:
+ 133              	.L9:
  103:Glider-Core/stepper_driver.c ****     }
- 104:Glider-Core/stepper_driver.c ****     
- 105:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = g_stepper.total_pulses;
- 106:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
- 107:Glider-Core/stepper_driver.c ****     
- 108:Glider-Core/stepper_driver.c ****     /* 速度逻辑与基础限制起跑值 */
- 109:Glider-Core/stepper_driver.c ****     g_stepper.target_rpm = rpm;
- 110:Glider-Core/stepper_driver.c ****     if (g_stepper.target_rpm < STEPPER_START_RPM) g_stepper.target_rpm = STEPPER_START_RPM;
- 111:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
- 112:Glider-Core/stepper_driver.c **** 
- 113:Glider-Core/stepper_driver.c ****     /* 忠于手册 3.3.4 时序图：DR至少提前PU下降沿50μs确定状态。
- 114:Glider-Core/stepper_driver.c ****      * 此处加一个简易的软件延时(远大于50us)，确保方向信号被驱动器光耦�
- 115:Glider-Core/stepper_driver.c ****     for (volatile uint32_t delay_cnt = 0; delay_cnt < 20000; delay_cnt++) {
- 116:Glider-Core/stepper_driver.c ****         __NOP();
- 117:Glider-Core/stepper_driver.c ****     }
- 118:Glider-Core/stepper_driver.c ****     
- 119:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = g_stepper.current_pos + pulses;
- 120:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
- 121:Glider-Core/stepper_driver.c **** 
- 122:Glider-Core/stepper_driver.c ****     Stepper_UpdateARR(g_stepper.current_rpm);
- 123:Glider-Core/stepper_driver.c ****     
- 124:Glider-Core/stepper_driver.c ****     __HAL_TIM_CLEAR_FLAG(STEPPER_TIM, TIM_FLAG_UPDATE);
- 125:Glider-Core/stepper_driver.c ****     __HAL_TIM_ENABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
- 126:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Start(STEPPER_TIM, STEPPER_TIM_CH);
- 127:Glider-Core/stepper_driver.c **** }
- 128:Glider-Core/stepper_driver.c **** 
- 129:Glider-Core/stepper_driver.c **** void Stepper_MoveAbsolute(int32_t target_pos, uint16_t rpm) 
- 130:Glider-Core/stepper_driver.c **** {
- 131:Glider-Core/stepper_driver.c ****     int32_t relative_pulses = target_pos - g_stepper.current_pos;
- 132:Glider-Core/stepper_driver.c ****     Stepper_MoveRelative(relative_pulses, rpm);
- 133:Glider-Core/stepper_driver.c **** }
- 134:Glider-Core/stepper_driver.c **** 
- 135:Glider-Core/stepper_driver.c **** void Stepper_Stop(void) 
- 136:Glider-Core/stepper_driver.c **** {
- 181              		.loc 1 136 1 is_stmt 1 view -0
- 182              		.cfi_startproc
- 183              		@ args = 0, pretend = 0, frame = 0
- 184              		@ frame_needed = 0, uses_anonymous_args = 0
- 185 0000 10B5     		push	{r4, lr}
- 186              	.LCFI1:
- 187              		.cfi_def_cfa_offset 8
- 188              		.cfi_offset 4, -8
- 189              		.cfi_offset 14, -4
- 137:Glider-Core/stepper_driver.c ****     __HAL_TIM_DISABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
- 190              		.loc 1 137 5 view .LVU40
- 191 0002 0A4C     		ldr	r4, .L17
- 192 0004 2268     		ldr	r2, [r4]
- 193 0006 D368     		ldr	r3, [r2, #12]
- 194 0008 23F00103 		bic	r3, r3, #1
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 7
+ 134              		.loc 1 103 9 is_stmt 1 view .LVU37
+ 103:Glider-Core/stepper_driver.c ****     }
+ 135              		.loc 1 103 16 is_stmt 0 view .LVU38
+ 136 002e FFF7FEFF 		bl	Stepper_ClampSignedRpm
+ 137              	.LVL12:
+ 103:Glider-Core/stepper_driver.c ****     }
+ 138              		.loc 1 103 16 view .LVU39
+ 139 0032 EDE7     		b	.L7
+ 140              	.LVL13:
+ 141              	.L17:
+ 103:Glider-Core/stepper_driver.c ****     }
+ 142              		.loc 1 103 16 view .LVU40
+ 143              	.LBE2:
+ 144              	.LBB3:
+ 108:Glider-Core/stepper_driver.c ****         uint32_t den = threshold_low - min_v;
+ 145              		.loc 1 108 9 is_stmt 1 view .LVU41
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 6
 
 
- 195 000c D360     		str	r3, [r2, #12]
- 138:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Stop(STEPPER_TIM, STEPPER_TIM_CH);
- 196              		.loc 1 138 5 view .LVU41
- 197 000e 0421     		movs	r1, #4
- 198 0010 2046     		mov	r0, r4
- 199 0012 FFF7FEFF 		bl	HAL_TIM_PWM_Stop
- 200              	.LVL14:
- 139:Glider-Core/stepper_driver.c ****     HAL_TIM_Base_Stop(STEPPER_TIM);
- 201              		.loc 1 139 5 view .LVU42
- 202 0016 2046     		mov	r0, r4
- 203 0018 FFF7FEFF 		bl	HAL_TIM_Base_Stop
- 204              	.LVL15:
- 140:Glider-Core/stepper_driver.c ****     __HAL_TIM_SET_COUNTER(STEPPER_TIM, 0); // 清零计数值，防止下一次启动存在死区�
- 205              		.loc 1 140 5 view .LVU43
- 206 001c 2268     		ldr	r2, [r4]
- 207 001e 0023     		movs	r3, #0
- 208 0020 5362     		str	r3, [r2, #36]
- 141:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
- 209              		.loc 1 141 5 view .LVU44
- 210              		.loc 1 141 26 is_stmt 0 view .LVU45
- 211 0022 034A     		ldr	r2, .L17+4
- 212 0024 1373     		strb	r3, [r2, #12]
- 142:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
- 213              		.loc 1 142 5 is_stmt 1 view .LVU46
- 214              		.loc 1 142 32 is_stmt 0 view .LVU47
- 215 0026 9360     		str	r3, [r2, #8]
- 143:Glider-Core/stepper_driver.c **** }
- 216              		.loc 1 143 1 view .LVU48
- 217 0028 10BD     		pop	{r4, pc}
- 218              	.L18:
- 219 002a 00BF     		.align	2
- 220              	.L17:
- 221 002c 00000000 		.word	htim1
- 222 0030 00000000 		.word	g_stepper
- 223              		.cfi_endproc
- 224              	.LFE343:
- 226              		.section	.text.Stepper_MoveRelative,"ax",%progbits
- 227              		.align	1
- 228              		.global	Stepper_MoveRelative
- 229              		.syntax unified
- 230              		.thumb
- 231              		.thumb_func
- 233              	Stepper_MoveRelative:
- 234              	.LVL16:
- 235              	.LFB341:
-  87:Glider-Core/stepper_driver.c ****     if (pulses == 0 || rpm == 0) return;
- 236              		.loc 1 87 1 is_stmt 1 view -0
- 237              		.cfi_startproc
- 238              		@ args = 0, pretend = 0, frame = 8
- 239              		@ frame_needed = 0, uses_anonymous_args = 0
-  88:Glider-Core/stepper_driver.c ****     
- 240              		.loc 1 88 5 view .LVU50
-  88:Glider-Core/stepper_driver.c ****     
- 241              		.loc 1 88 8 is_stmt 0 view .LVU51
- 242 0000 0029     		cmp	r1, #0
- 243 0002 18BF     		it	ne
- 244 0004 0028     		cmpne	r0, #0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 8
+ 108:Glider-Core/stepper_driver.c ****         uint32_t den = threshold_low - min_v;
+ 146              		.loc 1 108 18 is_stmt 0 view .LVU42
+ 147 0034 C0F57670 		rsb	r0, r0, #984
+ 148              	.LVL14:
+ 109:Glider-Core/stepper_driver.c ****         uint32_t rpm = 0U;
+ 149              		.loc 1 109 9 is_stmt 1 view .LVU43
+ 110:Glider-Core/stepper_driver.c **** 
+ 150              		.loc 1 110 9 view .LVU44
+ 112:Glider-Core/stepper_driver.c ****         {
+ 151              		.loc 1 112 9 view .LVU45
+ 114:Glider-Core/stepper_driver.c ****         }
+ 152              		.loc 1 114 13 view .LVU46
+ 114:Glider-Core/stepper_driver.c ****         }
+ 153              		.loc 1 114 24 is_stmt 0 view .LVU47
+ 154 0038 4FF44873 		mov	r3, #800
+ 155 003c 03FB00F0 		mul	r0, r3, r0
+ 156              	.LVL15:
+ 114:Glider-Core/stepper_driver.c ****         }
+ 157              		.loc 1 114 17 view .LVU48
+ 158 0040 064B     		ldr	r3, .L18+4
+ 159 0042 A3FB0030 		umull	r3, r0, r3, r0
+ 160 0046 400A     		lsrs	r0, r0, #9
+ 161              	.LVL16:
+ 116:Glider-Core/stepper_driver.c ****         {
+ 162              		.loc 1 116 9 is_stmt 1 view .LVU49
+ 116:Glider-Core/stepper_driver.c ****         {
+ 163              		.loc 1 116 22 is_stmt 0 view .LVU50
+ 164 0048 431E     		subs	r3, r0, #1
+ 116:Glider-Core/stepper_driver.c ****         {
+ 165              		.loc 1 116 12 view .LVU51
+ 166 004a 1C2B     		cmp	r3, #28
+ 167 004c 00D8     		bhi	.L11
+ 118:Glider-Core/stepper_driver.c ****         }
+ 168              		.loc 1 118 17 view .LVU52
+ 169 004e 1E20     		movs	r0, #30
+ 170              	.LVL17:
+ 171              	.L11:
+ 120:Glider-Core/stepper_driver.c ****     }
+ 172              		.loc 1 120 9 is_stmt 1 view .LVU53
+ 120:Glider-Core/stepper_driver.c ****     }
+ 173              		.loc 1 120 16 is_stmt 0 view .LVU54
+ 174 0050 4042     		rsbs	r0, r0, #0
+ 175              	.LVL18:
+ 120:Glider-Core/stepper_driver.c ****     }
+ 176              		.loc 1 120 16 view .LVU55
+ 177 0052 FFF7FEFF 		bl	Stepper_ClampSignedRpm
+ 178              	.LVL19:
+ 120:Glider-Core/stepper_driver.c ****     }
+ 179              		.loc 1 120 16 view .LVU56
+ 180 0056 DBE7     		b	.L7
+ 181              	.L19:
+ 182              		.align	2
+ 183              	.L18:
+ 184 0058 31BE68B0 		.word	-1335312847
+ 185 005c 030B2CB0 		.word	-1339290877
+ 186              	.LBE3:
+ 187              		.cfi_endproc
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 7
 
 
- 245 0006 00D1     		bne	.L30
- 246 0008 7047     		bx	lr
- 247              	.L30:
-  87:Glider-Core/stepper_driver.c ****     if (pulses == 0 || rpm == 0) return;
- 248              		.loc 1 87 1 view .LVU52
- 249 000a 70B5     		push	{r4, r5, r6, lr}
- 250              	.LCFI2:
- 251              		.cfi_def_cfa_offset 16
- 252              		.cfi_offset 4, -16
- 253              		.cfi_offset 5, -12
- 254              		.cfi_offset 6, -8
- 255              		.cfi_offset 14, -4
- 256 000c 82B0     		sub	sp, sp, #8
- 257              	.LCFI3:
- 258              		.cfi_def_cfa_offset 24
- 259 000e 0446     		mov	r4, r0
- 260 0010 0D46     		mov	r5, r1
-  90:Glider-Core/stepper_driver.c ****     
- 261              		.loc 1 90 5 is_stmt 1 view .LVU53
- 262 0012 FFF7FEFF 		bl	Stepper_Stop
- 263              	.LVL17:
-  92:Glider-Core/stepper_driver.c ****     {
- 264              		.loc 1 92 5 view .LVU54
-  92:Glider-Core/stepper_driver.c ****     {
- 265              		.loc 1 92 8 is_stmt 0 view .LVU55
- 266 0016 002C     		cmp	r4, #0
- 267 0018 1ADD     		ble	.L21
-  94:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_SET);
- 268              		.loc 1 94 9 is_stmt 1 view .LVU56
-  94:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_SET);
- 269              		.loc 1 94 29 is_stmt 0 view .LVU57
- 270 001a 234E     		ldr	r6, .L31
- 271 001c 0122     		movs	r2, #1
- 272 001e 7273     		strb	r2, [r6, #13]
-  95:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)pulses;
- 273              		.loc 1 95 9 is_stmt 1 view .LVU58
- 274 0020 4FF40051 		mov	r1, #8192
- 275 0024 2148     		ldr	r0, .L31+4
- 276 0026 FFF7FEFF 		bl	HAL_GPIO_WritePin
- 277              	.LVL18:
-  96:Glider-Core/stepper_driver.c ****     } 
- 278              		.loc 1 96 9 view .LVU59
-  96:Glider-Core/stepper_driver.c ****     } 
- 279              		.loc 1 96 32 is_stmt 0 view .LVU60
- 280 002a F461     		str	r4, [r6, #28]
- 281              	.L22:
- 105:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
- 282              		.loc 1 105 5 is_stmt 1 view .LVU61
- 105:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
- 283              		.loc 1 105 43 is_stmt 0 view .LVU62
- 284 002c 1E4B     		ldr	r3, .L31
- 285 002e DA69     		ldr	r2, [r3, #28]
- 105:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
- 286              		.loc 1 105 32 view .LVU63
- 287 0030 9A60     		str	r2, [r3, #8]
- 106:Glider-Core/stepper_driver.c ****     
- 288              		.loc 1 106 5 is_stmt 1 view .LVU64
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 9
+ 188              	.LFE340:
+ 190              		.section	.text.Stepper_UpdateARR,"ax",%progbits
+ 191              		.align	1
+ 192              		.syntax unified
+ 193              		.thumb
+ 194              		.thumb_func
+ 196              	Stepper_UpdateARR:
+ 197              	.LVL20:
+ 198              	.LFB343:
+ 125:Glider-Core/stepper_driver.c **** 
+ 126:Glider-Core/stepper_driver.c **** static void Stepper_ApplySignedRpmCommand(int32_t signed_rpm)
+ 127:Glider-Core/stepper_driver.c **** {
+ 128:Glider-Core/stepper_driver.c ****     int8_t desired_dir = 0;
+ 129:Glider-Core/stepper_driver.c ****     uint16_t abs_rpm = 0U;
+ 130:Glider-Core/stepper_driver.c **** 
+ 131:Glider-Core/stepper_driver.c ****     signed_rpm = Stepper_ClampSignedRpm(signed_rpm);
+ 132:Glider-Core/stepper_driver.c **** 
+ 133:Glider-Core/stepper_driver.c ****     if (signed_rpm > 0)
+ 134:Glider-Core/stepper_driver.c ****     {
+ 135:Glider-Core/stepper_driver.c ****         desired_dir = 1;
+ 136:Glider-Core/stepper_driver.c ****         abs_rpm = (uint16_t)signed_rpm;
+ 137:Glider-Core/stepper_driver.c ****     }
+ 138:Glider-Core/stepper_driver.c ****     else if (signed_rpm < 0)
+ 139:Glider-Core/stepper_driver.c ****     {
+ 140:Glider-Core/stepper_driver.c ****         desired_dir = -1;
+ 141:Glider-Core/stepper_driver.c ****         abs_rpm = (uint16_t)(-signed_rpm);
+ 142:Glider-Core/stepper_driver.c ****     }
+ 143:Glider-Core/stepper_driver.c **** 
+ 144:Glider-Core/stepper_driver.c ****     if (desired_dir == 0)
+ 145:Glider-Core/stepper_driver.c ****     {
+ 146:Glider-Core/stepper_driver.c ****         if (Stepper_IsRunning() != 0U)
+ 147:Glider-Core/stepper_driver.c ****         {
+ 148:Glider-Core/stepper_driver.c ****             Stepper_Stop();
+ 149:Glider-Core/stepper_driver.c ****         }
+ 150:Glider-Core/stepper_driver.c ****         g_stepper.target_rpm = 0U;
+ 151:Glider-Core/stepper_driver.c ****         return;
+ 152:Glider-Core/stepper_driver.c ****     }
+ 153:Glider-Core/stepper_driver.c **** 
+ 154:Glider-Core/stepper_driver.c ****     if (abs_rpm < STEPPER_START_RPM)
+ 155:Glider-Core/stepper_driver.c ****     {
+ 156:Glider-Core/stepper_driver.c ****         abs_rpm = STEPPER_START_RPM;
+ 157:Glider-Core/stepper_driver.c ****     }
+ 158:Glider-Core/stepper_driver.c ****     if (abs_rpm > STEPPER_TEST_MAX_RPM)
+ 159:Glider-Core/stepper_driver.c ****     {
+ 160:Glider-Core/stepper_driver.c ****         abs_rpm = STEPPER_TEST_MAX_RPM;
+ 161:Glider-Core/stepper_driver.c ****     }
+ 162:Glider-Core/stepper_driver.c **** 
+ 163:Glider-Core/stepper_driver.c ****     if (g_stepper.is_running == 0U)
+ 164:Glider-Core/stepper_driver.c ****     {
+ 165:Glider-Core/stepper_driver.c ****         Stepper_MoveRelative((desired_dir > 0) ? STEPPER_TEST_CONTINUOUS_PULSES : -STEPPER_TEST_CON
+ 166:Glider-Core/stepper_driver.c ****         return;
+ 167:Glider-Core/stepper_driver.c ****     }
+ 168:Glider-Core/stepper_driver.c **** 
+ 169:Glider-Core/stepper_driver.c ****     if (g_stepper.direction != desired_dir)
+ 170:Glider-Core/stepper_driver.c ****     {
+ 171:Glider-Core/stepper_driver.c ****         Stepper_Stop();
+ 172:Glider-Core/stepper_driver.c ****         Stepper_MoveRelative((desired_dir > 0) ? STEPPER_TEST_CONTINUOUS_PULSES : -STEPPER_TEST_CON
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 8
 
 
- 106:Glider-Core/stepper_driver.c ****     
- 289              		.loc 1 106 26 is_stmt 0 view .LVU65
- 290 0032 0022     		movs	r2, #0
- 291 0034 9A61     		str	r2, [r3, #24]
- 109:Glider-Core/stepper_driver.c ****     if (g_stepper.target_rpm < STEPPER_START_RPM) g_stepper.target_rpm = STEPPER_START_RPM;
- 292              		.loc 1 109 5 is_stmt 1 view .LVU66
- 109:Glider-Core/stepper_driver.c ****     if (g_stepper.target_rpm < STEPPER_START_RPM) g_stepper.target_rpm = STEPPER_START_RPM;
- 293              		.loc 1 109 26 is_stmt 0 view .LVU67
- 294 0036 1D61     		str	r5, [r3, #16]
- 110:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
- 295              		.loc 1 110 5 is_stmt 1 view .LVU68
- 110:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
- 296              		.loc 1 110 18 is_stmt 0 view .LVU69
- 297 0038 1B69     		ldr	r3, [r3, #16]
- 110:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
- 298              		.loc 1 110 8 view .LVU70
- 299 003a 1D2B     		cmp	r3, #29
- 300 003c 02D8     		bhi	.L23
- 110:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
- 301              		.loc 1 110 51 is_stmt 1 discriminator 1 view .LVU71
- 110:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
- 302              		.loc 1 110 72 is_stmt 0 discriminator 1 view .LVU72
- 303 003e 1A4B     		ldr	r3, .L31
- 304 0040 1E22     		movs	r2, #30
- 305 0042 1A61     		str	r2, [r3, #16]
- 306              	.L23:
- 111:Glider-Core/stepper_driver.c **** 
- 307              		.loc 1 111 5 is_stmt 1 view .LVU73
- 111:Glider-Core/stepper_driver.c **** 
- 308              		.loc 1 111 27 is_stmt 0 view .LVU74
- 309 0044 184B     		ldr	r3, .L31
- 310 0046 1E22     		movs	r2, #30
- 311 0048 5A61     		str	r2, [r3, #20]
- 115:Glider-Core/stepper_driver.c ****         __NOP();
- 312              		.loc 1 115 5 is_stmt 1 view .LVU75
- 313              	.LBB2:
- 115:Glider-Core/stepper_driver.c ****         __NOP();
- 314              		.loc 1 115 10 view .LVU76
- 115:Glider-Core/stepper_driver.c ****         __NOP();
- 315              		.loc 1 115 28 is_stmt 0 view .LVU77
- 316 004a 0023     		movs	r3, #0
- 317 004c 0193     		str	r3, [sp, #4]
- 115:Glider-Core/stepper_driver.c ****         __NOP();
- 318              		.loc 1 115 5 view .LVU78
- 319 004e 0FE0     		b	.L24
- 320              	.L21:
- 321              	.LBE2:
- 100:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_RESET);
- 322              		.loc 1 100 9 is_stmt 1 view .LVU79
- 100:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_RESET);
- 323              		.loc 1 100 29 is_stmt 0 view .LVU80
- 324 0050 154E     		ldr	r6, .L31
- 325 0052 FF23     		movs	r3, #255
- 326 0054 7373     		strb	r3, [r6, #13]
- 101:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)(-pulses);
- 327              		.loc 1 101 9 is_stmt 1 view .LVU81
- 328 0056 0022     		movs	r2, #0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 10
+ 173:Glider-Core/stepper_driver.c ****         return;
+ 174:Glider-Core/stepper_driver.c ****     }
+ 175:Glider-Core/stepper_driver.c **** 
+ 176:Glider-Core/stepper_driver.c ****     g_stepper.target_rpm = abs_rpm;
+ 177:Glider-Core/stepper_driver.c **** }
+ 178:Glider-Core/stepper_driver.c **** 
+ 179:Glider-Core/stepper_driver.c **** void Stepper_Init(void) 
+ 180:Glider-Core/stepper_driver.c **** {
+ 181:Glider-Core/stepper_driver.c ****     g_stepper.current_pos = 0;
+ 182:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = 0;
+ 183:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
+ 184:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
+ 185:Glider-Core/stepper_driver.c **** 
+ 186:Glider-Core/stepper_driver.c ****     /* 初始化负极端恒定为低电平，模拟 GND */
+ 187:Glider-Core/stepper_driver.c ****     HAL_GPIO_WritePin(STEPPER_PUL_N_PORT, STEPPER_PUL_N_PIN, GPIO_PIN_RESET);
+ 188:Glider-Core/stepper_driver.c ****     HAL_GPIO_WritePin(STEPPER_DIR_N_PORT, STEPPER_DIR_N_PIN, GPIO_PIN_RESET);
+ 189:Glider-Core/stepper_driver.c **** 
+ 190:Glider-Core/stepper_driver.c ****     __HAL_TIM_DISABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
+ 191:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Stop(STEPPER_TIM, STEPPER_TIM_CH);
+ 192:Glider-Core/stepper_driver.c **** }
+ 193:Glider-Core/stepper_driver.c **** 
+ 194:Glider-Core/stepper_driver.c **** /* 内部辅助函数：根据转速实时设置定时器频率以实现加减速 (直接写寄存�
+ 195:Glider-Core/stepper_driver.c **** static void Stepper_UpdateARR(uint32_t rpm) 
+ 196:Glider-Core/stepper_driver.c **** {
+ 199              		.loc 1 196 1 is_stmt 1 view -0
+ 200              		.cfi_startproc
+ 201              		@ args = 0, pretend = 0, frame = 0
+ 202              		@ frame_needed = 0, uses_anonymous_args = 0
+ 203              		@ link register save eliminated.
+ 197:Glider-Core/stepper_driver.c ****     if (rpm == 0) rpm = 1;
+ 204              		.loc 1 197 5 view .LVU58
+ 205              		.loc 1 197 8 is_stmt 0 view .LVU59
+ 206 0000 0346     		mov	r3, r0
+ 207 0002 00B9     		cbnz	r0, .L21
+ 208              		.loc 1 197 23 view .LVU60
+ 209 0004 0123     		movs	r3, #1
+ 210              	.L21:
+ 211              	.LVL21:
+ 198:Glider-Core/stepper_driver.c ****     
+ 199:Glider-Core/stepper_driver.c ****     /* 算出每秒需要发多少个脉冲 */
+ 200:Glider-Core/stepper_driver.c ****     uint32_t pulses_per_sec = rpm * STEPPER_PULSES_PER_REV / 60U;
+ 212              		.loc 1 200 5 is_stmt 1 view .LVU61
+ 213              		.loc 1 200 35 is_stmt 0 view .LVU62
+ 214 0006 4FF4C862 		mov	r2, #1600
+ 215 000a 02FB03F3 		mul	r3, r2, r3
+ 216              	.LVL22:
+ 217              		.loc 1 200 14 view .LVU63
+ 218 000e 0A4A     		ldr	r2, .L28
+ 219 0010 A2FB0312 		umull	r1, r2, r2, r3
+ 220 0014 5209     		lsrs	r2, r2, #5
+ 221              	.LVL23:
+ 201:Glider-Core/stepper_driver.c ****     if (pulses_per_sec == 0) pulses_per_sec = 1;
+ 222              		.loc 1 201 5 is_stmt 1 view .LVU64
+ 223              		.loc 1 201 8 is_stmt 0 view .LVU65
+ 224 0016 3B2B     		cmp	r3, #59
+ 225 0018 00D8     		bhi	.L22
+ 226              		.loc 1 201 45 view .LVU66
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 9
 
 
- 329 0058 4FF40051 		mov	r1, #8192
- 330 005c 1348     		ldr	r0, .L31+4
- 331 005e FFF7FEFF 		bl	HAL_GPIO_WritePin
- 332              	.LVL19:
- 102:Glider-Core/stepper_driver.c ****     }
- 333              		.loc 1 102 9 view .LVU82
- 102:Glider-Core/stepper_driver.c ****     }
- 334              		.loc 1 102 45 is_stmt 0 view .LVU83
- 335 0062 6342     		rsbs	r3, r4, #0
- 102:Glider-Core/stepper_driver.c ****     }
- 336              		.loc 1 102 32 view .LVU84
- 337 0064 F361     		str	r3, [r6, #28]
- 338 0066 E1E7     		b	.L22
- 339              	.L25:
- 340              	.LBB3:
- 116:Glider-Core/stepper_driver.c ****     }
- 341              		.loc 1 116 9 is_stmt 1 discriminator 3 view .LVU85
- 342              		.syntax unified
- 343              	@ 116 "Glider-Core/stepper_driver.c" 1
- 344 0068 00BF     		nop
- 345              	@ 0 "" 2
- 115:Glider-Core/stepper_driver.c ****         __NOP();
- 346              		.loc 1 115 71 discriminator 3 view .LVU86
- 347              		.thumb
- 348              		.syntax unified
- 349 006a 019B     		ldr	r3, [sp, #4]
- 350 006c 0133     		adds	r3, r3, #1
- 351 006e 0193     		str	r3, [sp, #4]
- 352              	.L24:
- 115:Glider-Core/stepper_driver.c ****         __NOP();
- 353              		.loc 1 115 53 discriminator 1 view .LVU87
- 354 0070 019A     		ldr	r2, [sp, #4]
- 355 0072 44F61F63 		movw	r3, #19999
- 356 0076 9A42     		cmp	r2, r3
- 357 0078 F6D9     		bls	.L25
- 358              	.LBE3:
- 119:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
- 359              		.loc 1 119 5 view .LVU88
- 119:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
- 360              		.loc 1 119 37 is_stmt 0 view .LVU89
- 361 007a 0B4B     		ldr	r3, .L31
- 362 007c 1A68     		ldr	r2, [r3]
- 119:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
- 363              		.loc 1 119 50 view .LVU90
- 364 007e 2244     		add	r2, r2, r4
- 119:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
- 365              		.loc 1 119 26 view .LVU91
- 366 0080 5A60     		str	r2, [r3, #4]
- 120:Glider-Core/stepper_driver.c **** 
- 367              		.loc 1 120 5 is_stmt 1 view .LVU92
- 120:Glider-Core/stepper_driver.c **** 
- 368              		.loc 1 120 26 is_stmt 0 view .LVU93
- 369 0082 0122     		movs	r2, #1
- 370 0084 1A73     		strb	r2, [r3, #12]
- 122:Glider-Core/stepper_driver.c ****     
- 371              		.loc 1 122 5 is_stmt 1 view .LVU94
- 122:Glider-Core/stepper_driver.c ****     
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 11
-
-
- 372              		.loc 1 122 32 is_stmt 0 view .LVU95
- 373 0086 5869     		ldr	r0, [r3, #20]
- 122:Glider-Core/stepper_driver.c ****     
- 374              		.loc 1 122 5 view .LVU96
- 375 0088 FFF7FEFF 		bl	Stepper_UpdateARR
- 376              	.LVL20:
- 124:Glider-Core/stepper_driver.c ****     __HAL_TIM_ENABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
- 377              		.loc 1 124 5 is_stmt 1 view .LVU97
- 378 008c 0848     		ldr	r0, .L31+8
- 379 008e 0368     		ldr	r3, [r0]
- 380 0090 6FF00102 		mvn	r2, #1
- 381 0094 1A61     		str	r2, [r3, #16]
- 125:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Start(STEPPER_TIM, STEPPER_TIM_CH);
- 382              		.loc 1 125 5 view .LVU98
- 383 0096 DA68     		ldr	r2, [r3, #12]
- 384 0098 42F00102 		orr	r2, r2, #1
- 385 009c DA60     		str	r2, [r3, #12]
- 126:Glider-Core/stepper_driver.c **** }
- 386              		.loc 1 126 5 view .LVU99
- 387 009e 0421     		movs	r1, #4
- 388 00a0 FFF7FEFF 		bl	HAL_TIM_PWM_Start
- 389              	.LVL21:
- 127:Glider-Core/stepper_driver.c **** 
- 390              		.loc 1 127 1 is_stmt 0 view .LVU100
- 391 00a4 02B0     		add	sp, sp, #8
- 392              	.LCFI4:
- 393              		.cfi_def_cfa_offset 16
- 394              		@ sp needed
- 395 00a6 70BD     		pop	{r4, r5, r6, pc}
- 396              	.LVL22:
- 397              	.L32:
- 127:Glider-Core/stepper_driver.c **** 
- 398              		.loc 1 127 1 view .LVU101
- 399              		.align	2
- 400              	.L31:
- 401 00a8 00000000 		.word	g_stepper
- 402 00ac 00100258 		.word	1476530176
- 403 00b0 00000000 		.word	htim1
- 404              		.cfi_endproc
- 405              	.LFE341:
- 407              		.section	.text.Stepper_MoveAbsolute,"ax",%progbits
- 408              		.align	1
- 409              		.global	Stepper_MoveAbsolute
- 410              		.syntax unified
- 411              		.thumb
- 412              		.thumb_func
- 414              	Stepper_MoveAbsolute:
- 415              	.LVL23:
- 416              	.LFB342:
- 130:Glider-Core/stepper_driver.c ****     int32_t relative_pulses = target_pos - g_stepper.current_pos;
- 417              		.loc 1 130 1 is_stmt 1 view -0
- 418              		.cfi_startproc
- 419              		@ args = 0, pretend = 0, frame = 0
- 420              		@ frame_needed = 0, uses_anonymous_args = 0
- 130:Glider-Core/stepper_driver.c ****     int32_t relative_pulses = target_pos - g_stepper.current_pos;
- 421              		.loc 1 130 1 is_stmt 0 view .LVU103
- 422 0000 08B5     		push	{r3, lr}
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 12
-
-
- 423              	.LCFI5:
- 424              		.cfi_def_cfa_offset 8
- 425              		.cfi_offset 3, -8
- 426              		.cfi_offset 14, -4
- 131:Glider-Core/stepper_driver.c ****     Stepper_MoveRelative(relative_pulses, rpm);
- 427              		.loc 1 131 5 is_stmt 1 view .LVU104
- 131:Glider-Core/stepper_driver.c ****     Stepper_MoveRelative(relative_pulses, rpm);
- 428              		.loc 1 131 53 is_stmt 0 view .LVU105
- 429 0002 034B     		ldr	r3, .L35
- 430 0004 1B68     		ldr	r3, [r3]
- 431              	.LVL24:
- 132:Glider-Core/stepper_driver.c **** }
- 432              		.loc 1 132 5 is_stmt 1 view .LVU106
- 433 0006 C01A     		subs	r0, r0, r3
- 434              	.LVL25:
- 132:Glider-Core/stepper_driver.c **** }
- 435              		.loc 1 132 5 is_stmt 0 view .LVU107
- 436 0008 FFF7FEFF 		bl	Stepper_MoveRelative
- 437              	.LVL26:
- 133:Glider-Core/stepper_driver.c **** 
- 438              		.loc 1 133 1 view .LVU108
- 439 000c 08BD     		pop	{r3, pc}
- 440              	.L36:
- 441 000e 00BF     		.align	2
- 442              	.L35:
- 443 0010 00000000 		.word	g_stepper
- 444              		.cfi_endproc
- 445              	.LFE342:
- 447              		.section	.text.Stepper_IsRunning,"ax",%progbits
- 448              		.align	1
- 449              		.global	Stepper_IsRunning
- 450              		.syntax unified
- 451              		.thumb
- 452              		.thumb_func
- 454              	Stepper_IsRunning:
- 455              	.LFB344:
- 144:Glider-Core/stepper_driver.c **** 
- 145:Glider-Core/stepper_driver.c **** uint8_t Stepper_IsRunning(void) 
- 146:Glider-Core/stepper_driver.c **** {
- 456              		.loc 1 146 1 is_stmt 1 view -0
- 457              		.cfi_startproc
- 458              		@ args = 0, pretend = 0, frame = 0
- 459              		@ frame_needed = 0, uses_anonymous_args = 0
- 460              		@ link register save eliminated.
- 147:Glider-Core/stepper_driver.c ****     return g_stepper.is_running;
- 461              		.loc 1 147 5 view .LVU110
- 462              		.loc 1 147 21 is_stmt 0 view .LVU111
- 463 0000 014B     		ldr	r3, .L38
- 464 0002 187B     		ldrb	r0, [r3, #12]	@ zero_extendqisi2
- 148:Glider-Core/stepper_driver.c **** }
- 465              		.loc 1 148 1 view .LVU112
- 466 0004 7047     		bx	lr
- 467              	.L39:
- 468 0006 00BF     		.align	2
- 469              	.L38:
- 470 0008 00000000 		.word	g_stepper
- 471              		.cfi_endproc
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 13
-
-
- 472              	.LFE344:
- 474              		.section	.text.Stepper_GetCurrentPosition,"ax",%progbits
- 475              		.align	1
- 476              		.global	Stepper_GetCurrentPosition
- 477              		.syntax unified
- 478              		.thumb
- 479              		.thumb_func
- 481              	Stepper_GetCurrentPosition:
- 482              	.LFB345:
- 149:Glider-Core/stepper_driver.c **** 
- 150:Glider-Core/stepper_driver.c **** int32_t Stepper_GetCurrentPosition(void) 
- 151:Glider-Core/stepper_driver.c **** {
- 483              		.loc 1 151 1 is_stmt 1 view -0
- 484              		.cfi_startproc
- 485              		@ args = 0, pretend = 0, frame = 0
- 486              		@ frame_needed = 0, uses_anonymous_args = 0
- 487              		@ link register save eliminated.
- 152:Glider-Core/stepper_driver.c ****     return g_stepper.current_pos;
- 488              		.loc 1 152 5 view .LVU114
- 489              		.loc 1 152 21 is_stmt 0 view .LVU115
- 490 0000 014B     		ldr	r3, .L41
- 491 0002 1868     		ldr	r0, [r3]
- 153:Glider-Core/stepper_driver.c **** }
- 492              		.loc 1 153 1 view .LVU116
- 493 0004 7047     		bx	lr
- 494              	.L42:
- 495 0006 00BF     		.align	2
- 496              	.L41:
- 497 0008 00000000 		.word	g_stepper
- 498              		.cfi_endproc
- 499              	.LFE345:
- 501              		.section	.text.Stepper_TIM_IRQHandler,"ax",%progbits
- 502              		.align	1
- 503              		.global	Stepper_TIM_IRQHandler
- 504              		.syntax unified
- 505              		.thumb
- 506              		.thumb_func
- 508              	Stepper_TIM_IRQHandler:
- 509              	.LFB346:
- 154:Glider-Core/stepper_driver.c **** 
- 155:Glider-Core/stepper_driver.c **** void Stepper_TIM_IRQHandler(void) 
- 156:Glider-Core/stepper_driver.c **** {
- 510              		.loc 1 156 1 is_stmt 1 view -0
- 511              		.cfi_startproc
- 512              		@ args = 0, pretend = 0, frame = 0
- 513              		@ frame_needed = 0, uses_anonymous_args = 0
- 514 0000 08B5     		push	{r3, lr}
- 515              	.LCFI6:
- 516              		.cfi_def_cfa_offset 8
- 517              		.cfi_offset 3, -8
- 518              		.cfi_offset 14, -4
- 157:Glider-Core/stepper_driver.c ****     if (g_stepper.is_running != 0U) 
- 519              		.loc 1 157 5 view .LVU118
- 520              		.loc 1 157 18 is_stmt 0 view .LVU119
- 521 0002 354B     		ldr	r3, .L56
- 522 0004 1B7B     		ldrb	r3, [r3, #12]	@ zero_extendqisi2
- 523              		.loc 1 157 8 view .LVU120
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 14
-
-
- 524 0006 002B     		cmp	r3, #0
- 525 0008 65D0     		beq	.L43
- 158:Glider-Core/stepper_driver.c ****     {
- 159:Glider-Core/stepper_driver.c ****         if (g_stepper.pulses_remaining > 0U) 
- 526              		.loc 1 159 9 is_stmt 1 view .LVU121
- 527              		.loc 1 159 22 is_stmt 0 view .LVU122
- 528 000a 334B     		ldr	r3, .L56
- 529 000c 9B68     		ldr	r3, [r3, #8]
- 530              		.loc 1 159 12 view .LVU123
- 531 000e 002B     		cmp	r3, #0
- 532 0010 5FD0     		beq	.L45
- 160:Glider-Core/stepper_driver.c ****         {
- 161:Glider-Core/stepper_driver.c ****             g_stepper.step_count++;
- 533              		.loc 1 161 13 is_stmt 1 view .LVU124
- 534              		.loc 1 161 22 is_stmt 0 view .LVU125
- 535 0012 314B     		ldr	r3, .L56
- 536 0014 9A69     		ldr	r2, [r3, #24]
- 537              		.loc 1 161 33 view .LVU126
- 538 0016 0132     		adds	r2, r2, #1
- 539 0018 9A61     		str	r2, [r3, #24]
- 162:Glider-Core/stepper_driver.c ****             g_stepper.pulses_remaining--;
- 540              		.loc 1 162 13 is_stmt 1 view .LVU127
- 541              		.loc 1 162 22 is_stmt 0 view .LVU128
- 542 001a 9A68     		ldr	r2, [r3, #8]
- 543              		.loc 1 162 39 view .LVU129
- 544 001c 013A     		subs	r2, r2, #1
- 545 001e 9A60     		str	r2, [r3, #8]
- 163:Glider-Core/stepper_driver.c ****             g_stepper.current_pos += g_stepper.direction;
- 546              		.loc 1 163 13 is_stmt 1 view .LVU130
- 547              		.loc 1 163 47 is_stmt 0 view .LVU131
- 548 0020 5A7B     		ldrb	r2, [r3, #13]	@ zero_extendqisi2
- 549              		.loc 1 163 22 view .LVU132
- 550 0022 1968     		ldr	r1, [r3]
- 551              		.loc 1 163 35 view .LVU133
- 552 0024 41FA82F2 		sxtab	r2, r1, r2
- 553 0028 1A60     		str	r2, [r3]
- 164:Glider-Core/stepper_driver.c ****             
- 165:Glider-Core/stepper_driver.c ****             if (g_stepper.pulses_remaining == 0U) 
- 554              		.loc 1 165 13 is_stmt 1 view .LVU134
- 555              		.loc 1 165 26 is_stmt 0 view .LVU135
- 556 002a 9B68     		ldr	r3, [r3, #8]
- 557              		.loc 1 165 16 view .LVU136
- 558 002c F3B1     		cbz	r3, .L54
- 559              	.LBB4:
- 166:Glider-Core/stepper_driver.c ****             {
- 167:Glider-Core/stepper_driver.c ****                 Stepper_Stop();
- 168:Glider-Core/stepper_driver.c ****             }
- 169:Glider-Core/stepper_driver.c ****             else
- 170:Glider-Core/stepper_driver.c ****             {
- 171:Glider-Core/stepper_driver.c ****                 /* =================平滑加减速(S型/梯形曲线逼近)================ */
- 172:Glider-Core/stepper_driver.c ****                 uint32_t calc_rpm = g_stepper.target_rpm;
- 560              		.loc 1 172 17 is_stmt 1 view .LVU137
- 561              		.loc 1 172 26 is_stmt 0 view .LVU138
- 562 002e 2A4B     		ldr	r3, .L56
- 563 0030 1869     		ldr	r0, [r3, #16]
- 564              	.LVL27:
- 173:Glider-Core/stepper_driver.c ****                 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 15
-
-
- 174:Glider-Core/stepper_driver.c ****                 if (g_stepper.total_pulses > STEPPER_ACCEL_PULSES * 2) {
- 565              		.loc 1 174 17 is_stmt 1 view .LVU139
- 566              		.loc 1 174 30 is_stmt 0 view .LVU140
- 567 0032 DB69     		ldr	r3, [r3, #28]
- 568              		.loc 1 174 20 view .LVU141
- 569 0034 B3F5487F 		cmp	r3, #800
- 570 0038 2CD9     		bls	.L47
- 175:Glider-Core/stepper_driver.c ****                     /* 有足够的空间形成完整的梯形：起步加速 -> 匀速巡航 -> �
- 176:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < STEPPER_ACCEL_PULSES) {
- 571              		.loc 1 176 21 is_stmt 1 view .LVU142
- 572              		.loc 1 176 34 is_stmt 0 view .LVU143
- 573 003a 274B     		ldr	r3, .L56
- 574 003c 9B69     		ldr	r3, [r3, #24]
- 575              		.loc 1 176 24 view .LVU144
- 576 003e B3F5C87F 		cmp	r3, #400
- 577 0042 16D2     		bcs	.L48
- 177:Glider-Core/stepper_driver.c ****                         /* 1. 加速段：从最小起跑转速插值爬升到目标速度 */
- 178:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
- 578              		.loc 1 178 25 is_stmt 1 view .LVU145
- 579              		.loc 1 178 66 is_stmt 0 view .LVU146
- 580 0044 244B     		ldr	r3, .L56
- 581 0046 1869     		ldr	r0, [r3, #16]
- 582              		.loc 1 178 78 view .LVU147
- 583 0048 1E38     		subs	r0, r0, #30
- 584              	.LVL28:
- 585              		.loc 1 178 110 view .LVU148
- 586 004a 9B69     		ldr	r3, [r3, #24]
- 587              		.loc 1 178 99 view .LVU149
- 588 004c 03FB00F0 		mul	r0, r3, r0
- 589              		.loc 1 178 122 view .LVU150
- 590 0050 224B     		ldr	r3, .L56+4
- 591 0052 A3FB0030 		umull	r3, r0, r3, r0
- 592 0056 C009     		lsrs	r0, r0, #7
- 593              		.loc 1 178 34 view .LVU151
- 594 0058 1E30     		adds	r0, r0, #30
- 595              	.LVL29:
- 596              	.L49:
- 179:Glider-Core/stepper_driver.c ****                     } 
- 180:Glider-Core/stepper_driver.c ****                     else if (g_stepper.pulses_remaining <= STEPPER_ACCEL_PULSES) {
- 181:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
- 182:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
- 183:Glider-Core/stepper_driver.c ****                     }
- 184:Glider-Core/stepper_driver.c ****                     /* 2. 匀速段：啥也不做，维持 calc_rpm = target_rpm */
- 185:Glider-Core/stepper_driver.c ****                 } 
- 186:Glider-Core/stepper_driver.c ****                 else {
- 187:Glider-Core/stepper_driver.c ****                     /* 所设脉冲数太短不足以跑满加减速过程，只能退化为尖顶�
- 188:Glider-Core/stepper_driver.c ****                     uint32_t half = g_stepper.total_pulses / 2;
- 189:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
- 190:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
- 191:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
- 192:Glider-Core/stepper_driver.c ****                     } else {
- 193:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
- 194:Glider-Core/stepper_driver.c ****                     }
- 195:Glider-Core/stepper_driver.c ****                 }
- 196:Glider-Core/stepper_driver.c ****                 
- 197:Glider-Core/stepper_driver.c ****                 /* 为了优化 CPU 的运算及打断资源，只有侦测到速度变更才去查
- 198:Glider-Core/stepper_driver.c ****                 if (calc_rpm != g_stepper.current_rpm) {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 16
-
-
- 597              		.loc 1 198 17 is_stmt 1 view .LVU152
- 598              		.loc 1 198 42 is_stmt 0 view .LVU153
- 599 005a 1F4B     		ldr	r3, .L56
- 600 005c 5B69     		ldr	r3, [r3, #20]
- 601              		.loc 1 198 20 view .LVU154
- 602 005e 8342     		cmp	r3, r0
- 603 0060 39D0     		beq	.L43
- 199:Glider-Core/stepper_driver.c ****                     g_stepper.current_rpm = calc_rpm;
- 604              		.loc 1 199 21 is_stmt 1 view .LVU155
- 605              		.loc 1 199 43 is_stmt 0 view .LVU156
- 606 0062 1D4B     		ldr	r3, .L56
- 607 0064 5861     		str	r0, [r3, #20]
- 200:Glider-Core/stepper_driver.c ****                     Stepper_UpdateARR(calc_rpm);
- 608              		.loc 1 200 21 is_stmt 1 view .LVU157
- 609 0066 FFF7FEFF 		bl	Stepper_UpdateARR
- 610              	.LVL30:
- 611              		.loc 1 200 21 is_stmt 0 view .LVU158
- 612 006a 34E0     		b	.L43
- 613              	.LVL31:
- 614              	.L54:
- 615              		.loc 1 200 21 view .LVU159
- 616              	.LBE4:
- 167:Glider-Core/stepper_driver.c ****             }
- 617              		.loc 1 167 17 is_stmt 1 view .LVU160
- 618 006c FFF7FEFF 		bl	Stepper_Stop
- 619              	.LVL32:
- 620 0070 31E0     		b	.L43
- 621              	.LVL33:
- 622              	.L48:
- 623              	.LBB6:
- 180:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
- 624              		.loc 1 180 26 view .LVU161
- 180:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
- 625              		.loc 1 180 39 is_stmt 0 view .LVU162
- 626 0072 194B     		ldr	r3, .L56
- 627 0074 9B68     		ldr	r3, [r3, #8]
- 180:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
- 628              		.loc 1 180 29 view .LVU163
- 629 0076 B3F5C87F 		cmp	r3, #400
- 630 007a EED8     		bhi	.L49
- 182:Glider-Core/stepper_driver.c ****                     }
- 631              		.loc 1 182 25 is_stmt 1 view .LVU164
- 182:Glider-Core/stepper_driver.c ****                     }
- 632              		.loc 1 182 66 is_stmt 0 view .LVU165
- 633 007c 164B     		ldr	r3, .L56
- 634 007e 1869     		ldr	r0, [r3, #16]
- 635              	.LVL34:
- 182:Glider-Core/stepper_driver.c ****                     }
- 636              		.loc 1 182 78 view .LVU166
- 637 0080 1E38     		subs	r0, r0, #30
- 182:Glider-Core/stepper_driver.c ****                     }
- 638              		.loc 1 182 110 view .LVU167
- 639 0082 9B68     		ldr	r3, [r3, #8]
- 182:Glider-Core/stepper_driver.c ****                     }
- 640              		.loc 1 182 99 view .LVU168
- 641 0084 03FB00F0 		mul	r0, r3, r0
- 182:Glider-Core/stepper_driver.c ****                     }
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 17
-
-
- 642              		.loc 1 182 128 view .LVU169
- 643 0088 144B     		ldr	r3, .L56+4
- 644 008a A3FB0030 		umull	r3, r0, r3, r0
- 645 008e C009     		lsrs	r0, r0, #7
- 182:Glider-Core/stepper_driver.c ****                     }
- 646              		.loc 1 182 34 view .LVU170
- 647 0090 1E30     		adds	r0, r0, #30
- 648              	.LVL35:
- 182:Glider-Core/stepper_driver.c ****                     }
- 649              		.loc 1 182 34 view .LVU171
- 650 0092 E2E7     		b	.L49
- 651              	.L47:
- 652              	.LBB5:
- 188:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
- 653              		.loc 1 188 21 is_stmt 1 view .LVU172
- 188:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
- 654              		.loc 1 188 46 is_stmt 0 view .LVU173
- 655 0094 104B     		ldr	r3, .L56
- 656 0096 DA69     		ldr	r2, [r3, #28]
- 188:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
- 657              		.loc 1 188 30 view .LVU174
- 658 0098 5308     		lsrs	r3, r2, #1
- 659              	.LVL36:
- 189:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
- 660              		.loc 1 189 21 is_stmt 1 view .LVU175
- 189:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
- 661              		.loc 1 189 24 is_stmt 0 view .LVU176
- 662 009a 012A     		cmp	r2, #1
- 663 009c 0DD9     		bls	.L55
- 664              	.LVL37:
- 665              	.L50:
- 190:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
- 666              		.loc 1 190 21 is_stmt 1 view .LVU177
- 190:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
- 667              		.loc 1 190 34 is_stmt 0 view .LVU178
- 668 009e 0E4A     		ldr	r2, .L56
- 669 00a0 9269     		ldr	r2, [r2, #24]
- 190:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
- 670              		.loc 1 190 24 view .LVU179
- 671 00a2 9A42     		cmp	r2, r3
- 672 00a4 0BD2     		bcs	.L51
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 673              		.loc 1 191 25 is_stmt 1 view .LVU180
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 674              		.loc 1 191 66 is_stmt 0 view .LVU181
- 675 00a6 0C4A     		ldr	r2, .L56
- 676 00a8 1069     		ldr	r0, [r2, #16]
- 677              	.LVL38:
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 678              		.loc 1 191 78 view .LVU182
- 679 00aa 1E38     		subs	r0, r0, #30
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 680              		.loc 1 191 110 view .LVU183
- 681 00ac 9269     		ldr	r2, [r2, #24]
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 682              		.loc 1 191 99 view .LVU184
- 683 00ae 02FB00F0 		mul	r0, r2, r0
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 18
-
-
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 684              		.loc 1 191 122 view .LVU185
- 685 00b2 B0FBF3F0 		udiv	r0, r0, r3
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 686              		.loc 1 191 34 view .LVU186
- 687 00b6 1E30     		adds	r0, r0, #30
- 688              	.LVL39:
- 191:Glider-Core/stepper_driver.c ****                     } else {
- 689              		.loc 1 191 34 view .LVU187
- 690 00b8 CFE7     		b	.L49
- 691              	.L55:
- 189:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
- 692              		.loc 1 189 41 view .LVU188
- 693 00ba 0123     		movs	r3, #1
- 694              	.LVL40:
- 189:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
- 695              		.loc 1 189 41 view .LVU189
- 696 00bc EFE7     		b	.L50
- 697              	.LVL41:
- 698              	.L51:
- 193:Glider-Core/stepper_driver.c ****                     }
- 699              		.loc 1 193 25 is_stmt 1 view .LVU190
- 193:Glider-Core/stepper_driver.c ****                     }
- 700              		.loc 1 193 66 is_stmt 0 view .LVU191
- 701 00be 064A     		ldr	r2, .L56
- 702 00c0 1069     		ldr	r0, [r2, #16]
- 703              	.LVL42:
- 193:Glider-Core/stepper_driver.c ****                     }
- 704              		.loc 1 193 78 view .LVU192
- 705 00c2 1E38     		subs	r0, r0, #30
- 193:Glider-Core/stepper_driver.c ****                     }
- 706              		.loc 1 193 110 view .LVU193
- 707 00c4 9268     		ldr	r2, [r2, #8]
- 193:Glider-Core/stepper_driver.c ****                     }
- 708              		.loc 1 193 99 view .LVU194
- 709 00c6 02FB00F0 		mul	r0, r2, r0
- 193:Glider-Core/stepper_driver.c ****                     }
- 710              		.loc 1 193 128 view .LVU195
- 711 00ca B0FBF3F0 		udiv	r0, r0, r3
- 193:Glider-Core/stepper_driver.c ****                     }
- 712              		.loc 1 193 34 view .LVU196
- 713 00ce 1E30     		adds	r0, r0, #30
- 714              	.LVL43:
- 193:Glider-Core/stepper_driver.c ****                     }
- 715              		.loc 1 193 34 view .LVU197
- 716 00d0 C3E7     		b	.L49
- 717              	.LVL44:
- 718              	.L45:
- 193:Glider-Core/stepper_driver.c ****                     }
- 719              		.loc 1 193 34 view .LVU198
- 720              	.LBE5:
- 721              	.LBE6:
- 201:Glider-Core/stepper_driver.c ****                 }
- 202:Glider-Core/stepper_driver.c ****                 /* ========================================================= */
- 203:Glider-Core/stepper_driver.c ****             }
- 204:Glider-Core/stepper_driver.c ****         } 
- 205:Glider-Core/stepper_driver.c ****         else 
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 19
-
-
- 206:Glider-Core/stepper_driver.c ****         {
- 207:Glider-Core/stepper_driver.c ****             Stepper_Stop();
- 722              		.loc 1 207 13 is_stmt 1 view .LVU199
- 723 00d2 FFF7FEFF 		bl	Stepper_Stop
- 724              	.LVL45:
- 725              	.L43:
- 208:Glider-Core/stepper_driver.c ****         }
- 209:Glider-Core/stepper_driver.c ****     }
+ 227 001a 0122     		movs	r2, #1
+ 228              	.LVL24:
+ 229              	.L22:
+ 202:Glider-Core/stepper_driver.c ****     
+ 203:Glider-Core/stepper_driver.c ****     /* 重装载值 ARR 计算 */
+ 204:Glider-Core/stepper_driver.c ****     uint32_t arr = STEPPER_TIM_FREQ_HZ / pulses_per_sec;
+ 230              		.loc 1 204 5 is_stmt 1 view .LVU67
+ 231              		.loc 1 204 14 is_stmt 0 view .LVU68
+ 232 001c 074B     		ldr	r3, .L28+4
+ 233 001e B3FBF2F3 		udiv	r3, r3, r2
+ 234              	.LVL25:
+ 205:Glider-Core/stepper_driver.c ****     if (arr < 2) arr = 2;
+ 235              		.loc 1 205 5 is_stmt 1 view .LVU69
+ 236              		.loc 1 205 8 is_stmt 0 view .LVU70
+ 237 0022 012B     		cmp	r3, #1
+ 238 0024 06D9     		bls	.L27
+ 239              	.LVL26:
+ 240              	.L23:
+ 206:Glider-Core/stepper_driver.c ****     
+ 207:Glider-Core/stepper_driver.c ****     /* 直接修改定时器寄存器生效。这比调用 `__HAL_TIM_SET_AUTORELOAD` 更快更纯�
+ 208:Glider-Core/stepper_driver.c ****     STEPPER_TIM->Instance->ARR = arr - 1;
+ 241              		.loc 1 208 5 is_stmt 1 view .LVU71
+ 242              		.loc 1 208 16 is_stmt 0 view .LVU72
+ 243 0026 064A     		ldr	r2, .L28+8
+ 244              	.LVL27:
+ 245              		.loc 1 208 16 view .LVU73
+ 246 0028 1268     		ldr	r2, [r2]
+ 247              		.loc 1 208 38 view .LVU74
+ 248 002a 591E     		subs	r1, r3, #1
+ 249              		.loc 1 208 32 view .LVU75
+ 250 002c D162     		str	r1, [r2, #44]
+ 209:Glider-Core/stepper_driver.c ****     STEPPER_TIM->Instance->CCR2 = arr / 2; // 维持 50% 的脉宽占空比
+ 251              		.loc 1 209 5 is_stmt 1 view .LVU76
+ 252              		.loc 1 209 39 is_stmt 0 view .LVU77
+ 253 002e 5B08     		lsrs	r3, r3, #1
+ 254              	.LVL28:
+ 255              		.loc 1 209 33 view .LVU78
+ 256 0030 9363     		str	r3, [r2, #56]
  210:Glider-Core/stepper_driver.c **** }
- 726              		.loc 1 210 1 is_stmt 0 view .LVU200
- 727 00d6 08BD     		pop	{r3, pc}
- 728              	.L57:
- 729              		.align	2
- 730              	.L56:
- 731 00d8 00000000 		.word	g_stepper
- 732 00dc 1F85EB51 		.word	1374389535
- 733              		.cfi_endproc
- 734              	.LFE346:
- 736              		.section	.text.HAL_TIM_PeriodElapsedCallback,"ax",%progbits
- 737              		.align	1
- 738              		.global	HAL_TIM_PeriodElapsedCallback
- 739              		.syntax unified
- 740              		.thumb
- 741              		.thumb_func
- 743              	HAL_TIM_PeriodElapsedCallback:
- 744              	.LVL46:
- 745              	.LFB347:
+ 257              		.loc 1 210 1 view .LVU79
+ 258 0032 7047     		bx	lr
+ 259              	.LVL29:
+ 260              	.L27:
+ 205:Glider-Core/stepper_driver.c ****     
+ 261              		.loc 1 205 22 view .LVU80
+ 262 0034 0223     		movs	r3, #2
+ 263              	.LVL30:
+ 205:Glider-Core/stepper_driver.c ****     
+ 264              		.loc 1 205 22 view .LVU81
+ 265 0036 F6E7     		b	.L23
+ 266              	.L29:
+ 267              		.align	2
+ 268              	.L28:
+ 269 0038 89888888 		.word	-2004318071
+ 270 003c 40420F00 		.word	1000000
+ 271 0040 00000000 		.word	htim1
+ 272              		.cfi_endproc
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 10
+
+
+ 273              	.LFE343:
+ 275              		.section	.text.Stepper_Init,"ax",%progbits
+ 276              		.align	1
+ 277              		.global	Stepper_Init
+ 278              		.syntax unified
+ 279              		.thumb
+ 280              		.thumb_func
+ 282              	Stepper_Init:
+ 283              	.LFB342:
+ 180:Glider-Core/stepper_driver.c ****     g_stepper.current_pos = 0;
+ 284              		.loc 1 180 1 is_stmt 1 view -0
+ 285              		.cfi_startproc
+ 286              		@ args = 0, pretend = 0, frame = 0
+ 287              		@ frame_needed = 0, uses_anonymous_args = 0
+ 288 0000 38B5     		push	{r3, r4, r5, lr}
+ 289              	.LCFI1:
+ 290              		.cfi_def_cfa_offset 16
+ 291              		.cfi_offset 3, -16
+ 292              		.cfi_offset 4, -12
+ 293              		.cfi_offset 5, -8
+ 294              		.cfi_offset 14, -4
+ 181:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = 0;
+ 295              		.loc 1 181 5 view .LVU83
+ 181:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = 0;
+ 296              		.loc 1 181 27 is_stmt 0 view .LVU84
+ 297 0002 0E4B     		ldr	r3, .L32
+ 298 0004 0024     		movs	r4, #0
+ 299 0006 1C60     		str	r4, [r3]
+ 182:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
+ 300              		.loc 1 182 5 is_stmt 1 view .LVU85
+ 182:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
+ 301              		.loc 1 182 26 is_stmt 0 view .LVU86
+ 302 0008 5C60     		str	r4, [r3, #4]
+ 183:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
+ 303              		.loc 1 183 5 is_stmt 1 view .LVU87
+ 183:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
+ 304              		.loc 1 183 32 is_stmt 0 view .LVU88
+ 305 000a 9C60     		str	r4, [r3, #8]
+ 184:Glider-Core/stepper_driver.c **** 
+ 306              		.loc 1 184 5 is_stmt 1 view .LVU89
+ 184:Glider-Core/stepper_driver.c **** 
+ 307              		.loc 1 184 26 is_stmt 0 view .LVU90
+ 308 000c 1C73     		strb	r4, [r3, #12]
+ 187:Glider-Core/stepper_driver.c ****     HAL_GPIO_WritePin(STEPPER_DIR_N_PORT, STEPPER_DIR_N_PIN, GPIO_PIN_RESET);
+ 309              		.loc 1 187 5 is_stmt 1 view .LVU91
+ 310 000e 0C4D     		ldr	r5, .L32+4
+ 311 0010 2246     		mov	r2, r4
+ 312 0012 4FF48061 		mov	r1, #1024
+ 313 0016 2846     		mov	r0, r5
+ 314 0018 FFF7FEFF 		bl	HAL_GPIO_WritePin
+ 315              	.LVL31:
+ 188:Glider-Core/stepper_driver.c **** 
+ 316              		.loc 1 188 5 view .LVU92
+ 317 001c 2246     		mov	r2, r4
+ 318 001e 4FF48051 		mov	r1, #4096
+ 319 0022 2846     		mov	r0, r5
+ 320 0024 FFF7FEFF 		bl	HAL_GPIO_WritePin
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 11
+
+
+ 321              	.LVL32:
+ 190:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Stop(STEPPER_TIM, STEPPER_TIM_CH);
+ 322              		.loc 1 190 5 view .LVU93
+ 323 0028 0648     		ldr	r0, .L32+8
+ 324 002a 0268     		ldr	r2, [r0]
+ 325 002c D368     		ldr	r3, [r2, #12]
+ 326 002e 23F00103 		bic	r3, r3, #1
+ 327 0032 D360     		str	r3, [r2, #12]
+ 191:Glider-Core/stepper_driver.c **** }
+ 328              		.loc 1 191 5 view .LVU94
+ 329 0034 0421     		movs	r1, #4
+ 330 0036 FFF7FEFF 		bl	HAL_TIM_PWM_Stop
+ 331              	.LVL33:
+ 192:Glider-Core/stepper_driver.c **** 
+ 332              		.loc 1 192 1 is_stmt 0 view .LVU95
+ 333 003a 38BD     		pop	{r3, r4, r5, pc}
+ 334              	.L33:
+ 335              		.align	2
+ 336              	.L32:
+ 337 003c 00000000 		.word	g_stepper
+ 338 0040 00100258 		.word	1476530176
+ 339 0044 00000000 		.word	htim1
+ 340              		.cfi_endproc
+ 341              	.LFE342:
+ 343              		.section	.text.Stepper_Stop,"ax",%progbits
+ 344              		.align	1
+ 345              		.global	Stepper_Stop
+ 346              		.syntax unified
+ 347              		.thumb
+ 348              		.thumb_func
+ 350              	Stepper_Stop:
+ 351              	.LFB346:
  211:Glider-Core/stepper_driver.c **** 
- 212:Glider-Core/stepper_driver.c **** /* 拦截 HAL 的定时器溢出回调，这里是由于不需要再修改 main 或者 stm32h_it.c 
- 213:Glider-Core/stepper_driver.c **** void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
- 214:Glider-Core/stepper_driver.c **** {
- 746              		.loc 1 214 1 is_stmt 1 view -0
- 747              		.cfi_startproc
- 748              		@ args = 0, pretend = 0, frame = 0
- 749              		@ frame_needed = 0, uses_anonymous_args = 0
- 750              		.loc 1 214 1 is_stmt 0 view .LVU202
- 751 0000 08B5     		push	{r3, lr}
- 752              	.LCFI7:
- 753              		.cfi_def_cfa_offset 8
- 754              		.cfi_offset 3, -8
- 755              		.cfi_offset 14, -4
- 215:Glider-Core/stepper_driver.c ****     if (htim->Instance == TIM1)
- 756              		.loc 1 215 5 is_stmt 1 view .LVU203
- 757              		.loc 1 215 13 is_stmt 0 view .LVU204
- 758 0002 0268     		ldr	r2, [r0]
- 759              		.loc 1 215 8 view .LVU205
- 760 0004 034B     		ldr	r3, .L62
- 761 0006 9A42     		cmp	r2, r3
- 762 0008 00D0     		beq	.L61
- 763              	.LVL47:
- 764              	.L58:
- 216:Glider-Core/stepper_driver.c ****     {
- 217:Glider-Core/stepper_driver.c ****         Stepper_TIM_IRQHandler(); 
- 218:Glider-Core/stepper_driver.c ****     }
- 219:Glider-Core/stepper_driver.c **** }
- 765              		.loc 1 219 1 view .LVU206
- 766 000a 08BD     		pop	{r3, pc}
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 20
-
-
- 767              	.LVL48:
- 768              	.L61:
- 217:Glider-Core/stepper_driver.c ****     }
- 769              		.loc 1 217 9 is_stmt 1 view .LVU207
- 770 000c FFF7FEFF 		bl	Stepper_TIM_IRQHandler
- 771              	.LVL49:
- 772              		.loc 1 219 1 is_stmt 0 view .LVU208
- 773 0010 FBE7     		b	.L58
- 774              	.L63:
- 775 0012 00BF     		.align	2
- 776              	.L62:
- 777 0014 00000140 		.word	1073807360
- 778              		.cfi_endproc
- 779              	.LFE347:
- 781              		.section	.text.Stepper_TestTask,"ax",%progbits
- 782              		.align	1
- 783              		.global	Stepper_TestTask
- 784              		.syntax unified
- 785              		.thumb
- 786              		.thumb_func
- 788              	Stepper_TestTask:
- 789              	.LVL50:
- 790              	.LFB348:
- 220:Glider-Core/stepper_driver.c **** 
- 221:Glider-Core/stepper_driver.c **** /* 在 StartServoTask 中被挂载的测试本体 */
- 222:Glider-Core/stepper_driver.c **** void Stepper_TestTask(void *argument)
- 223:Glider-Core/stepper_driver.c **** {
- 791              		.loc 1 223 1 is_stmt 1 view -0
- 792              		.cfi_startproc
- 793              		@ Volatile: function does not return.
- 794              		@ args = 0, pretend = 0, frame = 0
- 795              		@ frame_needed = 0, uses_anonymous_args = 0
- 796              		.loc 1 223 1 is_stmt 0 view .LVU210
- 797 0000 08B5     		push	{r3, lr}
- 798              	.LCFI8:
- 799              		.cfi_def_cfa_offset 8
- 800              		.cfi_offset 3, -8
- 801              		.cfi_offset 14, -4
- 224:Glider-Core/stepper_driver.c ****     (void)argument;
- 802              		.loc 1 224 5 is_stmt 1 view .LVU211
- 225:Glider-Core/stepper_driver.c ****     
- 226:Glider-Core/stepper_driver.c ****     Stepper_Init();
- 803              		.loc 1 226 5 view .LVU212
- 804 0002 FFF7FEFF 		bl	Stepper_Init
- 805              	.LVL51:
- 227:Glider-Core/stepper_driver.c ****     
- 228:Glider-Core/stepper_driver.c ****     /* 停顿两秒等待驱动器上电准备好 */
- 229:Glider-Core/stepper_driver.c ****     osDelay(2000);
- 806              		.loc 1 229 5 view .LVU213
- 807 0006 4FF4FA60 		mov	r0, #2000
- 808 000a FFF7FEFF 		bl	osDelay
- 809              	.LVL52:
- 810 000e 16E0     		b	.L69
- 811              	.L66:
+ 212:Glider-Core/stepper_driver.c **** void Stepper_MoveRelative(int32_t pulses, uint16_t rpm) 
+ 213:Glider-Core/stepper_driver.c **** {
+ 214:Glider-Core/stepper_driver.c ****     if (pulses == 0 || rpm == 0) return;
+ 215:Glider-Core/stepper_driver.c ****     
+ 216:Glider-Core/stepper_driver.c ****     Stepper_Stop(); // 停止当前正在进行的其他任务
+ 217:Glider-Core/stepper_driver.c ****     
+ 218:Glider-Core/stepper_driver.c ****     if (pulses > 0) 
+ 219:Glider-Core/stepper_driver.c ****     {
+ 220:Glider-Core/stepper_driver.c ****         g_stepper.direction = 1;
+ 221:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_SET);
+ 222:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)pulses;
+ 223:Glider-Core/stepper_driver.c ****     } 
+ 224:Glider-Core/stepper_driver.c ****     else 
+ 225:Glider-Core/stepper_driver.c ****     {
+ 226:Glider-Core/stepper_driver.c ****         g_stepper.direction = -1;
+ 227:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_RESET);
+ 228:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)(-pulses);
+ 229:Glider-Core/stepper_driver.c ****     }
  230:Glider-Core/stepper_driver.c ****     
- 231:Glider-Core/stepper_driver.c ****     for (;;)
- 232:Glider-Core/stepper_driver.c ****     {
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 21
+ 231:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = g_stepper.total_pulses;
+ 232:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
+ 233:Glider-Core/stepper_driver.c ****     
+ 234:Glider-Core/stepper_driver.c ****     /* 速度逻辑与基础限制起跑值 */
+ 235:Glider-Core/stepper_driver.c ****     g_stepper.target_rpm = rpm;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 12
 
 
- 233:Glider-Core/stepper_driver.c ****         /* 1600细分下，发 16000 脉冲就是 10 圈 */
- 234:Glider-Core/stepper_driver.c ****         /* 加了平滑加减速后，我们可以安全地飙到 600 RPM 甚至更快，体验如�
- 235:Glider-Core/stepper_driver.c ****         Stepper_MoveRelative(16000, 800);
- 236:Glider-Core/stepper_driver.c ****         
- 237:Glider-Core/stepper_driver.c ****         while (Stepper_IsRunning()) 
- 238:Glider-Core/stepper_driver.c ****         {
- 239:Glider-Core/stepper_driver.c ****             osDelay(50);
- 812              		.loc 1 239 13 view .LVU214
- 813 0010 3220     		movs	r0, #50
- 814 0012 FFF7FEFF 		bl	osDelay
- 815              	.LVL53:
- 816              	.L65:
- 237:Glider-Core/stepper_driver.c ****         {
- 817              		.loc 1 237 16 view .LVU215
- 818 0016 FFF7FEFF 		bl	Stepper_IsRunning
- 819              	.LVL54:
- 820 001a 0028     		cmp	r0, #0
- 821 001c F8D1     		bne	.L66
- 240:Glider-Core/stepper_driver.c ****         }
- 241:Glider-Core/stepper_driver.c ****         
- 242:Glider-Core/stepper_driver.c ****         /* 走到目标后停顿 2 秒 */
- 243:Glider-Core/stepper_driver.c ****         osDelay(2000);
- 822              		.loc 1 243 9 view .LVU216
- 823 001e 4FF4FA60 		mov	r0, #2000
- 824 0022 FFF7FEFF 		bl	osDelay
- 825              	.LVL55:
- 244:Glider-Core/stepper_driver.c ****         
- 245:Glider-Core/stepper_driver.c ****         /* 反转：返回0位置(回到刚才起点), 速度同样 600RPM */
- 246:Glider-Core/stepper_driver.c ****         Stepper_MoveAbsolute(0, 800);
- 826              		.loc 1 246 9 view .LVU217
- 827 0026 4FF44871 		mov	r1, #800
- 828 002a 0020     		movs	r0, #0
- 829 002c FFF7FEFF 		bl	Stepper_MoveAbsolute
- 830              	.LVL56:
- 247:Glider-Core/stepper_driver.c ****         
- 248:Glider-Core/stepper_driver.c ****         while (Stepper_IsRunning()) 
- 831              		.loc 1 248 9 view .LVU218
- 832              	.L67:
- 833              		.loc 1 248 16 view .LVU219
- 834 0030 FFF7FEFF 		bl	Stepper_IsRunning
- 835              	.LVL57:
- 836 0034 50B9     		cbnz	r0, .L68
- 249:Glider-Core/stepper_driver.c ****         {
- 250:Glider-Core/stepper_driver.c ****             osDelay(50);
- 251:Glider-Core/stepper_driver.c ****         }
- 252:Glider-Core/stepper_driver.c ****         
- 253:Glider-Core/stepper_driver.c ****         /* 停顿 2 秒，接着再正转，如此往复... */
- 254:Glider-Core/stepper_driver.c ****         osDelay(2000);
- 837              		.loc 1 254 9 view .LVU220
- 838 0036 4FF4FA60 		mov	r0, #2000
- 839 003a FFF7FEFF 		bl	osDelay
- 840              	.LVL58:
- 231:Glider-Core/stepper_driver.c ****     {
- 841              		.loc 1 231 5 view .LVU221
- 842              	.L69:
- 231:Glider-Core/stepper_driver.c ****     {
- 843              		.loc 1 231 5 view .LVU222
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 22
+ 236:Glider-Core/stepper_driver.c ****     if (g_stepper.target_rpm < STEPPER_START_RPM) g_stepper.target_rpm = STEPPER_START_RPM;
+ 237:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
+ 238:Glider-Core/stepper_driver.c **** 
+ 239:Glider-Core/stepper_driver.c ****     /* 忠于手册 3.3.4 时序图：DR至少提前PU下降沿50μs确定状态。
+ 240:Glider-Core/stepper_driver.c ****      * 此处加一个简易的软件延时(远大于50us)，确保方向信号被驱动器光耦�
+ 241:Glider-Core/stepper_driver.c ****     for (volatile uint32_t delay_cnt = 0; delay_cnt < 20000; delay_cnt++) {
+ 242:Glider-Core/stepper_driver.c ****         __NOP();
+ 243:Glider-Core/stepper_driver.c ****     }
+ 244:Glider-Core/stepper_driver.c ****     
+ 245:Glider-Core/stepper_driver.c ****     g_stepper.target_pos = g_stepper.current_pos + pulses;
+ 246:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
+ 247:Glider-Core/stepper_driver.c **** 
+ 248:Glider-Core/stepper_driver.c ****     Stepper_UpdateARR(g_stepper.current_rpm);
+ 249:Glider-Core/stepper_driver.c ****     
+ 250:Glider-Core/stepper_driver.c ****     __HAL_TIM_CLEAR_FLAG(STEPPER_TIM, TIM_FLAG_UPDATE);
+ 251:Glider-Core/stepper_driver.c ****     __HAL_TIM_ENABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
+ 252:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Start(STEPPER_TIM, STEPPER_TIM_CH);
+ 253:Glider-Core/stepper_driver.c **** }
+ 254:Glider-Core/stepper_driver.c **** 
+ 255:Glider-Core/stepper_driver.c **** void Stepper_MoveAbsolute(int32_t target_pos, uint16_t rpm) 
+ 256:Glider-Core/stepper_driver.c **** {
+ 257:Glider-Core/stepper_driver.c ****     int32_t relative_pulses = target_pos - g_stepper.current_pos;
+ 258:Glider-Core/stepper_driver.c ****     Stepper_MoveRelative(relative_pulses, rpm);
+ 259:Glider-Core/stepper_driver.c **** }
+ 260:Glider-Core/stepper_driver.c **** 
+ 261:Glider-Core/stepper_driver.c **** void Stepper_Stop(void) 
+ 262:Glider-Core/stepper_driver.c **** {
+ 352              		.loc 1 262 1 is_stmt 1 view -0
+ 353              		.cfi_startproc
+ 354              		@ args = 0, pretend = 0, frame = 0
+ 355              		@ frame_needed = 0, uses_anonymous_args = 0
+ 356 0000 10B5     		push	{r4, lr}
+ 357              	.LCFI2:
+ 358              		.cfi_def_cfa_offset 8
+ 359              		.cfi_offset 4, -8
+ 360              		.cfi_offset 14, -4
+ 263:Glider-Core/stepper_driver.c ****     __HAL_TIM_DISABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
+ 361              		.loc 1 263 5 view .LVU97
+ 362 0002 0A4C     		ldr	r4, .L36
+ 363 0004 2268     		ldr	r2, [r4]
+ 364 0006 D368     		ldr	r3, [r2, #12]
+ 365 0008 23F00103 		bic	r3, r3, #1
+ 366 000c D360     		str	r3, [r2, #12]
+ 264:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Stop(STEPPER_TIM, STEPPER_TIM_CH);
+ 367              		.loc 1 264 5 view .LVU98
+ 368 000e 0421     		movs	r1, #4
+ 369 0010 2046     		mov	r0, r4
+ 370 0012 FFF7FEFF 		bl	HAL_TIM_PWM_Stop
+ 371              	.LVL34:
+ 265:Glider-Core/stepper_driver.c ****     HAL_TIM_Base_Stop(STEPPER_TIM);
+ 372              		.loc 1 265 5 view .LVU99
+ 373 0016 2046     		mov	r0, r4
+ 374 0018 FFF7FEFF 		bl	HAL_TIM_Base_Stop
+ 375              	.LVL35:
+ 266:Glider-Core/stepper_driver.c ****     __HAL_TIM_SET_COUNTER(STEPPER_TIM, 0); // 清零计数值，防止下一次启动存在死区�
+ 376              		.loc 1 266 5 view .LVU100
+ 377 001c 2268     		ldr	r2, [r4]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 13
 
 
- 235:Glider-Core/stepper_driver.c ****         
- 844              		.loc 1 235 9 view .LVU223
- 845 003e 4FF44871 		mov	r1, #800
- 846 0042 4FF47A50 		mov	r0, #16000
- 847 0046 FFF7FEFF 		bl	Stepper_MoveRelative
- 848              	.LVL59:
- 237:Glider-Core/stepper_driver.c ****         {
- 849              		.loc 1 237 9 view .LVU224
- 237:Glider-Core/stepper_driver.c ****         {
- 850              		.loc 1 237 15 is_stmt 0 view .LVU225
- 851 004a E4E7     		b	.L65
- 852              	.L68:
- 250:Glider-Core/stepper_driver.c ****         }
- 853              		.loc 1 250 13 is_stmt 1 view .LVU226
- 854 004c 3220     		movs	r0, #50
- 855 004e FFF7FEFF 		bl	osDelay
- 856              	.LVL60:
- 857 0052 EDE7     		b	.L67
- 858              		.cfi_endproc
- 859              	.LFE348:
- 861              		.section	.bss.g_stepper,"aw",%nobits
- 862              		.align	2
- 865              	g_stepper:
- 866 0000 00000000 		.space	32
- 866      00000000 
- 866      00000000 
- 866      00000000 
- 866      00000000 
- 867              		.text
- 868              	.Letext0:
- 869              		.file 2 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
- 870              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
- 871              		.file 4 "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h743xx.h"
- 872              		.file 5 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h"
- 873              		.file 6 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_gpio.h"
- 874              		.file 7 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma.h"
- 875              		.file 8 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim.h"
- 876              		.file 9 "Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h"
-ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s 			page 23
+ 378 001e 0023     		movs	r3, #0
+ 379 0020 5362     		str	r3, [r2, #36]
+ 267:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 0;
+ 380              		.loc 1 267 5 view .LVU101
+ 381              		.loc 1 267 26 is_stmt 0 view .LVU102
+ 382 0022 034A     		ldr	r2, .L36+4
+ 383 0024 1373     		strb	r3, [r2, #12]
+ 268:Glider-Core/stepper_driver.c ****     g_stepper.pulses_remaining = 0;
+ 384              		.loc 1 268 5 is_stmt 1 view .LVU103
+ 385              		.loc 1 268 32 is_stmt 0 view .LVU104
+ 386 0026 9360     		str	r3, [r2, #8]
+ 269:Glider-Core/stepper_driver.c **** }
+ 387              		.loc 1 269 1 view .LVU105
+ 388 0028 10BD     		pop	{r4, pc}
+ 389              	.L37:
+ 390 002a 00BF     		.align	2
+ 391              	.L36:
+ 392 002c 00000000 		.word	htim1
+ 393 0030 00000000 		.word	g_stepper
+ 394              		.cfi_endproc
+ 395              	.LFE346:
+ 397              		.section	.text.Stepper_MoveRelative,"ax",%progbits
+ 398              		.align	1
+ 399              		.global	Stepper_MoveRelative
+ 400              		.syntax unified
+ 401              		.thumb
+ 402              		.thumb_func
+ 404              	Stepper_MoveRelative:
+ 405              	.LVL36:
+ 406              	.LFB344:
+ 213:Glider-Core/stepper_driver.c ****     if (pulses == 0 || rpm == 0) return;
+ 407              		.loc 1 213 1 is_stmt 1 view -0
+ 408              		.cfi_startproc
+ 409              		@ args = 0, pretend = 0, frame = 8
+ 410              		@ frame_needed = 0, uses_anonymous_args = 0
+ 214:Glider-Core/stepper_driver.c ****     
+ 411              		.loc 1 214 5 view .LVU107
+ 214:Glider-Core/stepper_driver.c ****     
+ 412              		.loc 1 214 8 is_stmt 0 view .LVU108
+ 413 0000 0029     		cmp	r1, #0
+ 414 0002 18BF     		it	ne
+ 415 0004 0028     		cmpne	r0, #0
+ 416 0006 00D1     		bne	.L49
+ 417 0008 7047     		bx	lr
+ 418              	.L49:
+ 213:Glider-Core/stepper_driver.c ****     if (pulses == 0 || rpm == 0) return;
+ 419              		.loc 1 213 1 view .LVU109
+ 420 000a 70B5     		push	{r4, r5, r6, lr}
+ 421              	.LCFI3:
+ 422              		.cfi_def_cfa_offset 16
+ 423              		.cfi_offset 4, -16
+ 424              		.cfi_offset 5, -12
+ 425              		.cfi_offset 6, -8
+ 426              		.cfi_offset 14, -4
+ 427 000c 82B0     		sub	sp, sp, #8
+ 428              	.LCFI4:
+ 429              		.cfi_def_cfa_offset 24
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 14
+
+
+ 430 000e 0446     		mov	r4, r0
+ 431 0010 0D46     		mov	r5, r1
+ 216:Glider-Core/stepper_driver.c ****     
+ 432              		.loc 1 216 5 is_stmt 1 view .LVU110
+ 433 0012 FFF7FEFF 		bl	Stepper_Stop
+ 434              	.LVL37:
+ 218:Glider-Core/stepper_driver.c ****     {
+ 435              		.loc 1 218 5 view .LVU111
+ 218:Glider-Core/stepper_driver.c ****     {
+ 436              		.loc 1 218 8 is_stmt 0 view .LVU112
+ 437 0016 002C     		cmp	r4, #0
+ 438 0018 1ADD     		ble	.L40
+ 220:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_SET);
+ 439              		.loc 1 220 9 is_stmt 1 view .LVU113
+ 220:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_SET);
+ 440              		.loc 1 220 29 is_stmt 0 view .LVU114
+ 441 001a 234E     		ldr	r6, .L50
+ 442 001c 0122     		movs	r2, #1
+ 443 001e 7273     		strb	r2, [r6, #13]
+ 221:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)pulses;
+ 444              		.loc 1 221 9 is_stmt 1 view .LVU115
+ 445 0020 4FF40051 		mov	r1, #8192
+ 446 0024 2148     		ldr	r0, .L50+4
+ 447 0026 FFF7FEFF 		bl	HAL_GPIO_WritePin
+ 448              	.LVL38:
+ 222:Glider-Core/stepper_driver.c ****     } 
+ 449              		.loc 1 222 9 view .LVU116
+ 222:Glider-Core/stepper_driver.c ****     } 
+ 450              		.loc 1 222 32 is_stmt 0 view .LVU117
+ 451 002a F461     		str	r4, [r6, #28]
+ 452              	.L41:
+ 231:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
+ 453              		.loc 1 231 5 is_stmt 1 view .LVU118
+ 231:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
+ 454              		.loc 1 231 43 is_stmt 0 view .LVU119
+ 455 002c 1E4B     		ldr	r3, .L50
+ 456 002e DA69     		ldr	r2, [r3, #28]
+ 231:Glider-Core/stepper_driver.c ****     g_stepper.step_count = 0;
+ 457              		.loc 1 231 32 view .LVU120
+ 458 0030 9A60     		str	r2, [r3, #8]
+ 232:Glider-Core/stepper_driver.c ****     
+ 459              		.loc 1 232 5 is_stmt 1 view .LVU121
+ 232:Glider-Core/stepper_driver.c ****     
+ 460              		.loc 1 232 26 is_stmt 0 view .LVU122
+ 461 0032 0022     		movs	r2, #0
+ 462 0034 9A61     		str	r2, [r3, #24]
+ 235:Glider-Core/stepper_driver.c ****     if (g_stepper.target_rpm < STEPPER_START_RPM) g_stepper.target_rpm = STEPPER_START_RPM;
+ 463              		.loc 1 235 5 is_stmt 1 view .LVU123
+ 235:Glider-Core/stepper_driver.c ****     if (g_stepper.target_rpm < STEPPER_START_RPM) g_stepper.target_rpm = STEPPER_START_RPM;
+ 464              		.loc 1 235 26 is_stmt 0 view .LVU124
+ 465 0036 1D61     		str	r5, [r3, #16]
+ 236:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
+ 466              		.loc 1 236 5 is_stmt 1 view .LVU125
+ 236:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
+ 467              		.loc 1 236 18 is_stmt 0 view .LVU126
+ 468 0038 1B69     		ldr	r3, [r3, #16]
+ 236:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 15
+
+
+ 469              		.loc 1 236 8 view .LVU127
+ 470 003a 1D2B     		cmp	r3, #29
+ 471 003c 02D8     		bhi	.L42
+ 236:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
+ 472              		.loc 1 236 51 is_stmt 1 discriminator 1 view .LVU128
+ 236:Glider-Core/stepper_driver.c ****     g_stepper.current_rpm = STEPPER_START_RPM;
+ 473              		.loc 1 236 72 is_stmt 0 discriminator 1 view .LVU129
+ 474 003e 1A4B     		ldr	r3, .L50
+ 475 0040 1E22     		movs	r2, #30
+ 476 0042 1A61     		str	r2, [r3, #16]
+ 477              	.L42:
+ 237:Glider-Core/stepper_driver.c **** 
+ 478              		.loc 1 237 5 is_stmt 1 view .LVU130
+ 237:Glider-Core/stepper_driver.c **** 
+ 479              		.loc 1 237 27 is_stmt 0 view .LVU131
+ 480 0044 184B     		ldr	r3, .L50
+ 481 0046 1E22     		movs	r2, #30
+ 482 0048 5A61     		str	r2, [r3, #20]
+ 241:Glider-Core/stepper_driver.c ****         __NOP();
+ 483              		.loc 1 241 5 is_stmt 1 view .LVU132
+ 484              	.LBB4:
+ 241:Glider-Core/stepper_driver.c ****         __NOP();
+ 485              		.loc 1 241 10 view .LVU133
+ 241:Glider-Core/stepper_driver.c ****         __NOP();
+ 486              		.loc 1 241 28 is_stmt 0 view .LVU134
+ 487 004a 0023     		movs	r3, #0
+ 488 004c 0193     		str	r3, [sp, #4]
+ 241:Glider-Core/stepper_driver.c ****         __NOP();
+ 489              		.loc 1 241 5 view .LVU135
+ 490 004e 0FE0     		b	.L43
+ 491              	.L40:
+ 492              	.LBE4:
+ 226:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_RESET);
+ 493              		.loc 1 226 9 is_stmt 1 view .LVU136
+ 226:Glider-Core/stepper_driver.c ****         HAL_GPIO_WritePin(STEPPER_DIR_PORT, STEPPER_DIR_PIN, GPIO_PIN_RESET);
+ 494              		.loc 1 226 29 is_stmt 0 view .LVU137
+ 495 0050 154E     		ldr	r6, .L50
+ 496 0052 FF23     		movs	r3, #255
+ 497 0054 7373     		strb	r3, [r6, #13]
+ 227:Glider-Core/stepper_driver.c ****         g_stepper.total_pulses = (uint32_t)(-pulses);
+ 498              		.loc 1 227 9 is_stmt 1 view .LVU138
+ 499 0056 0022     		movs	r2, #0
+ 500 0058 4FF40051 		mov	r1, #8192
+ 501 005c 1348     		ldr	r0, .L50+4
+ 502 005e FFF7FEFF 		bl	HAL_GPIO_WritePin
+ 503              	.LVL39:
+ 228:Glider-Core/stepper_driver.c ****     }
+ 504              		.loc 1 228 9 view .LVU139
+ 228:Glider-Core/stepper_driver.c ****     }
+ 505              		.loc 1 228 45 is_stmt 0 view .LVU140
+ 506 0062 6342     		rsbs	r3, r4, #0
+ 228:Glider-Core/stepper_driver.c ****     }
+ 507              		.loc 1 228 32 view .LVU141
+ 508 0064 F361     		str	r3, [r6, #28]
+ 509 0066 E1E7     		b	.L41
+ 510              	.L44:
+ 511              	.LBB5:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 16
+
+
+ 242:Glider-Core/stepper_driver.c ****     }
+ 512              		.loc 1 242 9 is_stmt 1 discriminator 3 view .LVU142
+ 513              		.syntax unified
+ 514              	@ 242 "Glider-Core/stepper_driver.c" 1
+ 515 0068 00BF     		nop
+ 516              	@ 0 "" 2
+ 241:Glider-Core/stepper_driver.c ****         __NOP();
+ 517              		.loc 1 241 71 discriminator 3 view .LVU143
+ 518              		.thumb
+ 519              		.syntax unified
+ 520 006a 019B     		ldr	r3, [sp, #4]
+ 521 006c 0133     		adds	r3, r3, #1
+ 522 006e 0193     		str	r3, [sp, #4]
+ 523              	.L43:
+ 241:Glider-Core/stepper_driver.c ****         __NOP();
+ 524              		.loc 1 241 53 discriminator 1 view .LVU144
+ 525 0070 019A     		ldr	r2, [sp, #4]
+ 526 0072 44F61F63 		movw	r3, #19999
+ 527 0076 9A42     		cmp	r2, r3
+ 528 0078 F6D9     		bls	.L44
+ 529              	.LBE5:
+ 245:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
+ 530              		.loc 1 245 5 view .LVU145
+ 245:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
+ 531              		.loc 1 245 37 is_stmt 0 view .LVU146
+ 532 007a 0B4B     		ldr	r3, .L50
+ 533 007c 1A68     		ldr	r2, [r3]
+ 245:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
+ 534              		.loc 1 245 50 view .LVU147
+ 535 007e 2244     		add	r2, r2, r4
+ 245:Glider-Core/stepper_driver.c ****     g_stepper.is_running = 1;
+ 536              		.loc 1 245 26 view .LVU148
+ 537 0080 5A60     		str	r2, [r3, #4]
+ 246:Glider-Core/stepper_driver.c **** 
+ 538              		.loc 1 246 5 is_stmt 1 view .LVU149
+ 246:Glider-Core/stepper_driver.c **** 
+ 539              		.loc 1 246 26 is_stmt 0 view .LVU150
+ 540 0082 0122     		movs	r2, #1
+ 541 0084 1A73     		strb	r2, [r3, #12]
+ 248:Glider-Core/stepper_driver.c ****     
+ 542              		.loc 1 248 5 is_stmt 1 view .LVU151
+ 248:Glider-Core/stepper_driver.c ****     
+ 543              		.loc 1 248 32 is_stmt 0 view .LVU152
+ 544 0086 5869     		ldr	r0, [r3, #20]
+ 248:Glider-Core/stepper_driver.c ****     
+ 545              		.loc 1 248 5 view .LVU153
+ 546 0088 FFF7FEFF 		bl	Stepper_UpdateARR
+ 547              	.LVL40:
+ 250:Glider-Core/stepper_driver.c ****     __HAL_TIM_ENABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
+ 548              		.loc 1 250 5 is_stmt 1 view .LVU154
+ 549 008c 0848     		ldr	r0, .L50+8
+ 550 008e 0368     		ldr	r3, [r0]
+ 551 0090 6FF00102 		mvn	r2, #1
+ 552 0094 1A61     		str	r2, [r3, #16]
+ 251:Glider-Core/stepper_driver.c ****     HAL_TIM_PWM_Start(STEPPER_TIM, STEPPER_TIM_CH);
+ 553              		.loc 1 251 5 view .LVU155
+ 554 0096 DA68     		ldr	r2, [r3, #12]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 17
+
+
+ 555 0098 42F00102 		orr	r2, r2, #1
+ 556 009c DA60     		str	r2, [r3, #12]
+ 252:Glider-Core/stepper_driver.c **** }
+ 557              		.loc 1 252 5 view .LVU156
+ 558 009e 0421     		movs	r1, #4
+ 559 00a0 FFF7FEFF 		bl	HAL_TIM_PWM_Start
+ 560              	.LVL41:
+ 253:Glider-Core/stepper_driver.c **** 
+ 561              		.loc 1 253 1 is_stmt 0 view .LVU157
+ 562 00a4 02B0     		add	sp, sp, #8
+ 563              	.LCFI5:
+ 564              		.cfi_def_cfa_offset 16
+ 565              		@ sp needed
+ 566 00a6 70BD     		pop	{r4, r5, r6, pc}
+ 567              	.LVL42:
+ 568              	.L51:
+ 253:Glider-Core/stepper_driver.c **** 
+ 569              		.loc 1 253 1 view .LVU158
+ 570              		.align	2
+ 571              	.L50:
+ 572 00a8 00000000 		.word	g_stepper
+ 573 00ac 00100258 		.word	1476530176
+ 574 00b0 00000000 		.word	htim1
+ 575              		.cfi_endproc
+ 576              	.LFE344:
+ 578              		.section	.text.Stepper_MoveAbsolute,"ax",%progbits
+ 579              		.align	1
+ 580              		.global	Stepper_MoveAbsolute
+ 581              		.syntax unified
+ 582              		.thumb
+ 583              		.thumb_func
+ 585              	Stepper_MoveAbsolute:
+ 586              	.LVL43:
+ 587              	.LFB345:
+ 256:Glider-Core/stepper_driver.c ****     int32_t relative_pulses = target_pos - g_stepper.current_pos;
+ 588              		.loc 1 256 1 is_stmt 1 view -0
+ 589              		.cfi_startproc
+ 590              		@ args = 0, pretend = 0, frame = 0
+ 591              		@ frame_needed = 0, uses_anonymous_args = 0
+ 256:Glider-Core/stepper_driver.c ****     int32_t relative_pulses = target_pos - g_stepper.current_pos;
+ 592              		.loc 1 256 1 is_stmt 0 view .LVU160
+ 593 0000 08B5     		push	{r3, lr}
+ 594              	.LCFI6:
+ 595              		.cfi_def_cfa_offset 8
+ 596              		.cfi_offset 3, -8
+ 597              		.cfi_offset 14, -4
+ 257:Glider-Core/stepper_driver.c ****     Stepper_MoveRelative(relative_pulses, rpm);
+ 598              		.loc 1 257 5 is_stmt 1 view .LVU161
+ 257:Glider-Core/stepper_driver.c ****     Stepper_MoveRelative(relative_pulses, rpm);
+ 599              		.loc 1 257 53 is_stmt 0 view .LVU162
+ 600 0002 034B     		ldr	r3, .L54
+ 601 0004 1B68     		ldr	r3, [r3]
+ 602              	.LVL44:
+ 258:Glider-Core/stepper_driver.c **** }
+ 603              		.loc 1 258 5 is_stmt 1 view .LVU163
+ 604 0006 C01A     		subs	r0, r0, r3
+ 605              	.LVL45:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 18
+
+
+ 258:Glider-Core/stepper_driver.c **** }
+ 606              		.loc 1 258 5 is_stmt 0 view .LVU164
+ 607 0008 FFF7FEFF 		bl	Stepper_MoveRelative
+ 608              	.LVL46:
+ 259:Glider-Core/stepper_driver.c **** 
+ 609              		.loc 1 259 1 view .LVU165
+ 610 000c 08BD     		pop	{r3, pc}
+ 611              	.L55:
+ 612 000e 00BF     		.align	2
+ 613              	.L54:
+ 614 0010 00000000 		.word	g_stepper
+ 615              		.cfi_endproc
+ 616              	.LFE345:
+ 618              		.section	.text.Stepper_IsRunning,"ax",%progbits
+ 619              		.align	1
+ 620              		.global	Stepper_IsRunning
+ 621              		.syntax unified
+ 622              		.thumb
+ 623              		.thumb_func
+ 625              	Stepper_IsRunning:
+ 626              	.LFB347:
+ 270:Glider-Core/stepper_driver.c **** 
+ 271:Glider-Core/stepper_driver.c **** uint8_t Stepper_IsRunning(void) 
+ 272:Glider-Core/stepper_driver.c **** {
+ 627              		.loc 1 272 1 is_stmt 1 view -0
+ 628              		.cfi_startproc
+ 629              		@ args = 0, pretend = 0, frame = 0
+ 630              		@ frame_needed = 0, uses_anonymous_args = 0
+ 631              		@ link register save eliminated.
+ 273:Glider-Core/stepper_driver.c ****     return g_stepper.is_running;
+ 632              		.loc 1 273 5 view .LVU167
+ 633              		.loc 1 273 21 is_stmt 0 view .LVU168
+ 634 0000 014B     		ldr	r3, .L57
+ 635 0002 187B     		ldrb	r0, [r3, #12]	@ zero_extendqisi2
+ 274:Glider-Core/stepper_driver.c **** }
+ 636              		.loc 1 274 1 view .LVU169
+ 637 0004 7047     		bx	lr
+ 638              	.L58:
+ 639 0006 00BF     		.align	2
+ 640              	.L57:
+ 641 0008 00000000 		.word	g_stepper
+ 642              		.cfi_endproc
+ 643              	.LFE347:
+ 645              		.section	.text.Stepper_ApplySignedRpmCommand,"ax",%progbits
+ 646              		.align	1
+ 647              		.syntax unified
+ 648              		.thumb
+ 649              		.thumb_func
+ 651              	Stepper_ApplySignedRpmCommand:
+ 652              	.LVL47:
+ 653              	.LFB341:
+ 127:Glider-Core/stepper_driver.c ****     int8_t desired_dir = 0;
+ 654              		.loc 1 127 1 is_stmt 1 view -0
+ 655              		.cfi_startproc
+ 656              		@ args = 0, pretend = 0, frame = 0
+ 657              		@ frame_needed = 0, uses_anonymous_args = 0
+ 127:Glider-Core/stepper_driver.c ****     int8_t desired_dir = 0;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 19
+
+
+ 658              		.loc 1 127 1 is_stmt 0 view .LVU171
+ 659 0000 38B5     		push	{r3, r4, r5, lr}
+ 660              	.LCFI7:
+ 661              		.cfi_def_cfa_offset 16
+ 662              		.cfi_offset 3, -16
+ 663              		.cfi_offset 4, -12
+ 664              		.cfi_offset 5, -8
+ 665              		.cfi_offset 14, -4
+ 128:Glider-Core/stepper_driver.c ****     uint16_t abs_rpm = 0U;
+ 666              		.loc 1 128 5 is_stmt 1 view .LVU172
+ 667              	.LVL48:
+ 129:Glider-Core/stepper_driver.c **** 
+ 668              		.loc 1 129 5 view .LVU173
+ 131:Glider-Core/stepper_driver.c **** 
+ 669              		.loc 1 131 5 view .LVU174
+ 131:Glider-Core/stepper_driver.c **** 
+ 670              		.loc 1 131 18 is_stmt 0 view .LVU175
+ 671 0002 FFF7FEFF 		bl	Stepper_ClampSignedRpm
+ 672              	.LVL49:
+ 133:Glider-Core/stepper_driver.c ****     {
+ 673              		.loc 1 133 5 is_stmt 1 view .LVU176
+ 133:Glider-Core/stepper_driver.c ****     {
+ 674              		.loc 1 133 8 is_stmt 0 view .LVU177
+ 675 0006 0028     		cmp	r0, #0
+ 133:Glider-Core/stepper_driver.c ****     {
+ 676              		.loc 1 133 8 view .LVU178
+ 677 0008 09DD     		ble	.L60
+ 135:Glider-Core/stepper_driver.c ****         abs_rpm = (uint16_t)signed_rpm;
+ 678              		.loc 1 135 9 is_stmt 1 view .LVU179
+ 679              	.LVL50:
+ 136:Glider-Core/stepper_driver.c ****     }
+ 680              		.loc 1 136 9 view .LVU180
+ 136:Glider-Core/stepper_driver.c ****     }
+ 681              		.loc 1 136 17 is_stmt 0 view .LVU181
+ 682 000a 84B2     		uxth	r4, r0
+ 683              	.LVL51:
+ 144:Glider-Core/stepper_driver.c ****     {
+ 684              		.loc 1 144 5 is_stmt 1 view .LVU182
+ 135:Glider-Core/stepper_driver.c ****         abs_rpm = (uint16_t)signed_rpm;
+ 685              		.loc 1 135 21 is_stmt 0 view .LVU183
+ 686 000c 0125     		movs	r5, #1
+ 687              	.LVL52:
+ 688              	.L61:
+ 154:Glider-Core/stepper_driver.c ****     {
+ 689              		.loc 1 154 5 is_stmt 1 view .LVU184
+ 154:Glider-Core/stepper_driver.c ****     {
+ 690              		.loc 1 154 8 is_stmt 0 view .LVU185
+ 691 000e 1D2C     		cmp	r4, #29
+ 692 0010 17D9     		bls	.L70
+ 158:Glider-Core/stepper_driver.c ****     {
+ 693              		.loc 1 158 5 is_stmt 1 view .LVU186
+ 158:Glider-Core/stepper_driver.c ****     {
+ 694              		.loc 1 158 8 is_stmt 0 view .LVU187
+ 695 0012 B4F5487F 		cmp	r4, #800
+ 696 0016 15D9     		bls	.L65
+ 160:Glider-Core/stepper_driver.c ****     }
+ 697              		.loc 1 160 17 view .LVU188
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 20
+
+
+ 698 0018 4FF44874 		mov	r4, #800
+ 699              	.LVL53:
+ 160:Glider-Core/stepper_driver.c ****     }
+ 700              		.loc 1 160 17 view .LVU189
+ 701 001c 12E0     		b	.L65
+ 702              	.LVL54:
+ 703              	.L60:
+ 138:Glider-Core/stepper_driver.c ****     {
+ 704              		.loc 1 138 10 is_stmt 1 view .LVU190
+ 138:Glider-Core/stepper_driver.c ****     {
+ 705              		.loc 1 138 13 is_stmt 0 view .LVU191
+ 706 001e 0028     		cmp	r0, #0
+ 707 0020 05DA     		bge	.L62
+ 140:Glider-Core/stepper_driver.c ****         abs_rpm = (uint16_t)(-signed_rpm);
+ 708              		.loc 1 140 9 is_stmt 1 view .LVU192
+ 709              	.LVL55:
+ 141:Glider-Core/stepper_driver.c ****     }
+ 710              		.loc 1 141 9 view .LVU193
+ 141:Glider-Core/stepper_driver.c ****     }
+ 711              		.loc 1 141 19 is_stmt 0 view .LVU194
+ 712 0022 84B2     		uxth	r4, r0
+ 141:Glider-Core/stepper_driver.c ****     }
+ 713              		.loc 1 141 17 view .LVU195
+ 714 0024 6442     		rsbs	r4, r4, #0
+ 715 0026 A4B2     		uxth	r4, r4
+ 716              	.LVL56:
+ 144:Glider-Core/stepper_driver.c ****     {
+ 717              		.loc 1 144 5 is_stmt 1 view .LVU196
+ 140:Glider-Core/stepper_driver.c ****         abs_rpm = (uint16_t)(-signed_rpm);
+ 718              		.loc 1 140 21 is_stmt 0 view .LVU197
+ 719 0028 4FF0FF35 		mov	r5, #-1
+ 720 002c EFE7     		b	.L61
+ 721              	.LVL57:
+ 722              	.L62:
+ 144:Glider-Core/stepper_driver.c ****     {
+ 723              		.loc 1 144 5 is_stmt 1 view .LVU198
+ 146:Glider-Core/stepper_driver.c ****         {
+ 724              		.loc 1 146 9 view .LVU199
+ 146:Glider-Core/stepper_driver.c ****         {
+ 725              		.loc 1 146 13 is_stmt 0 view .LVU200
+ 726 002e FFF7FEFF 		bl	Stepper_IsRunning
+ 727              	.LVL58:
+ 146:Glider-Core/stepper_driver.c ****         {
+ 728              		.loc 1 146 12 view .LVU201
+ 729 0032 18B9     		cbnz	r0, .L75
+ 730              	.L63:
+ 150:Glider-Core/stepper_driver.c ****         return;
+ 731              		.loc 1 150 9 is_stmt 1 view .LVU202
+ 150:Glider-Core/stepper_driver.c ****         return;
+ 732              		.loc 1 150 30 is_stmt 0 view .LVU203
+ 733 0034 134B     		ldr	r3, .L78
+ 734 0036 0022     		movs	r2, #0
+ 735 0038 1A61     		str	r2, [r3, #16]
+ 151:Glider-Core/stepper_driver.c ****     }
+ 736              		.loc 1 151 9 is_stmt 1 view .LVU204
+ 737 003a 0DE0     		b	.L59
+ 738              	.L75:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 21
+
+
+ 148:Glider-Core/stepper_driver.c ****         }
+ 739              		.loc 1 148 13 view .LVU205
+ 740 003c FFF7FEFF 		bl	Stepper_Stop
+ 741              	.LVL59:
+ 742 0040 F8E7     		b	.L63
+ 743              	.LVL60:
+ 744              	.L70:
+ 156:Glider-Core/stepper_driver.c ****     }
+ 745              		.loc 1 156 17 is_stmt 0 view .LVU206
+ 746 0042 1E24     		movs	r4, #30
+ 747              	.LVL61:
+ 748              	.L65:
+ 163:Glider-Core/stepper_driver.c ****     {
+ 749              		.loc 1 163 5 is_stmt 1 view .LVU207
+ 163:Glider-Core/stepper_driver.c ****     {
+ 750              		.loc 1 163 18 is_stmt 0 view .LVU208
+ 751 0044 0F4B     		ldr	r3, .L78
+ 752 0046 1B7B     		ldrb	r3, [r3, #12]	@ zero_extendqisi2
+ 163:Glider-Core/stepper_driver.c ****     {
+ 753              		.loc 1 163 8 view .LVU209
+ 754 0048 3BB1     		cbz	r3, .L76
+ 169:Glider-Core/stepper_driver.c ****     {
+ 755              		.loc 1 169 5 is_stmt 1 view .LVU210
+ 169:Glider-Core/stepper_driver.c ****     {
+ 756              		.loc 1 169 18 is_stmt 0 view .LVU211
+ 757 004a 0E4B     		ldr	r3, .L78
+ 758 004c 5B7B     		ldrb	r3, [r3, #13]	@ zero_extendqisi2
+ 759 004e 5BB2     		sxtb	r3, r3
+ 169:Glider-Core/stepper_driver.c ****     {
+ 760              		.loc 1 169 8 view .LVU212
+ 761 0050 AB42     		cmp	r3, r5
+ 762 0052 0BD1     		bne	.L77
+ 176:Glider-Core/stepper_driver.c **** }
+ 763              		.loc 1 176 5 is_stmt 1 view .LVU213
+ 176:Glider-Core/stepper_driver.c **** }
+ 764              		.loc 1 176 26 is_stmt 0 view .LVU214
+ 765 0054 0B4B     		ldr	r3, .L78
+ 766 0056 1C61     		str	r4, [r3, #16]
+ 767              	.LVL62:
+ 768              	.L59:
+ 177:Glider-Core/stepper_driver.c **** 
+ 769              		.loc 1 177 1 view .LVU215
+ 770 0058 38BD     		pop	{r3, r4, r5, pc}
+ 771              	.LVL63:
+ 772              	.L76:
+ 165:Glider-Core/stepper_driver.c ****         return;
+ 773              		.loc 1 165 9 is_stmt 1 view .LVU216
+ 774 005a 002D     		cmp	r5, #0
+ 775 005c 04DD     		ble	.L72
+ 776 005e 0A48     		ldr	r0, .L78+4
+ 777              	.LVL64:
+ 778              	.L67:
+ 165:Glider-Core/stepper_driver.c ****         return;
+ 779              		.loc 1 165 9 is_stmt 0 discriminator 4 view .LVU217
+ 780 0060 2146     		mov	r1, r4
+ 781 0062 FFF7FEFF 		bl	Stepper_MoveRelative
+ 782              	.LVL65:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 22
+
+
+ 166:Glider-Core/stepper_driver.c ****     }
+ 783              		.loc 1 166 9 is_stmt 1 discriminator 4 view .LVU218
+ 784 0066 F7E7     		b	.L59
+ 785              	.LVL66:
+ 786              	.L72:
+ 165:Glider-Core/stepper_driver.c ****         return;
+ 787              		.loc 1 165 9 is_stmt 0 view .LVU219
+ 788 0068 0848     		ldr	r0, .L78+8
+ 789              	.LVL67:
+ 165:Glider-Core/stepper_driver.c ****         return;
+ 790              		.loc 1 165 9 view .LVU220
+ 791 006a F9E7     		b	.L67
+ 792              	.LVL68:
+ 793              	.L77:
+ 171:Glider-Core/stepper_driver.c ****         Stepper_MoveRelative((desired_dir > 0) ? STEPPER_TEST_CONTINUOUS_PULSES : -STEPPER_TEST_CON
+ 794              		.loc 1 171 9 is_stmt 1 view .LVU221
+ 795 006c FFF7FEFF 		bl	Stepper_Stop
+ 796              	.LVL69:
+ 172:Glider-Core/stepper_driver.c ****         return;
+ 797              		.loc 1 172 9 view .LVU222
+ 798 0070 002D     		cmp	r5, #0
+ 799 0072 04DD     		ble	.L73
+ 800 0074 0448     		ldr	r0, .L78+4
+ 801              	.L69:
+ 172:Glider-Core/stepper_driver.c ****         return;
+ 802              		.loc 1 172 9 is_stmt 0 discriminator 4 view .LVU223
+ 803 0076 2146     		mov	r1, r4
+ 804 0078 FFF7FEFF 		bl	Stepper_MoveRelative
+ 805              	.LVL70:
+ 173:Glider-Core/stepper_driver.c ****     }
+ 806              		.loc 1 173 9 is_stmt 1 discriminator 4 view .LVU224
+ 807 007c ECE7     		b	.L59
+ 808              	.L73:
+ 172:Glider-Core/stepper_driver.c ****         return;
+ 809              		.loc 1 172 9 is_stmt 0 view .LVU225
+ 810 007e 0348     		ldr	r0, .L78+8
+ 811 0080 F9E7     		b	.L69
+ 812              	.L79:
+ 813 0082 00BF     		.align	2
+ 814              	.L78:
+ 815 0084 00000000 		.word	g_stepper
+ 816 0088 00CA9A3B 		.word	1000000000
+ 817 008c 003665C4 		.word	-1000000000
+ 818              		.cfi_endproc
+ 819              	.LFE341:
+ 821              		.section	.text.Stepper_GetCurrentPosition,"ax",%progbits
+ 822              		.align	1
+ 823              		.global	Stepper_GetCurrentPosition
+ 824              		.syntax unified
+ 825              		.thumb
+ 826              		.thumb_func
+ 828              	Stepper_GetCurrentPosition:
+ 829              	.LFB348:
+ 275:Glider-Core/stepper_driver.c **** 
+ 276:Glider-Core/stepper_driver.c **** int32_t Stepper_GetCurrentPosition(void) 
+ 277:Glider-Core/stepper_driver.c **** {
+ 830              		.loc 1 277 1 is_stmt 1 view -0
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 23
+
+
+ 831              		.cfi_startproc
+ 832              		@ args = 0, pretend = 0, frame = 0
+ 833              		@ frame_needed = 0, uses_anonymous_args = 0
+ 834              		@ link register save eliminated.
+ 278:Glider-Core/stepper_driver.c ****     return g_stepper.current_pos;
+ 835              		.loc 1 278 5 view .LVU227
+ 836              		.loc 1 278 21 is_stmt 0 view .LVU228
+ 837 0000 014B     		ldr	r3, .L81
+ 838 0002 1868     		ldr	r0, [r3]
+ 279:Glider-Core/stepper_driver.c **** }
+ 839              		.loc 1 279 1 view .LVU229
+ 840 0004 7047     		bx	lr
+ 841              	.L82:
+ 842 0006 00BF     		.align	2
+ 843              	.L81:
+ 844 0008 00000000 		.word	g_stepper
+ 845              		.cfi_endproc
+ 846              	.LFE348:
+ 848              		.section	.text.Stepper_TIM_IRQHandler,"ax",%progbits
+ 849              		.align	1
+ 850              		.global	Stepper_TIM_IRQHandler
+ 851              		.syntax unified
+ 852              		.thumb
+ 853              		.thumb_func
+ 855              	Stepper_TIM_IRQHandler:
+ 856              	.LFB349:
+ 280:Glider-Core/stepper_driver.c **** 
+ 281:Glider-Core/stepper_driver.c **** void Stepper_TIM_IRQHandler(void) 
+ 282:Glider-Core/stepper_driver.c **** {
+ 857              		.loc 1 282 1 is_stmt 1 view -0
+ 858              		.cfi_startproc
+ 859              		@ args = 0, pretend = 0, frame = 0
+ 860              		@ frame_needed = 0, uses_anonymous_args = 0
+ 861 0000 08B5     		push	{r3, lr}
+ 862              	.LCFI8:
+ 863              		.cfi_def_cfa_offset 8
+ 864              		.cfi_offset 3, -8
+ 865              		.cfi_offset 14, -4
+ 283:Glider-Core/stepper_driver.c ****     if (g_stepper.is_running != 0U) 
+ 866              		.loc 1 283 5 view .LVU231
+ 867              		.loc 1 283 18 is_stmt 0 view .LVU232
+ 868 0002 354B     		ldr	r3, .L96
+ 869 0004 1B7B     		ldrb	r3, [r3, #12]	@ zero_extendqisi2
+ 870              		.loc 1 283 8 view .LVU233
+ 871 0006 002B     		cmp	r3, #0
+ 872 0008 65D0     		beq	.L83
+ 284:Glider-Core/stepper_driver.c ****     {
+ 285:Glider-Core/stepper_driver.c ****         if (g_stepper.pulses_remaining > 0U) 
+ 873              		.loc 1 285 9 is_stmt 1 view .LVU234
+ 874              		.loc 1 285 22 is_stmt 0 view .LVU235
+ 875 000a 334B     		ldr	r3, .L96
+ 876 000c 9B68     		ldr	r3, [r3, #8]
+ 877              		.loc 1 285 12 view .LVU236
+ 878 000e 002B     		cmp	r3, #0
+ 879 0010 5FD0     		beq	.L85
+ 286:Glider-Core/stepper_driver.c ****         {
+ 287:Glider-Core/stepper_driver.c ****             g_stepper.step_count++;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 24
+
+
+ 880              		.loc 1 287 13 is_stmt 1 view .LVU237
+ 881              		.loc 1 287 22 is_stmt 0 view .LVU238
+ 882 0012 314B     		ldr	r3, .L96
+ 883 0014 9A69     		ldr	r2, [r3, #24]
+ 884              		.loc 1 287 33 view .LVU239
+ 885 0016 0132     		adds	r2, r2, #1
+ 886 0018 9A61     		str	r2, [r3, #24]
+ 288:Glider-Core/stepper_driver.c ****             g_stepper.pulses_remaining--;
+ 887              		.loc 1 288 13 is_stmt 1 view .LVU240
+ 888              		.loc 1 288 22 is_stmt 0 view .LVU241
+ 889 001a 9A68     		ldr	r2, [r3, #8]
+ 890              		.loc 1 288 39 view .LVU242
+ 891 001c 013A     		subs	r2, r2, #1
+ 892 001e 9A60     		str	r2, [r3, #8]
+ 289:Glider-Core/stepper_driver.c ****             g_stepper.current_pos += g_stepper.direction;
+ 893              		.loc 1 289 13 is_stmt 1 view .LVU243
+ 894              		.loc 1 289 47 is_stmt 0 view .LVU244
+ 895 0020 5A7B     		ldrb	r2, [r3, #13]	@ zero_extendqisi2
+ 896              		.loc 1 289 22 view .LVU245
+ 897 0022 1968     		ldr	r1, [r3]
+ 898              		.loc 1 289 35 view .LVU246
+ 899 0024 41FA82F2 		sxtab	r2, r1, r2
+ 900 0028 1A60     		str	r2, [r3]
+ 290:Glider-Core/stepper_driver.c ****             
+ 291:Glider-Core/stepper_driver.c ****             if (g_stepper.pulses_remaining == 0U) 
+ 901              		.loc 1 291 13 is_stmt 1 view .LVU247
+ 902              		.loc 1 291 26 is_stmt 0 view .LVU248
+ 903 002a 9B68     		ldr	r3, [r3, #8]
+ 904              		.loc 1 291 16 view .LVU249
+ 905 002c F3B1     		cbz	r3, .L94
+ 906              	.LBB6:
+ 292:Glider-Core/stepper_driver.c ****             {
+ 293:Glider-Core/stepper_driver.c ****                 Stepper_Stop();
+ 294:Glider-Core/stepper_driver.c ****             }
+ 295:Glider-Core/stepper_driver.c ****             else
+ 296:Glider-Core/stepper_driver.c ****             {
+ 297:Glider-Core/stepper_driver.c ****                 /* =================平滑加减速(S型/梯形曲线逼近)================ */
+ 298:Glider-Core/stepper_driver.c ****                 uint32_t calc_rpm = g_stepper.target_rpm;
+ 907              		.loc 1 298 17 is_stmt 1 view .LVU250
+ 908              		.loc 1 298 26 is_stmt 0 view .LVU251
+ 909 002e 2A4B     		ldr	r3, .L96
+ 910 0030 1869     		ldr	r0, [r3, #16]
+ 911              	.LVL71:
+ 299:Glider-Core/stepper_driver.c ****                 
+ 300:Glider-Core/stepper_driver.c ****                 if (g_stepper.total_pulses > STEPPER_ACCEL_PULSES * 2) {
+ 912              		.loc 1 300 17 is_stmt 1 view .LVU252
+ 913              		.loc 1 300 30 is_stmt 0 view .LVU253
+ 914 0032 DB69     		ldr	r3, [r3, #28]
+ 915              		.loc 1 300 20 view .LVU254
+ 916 0034 B3F5487F 		cmp	r3, #800
+ 917 0038 2CD9     		bls	.L87
+ 301:Glider-Core/stepper_driver.c ****                     /* 有足够的空间形成完整的梯形：起步加速 -> 匀速巡航 -> �
+ 302:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < STEPPER_ACCEL_PULSES) {
+ 918              		.loc 1 302 21 is_stmt 1 view .LVU255
+ 919              		.loc 1 302 34 is_stmt 0 view .LVU256
+ 920 003a 274B     		ldr	r3, .L96
+ 921 003c 9B69     		ldr	r3, [r3, #24]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 25
+
+
+ 922              		.loc 1 302 24 view .LVU257
+ 923 003e B3F5C87F 		cmp	r3, #400
+ 924 0042 16D2     		bcs	.L88
+ 303:Glider-Core/stepper_driver.c ****                         /* 1. 加速段：从最小起跑转速插值爬升到目标速度 */
+ 304:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
+ 925              		.loc 1 304 25 is_stmt 1 view .LVU258
+ 926              		.loc 1 304 66 is_stmt 0 view .LVU259
+ 927 0044 244B     		ldr	r3, .L96
+ 928 0046 1869     		ldr	r0, [r3, #16]
+ 929              		.loc 1 304 78 view .LVU260
+ 930 0048 1E38     		subs	r0, r0, #30
+ 931              	.LVL72:
+ 932              		.loc 1 304 110 view .LVU261
+ 933 004a 9B69     		ldr	r3, [r3, #24]
+ 934              		.loc 1 304 99 view .LVU262
+ 935 004c 03FB00F0 		mul	r0, r3, r0
+ 936              		.loc 1 304 122 view .LVU263
+ 937 0050 224B     		ldr	r3, .L96+4
+ 938 0052 A3FB0030 		umull	r3, r0, r3, r0
+ 939 0056 C009     		lsrs	r0, r0, #7
+ 940              		.loc 1 304 34 view .LVU264
+ 941 0058 1E30     		adds	r0, r0, #30
+ 942              	.LVL73:
+ 943              	.L89:
+ 305:Glider-Core/stepper_driver.c ****                     } 
+ 306:Glider-Core/stepper_driver.c ****                     else if (g_stepper.pulses_remaining <= STEPPER_ACCEL_PULSES) {
+ 307:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
+ 308:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
+ 309:Glider-Core/stepper_driver.c ****                     }
+ 310:Glider-Core/stepper_driver.c ****                     /* 2. 匀速段：啥也不做，维持 calc_rpm = target_rpm */
+ 311:Glider-Core/stepper_driver.c ****                 } 
+ 312:Glider-Core/stepper_driver.c ****                 else {
+ 313:Glider-Core/stepper_driver.c ****                     /* 所设脉冲数太短不足以跑满加减速过程，只能退化为尖顶�
+ 314:Glider-Core/stepper_driver.c ****                     uint32_t half = g_stepper.total_pulses / 2;
+ 315:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
+ 316:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
+ 317:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
+ 318:Glider-Core/stepper_driver.c ****                     } else {
+ 319:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
+ 320:Glider-Core/stepper_driver.c ****                     }
+ 321:Glider-Core/stepper_driver.c ****                 }
+ 322:Glider-Core/stepper_driver.c ****                 
+ 323:Glider-Core/stepper_driver.c ****                 /* 为了优化 CPU 的运算及打断资源，只有侦测到速度变更才去查
+ 324:Glider-Core/stepper_driver.c ****                 if (calc_rpm != g_stepper.current_rpm) {
+ 944              		.loc 1 324 17 is_stmt 1 view .LVU265
+ 945              		.loc 1 324 42 is_stmt 0 view .LVU266
+ 946 005a 1F4B     		ldr	r3, .L96
+ 947 005c 5B69     		ldr	r3, [r3, #20]
+ 948              		.loc 1 324 20 view .LVU267
+ 949 005e 8342     		cmp	r3, r0
+ 950 0060 39D0     		beq	.L83
+ 325:Glider-Core/stepper_driver.c ****                     g_stepper.current_rpm = calc_rpm;
+ 951              		.loc 1 325 21 is_stmt 1 view .LVU268
+ 952              		.loc 1 325 43 is_stmt 0 view .LVU269
+ 953 0062 1D4B     		ldr	r3, .L96
+ 954 0064 5861     		str	r0, [r3, #20]
+ 326:Glider-Core/stepper_driver.c ****                     Stepper_UpdateARR(calc_rpm);
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 26
+
+
+ 955              		.loc 1 326 21 is_stmt 1 view .LVU270
+ 956 0066 FFF7FEFF 		bl	Stepper_UpdateARR
+ 957              	.LVL74:
+ 958              		.loc 1 326 21 is_stmt 0 view .LVU271
+ 959 006a 34E0     		b	.L83
+ 960              	.LVL75:
+ 961              	.L94:
+ 962              		.loc 1 326 21 view .LVU272
+ 963              	.LBE6:
+ 293:Glider-Core/stepper_driver.c ****             }
+ 964              		.loc 1 293 17 is_stmt 1 view .LVU273
+ 965 006c FFF7FEFF 		bl	Stepper_Stop
+ 966              	.LVL76:
+ 967 0070 31E0     		b	.L83
+ 968              	.LVL77:
+ 969              	.L88:
+ 970              	.LBB8:
+ 306:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
+ 971              		.loc 1 306 26 view .LVU274
+ 306:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
+ 972              		.loc 1 306 39 is_stmt 0 view .LVU275
+ 973 0072 194B     		ldr	r3, .L96
+ 974 0074 9B68     		ldr	r3, [r3, #8]
+ 306:Glider-Core/stepper_driver.c ****                         /* 3. 减速段：从目标速度插值衰减回最小转速 */
+ 975              		.loc 1 306 29 view .LVU276
+ 976 0076 B3F5C87F 		cmp	r3, #400
+ 977 007a EED8     		bhi	.L89
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 978              		.loc 1 308 25 is_stmt 1 view .LVU277
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 979              		.loc 1 308 66 is_stmt 0 view .LVU278
+ 980 007c 164B     		ldr	r3, .L96
+ 981 007e 1869     		ldr	r0, [r3, #16]
+ 982              	.LVL78:
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 983              		.loc 1 308 78 view .LVU279
+ 984 0080 1E38     		subs	r0, r0, #30
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 985              		.loc 1 308 110 view .LVU280
+ 986 0082 9B68     		ldr	r3, [r3, #8]
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 987              		.loc 1 308 99 view .LVU281
+ 988 0084 03FB00F0 		mul	r0, r3, r0
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 989              		.loc 1 308 128 view .LVU282
+ 990 0088 144B     		ldr	r3, .L96+4
+ 991 008a A3FB0030 		umull	r3, r0, r3, r0
+ 992 008e C009     		lsrs	r0, r0, #7
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 993              		.loc 1 308 34 view .LVU283
+ 994 0090 1E30     		adds	r0, r0, #30
+ 995              	.LVL79:
+ 308:Glider-Core/stepper_driver.c ****                     }
+ 996              		.loc 1 308 34 view .LVU284
+ 997 0092 E2E7     		b	.L89
+ 998              	.L87:
+ 999              	.LBB7:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 27
+
+
+ 314:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
+ 1000              		.loc 1 314 21 is_stmt 1 view .LVU285
+ 314:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
+ 1001              		.loc 1 314 46 is_stmt 0 view .LVU286
+ 1002 0094 104B     		ldr	r3, .L96
+ 1003 0096 DA69     		ldr	r2, [r3, #28]
+ 314:Glider-Core/stepper_driver.c ****                     if (half == 0) half = 1;
+ 1004              		.loc 1 314 30 view .LVU287
+ 1005 0098 5308     		lsrs	r3, r2, #1
+ 1006              	.LVL80:
+ 315:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
+ 1007              		.loc 1 315 21 is_stmt 1 view .LVU288
+ 315:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
+ 1008              		.loc 1 315 24 is_stmt 0 view .LVU289
+ 1009 009a 012A     		cmp	r2, #1
+ 1010 009c 0DD9     		bls	.L95
+ 1011              	.LVL81:
+ 1012              	.L90:
+ 316:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
+ 1013              		.loc 1 316 21 is_stmt 1 view .LVU290
+ 316:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
+ 1014              		.loc 1 316 34 is_stmt 0 view .LVU291
+ 1015 009e 0E4A     		ldr	r2, .L96
+ 1016 00a0 9269     		ldr	r2, [r2, #24]
+ 316:Glider-Core/stepper_driver.c ****                         calc_rpm = STEPPER_START_RPM + (g_stepper.target_rpm - STEPPER_START_RPM) *
+ 1017              		.loc 1 316 24 view .LVU292
+ 1018 00a2 9A42     		cmp	r2, r3
+ 1019 00a4 0BD2     		bcs	.L91
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1020              		.loc 1 317 25 is_stmt 1 view .LVU293
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1021              		.loc 1 317 66 is_stmt 0 view .LVU294
+ 1022 00a6 0C4A     		ldr	r2, .L96
+ 1023 00a8 1069     		ldr	r0, [r2, #16]
+ 1024              	.LVL82:
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1025              		.loc 1 317 78 view .LVU295
+ 1026 00aa 1E38     		subs	r0, r0, #30
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1027              		.loc 1 317 110 view .LVU296
+ 1028 00ac 9269     		ldr	r2, [r2, #24]
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1029              		.loc 1 317 99 view .LVU297
+ 1030 00ae 02FB00F0 		mul	r0, r2, r0
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1031              		.loc 1 317 122 view .LVU298
+ 1032 00b2 B0FBF3F0 		udiv	r0, r0, r3
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1033              		.loc 1 317 34 view .LVU299
+ 1034 00b6 1E30     		adds	r0, r0, #30
+ 1035              	.LVL83:
+ 317:Glider-Core/stepper_driver.c ****                     } else {
+ 1036              		.loc 1 317 34 view .LVU300
+ 1037 00b8 CFE7     		b	.L89
+ 1038              	.L95:
+ 315:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
+ 1039              		.loc 1 315 41 view .LVU301
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 28
+
+
+ 1040 00ba 0123     		movs	r3, #1
+ 1041              	.LVL84:
+ 315:Glider-Core/stepper_driver.c ****                     if (g_stepper.step_count < half) {
+ 1042              		.loc 1 315 41 view .LVU302
+ 1043 00bc EFE7     		b	.L90
+ 1044              	.LVL85:
+ 1045              	.L91:
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1046              		.loc 1 319 25 is_stmt 1 view .LVU303
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1047              		.loc 1 319 66 is_stmt 0 view .LVU304
+ 1048 00be 064A     		ldr	r2, .L96
+ 1049 00c0 1069     		ldr	r0, [r2, #16]
+ 1050              	.LVL86:
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1051              		.loc 1 319 78 view .LVU305
+ 1052 00c2 1E38     		subs	r0, r0, #30
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1053              		.loc 1 319 110 view .LVU306
+ 1054 00c4 9268     		ldr	r2, [r2, #8]
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1055              		.loc 1 319 99 view .LVU307
+ 1056 00c6 02FB00F0 		mul	r0, r2, r0
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1057              		.loc 1 319 128 view .LVU308
+ 1058 00ca B0FBF3F0 		udiv	r0, r0, r3
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1059              		.loc 1 319 34 view .LVU309
+ 1060 00ce 1E30     		adds	r0, r0, #30
+ 1061              	.LVL87:
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1062              		.loc 1 319 34 view .LVU310
+ 1063 00d0 C3E7     		b	.L89
+ 1064              	.LVL88:
+ 1065              	.L85:
+ 319:Glider-Core/stepper_driver.c ****                     }
+ 1066              		.loc 1 319 34 view .LVU311
+ 1067              	.LBE7:
+ 1068              	.LBE8:
+ 327:Glider-Core/stepper_driver.c ****                 }
+ 328:Glider-Core/stepper_driver.c ****                 /* ========================================================= */
+ 329:Glider-Core/stepper_driver.c ****             }
+ 330:Glider-Core/stepper_driver.c ****         } 
+ 331:Glider-Core/stepper_driver.c ****         else 
+ 332:Glider-Core/stepper_driver.c ****         {
+ 333:Glider-Core/stepper_driver.c ****             Stepper_Stop();
+ 1069              		.loc 1 333 13 is_stmt 1 view .LVU312
+ 1070 00d2 FFF7FEFF 		bl	Stepper_Stop
+ 1071              	.LVL89:
+ 1072              	.L83:
+ 334:Glider-Core/stepper_driver.c ****         }
+ 335:Glider-Core/stepper_driver.c ****     }
+ 336:Glider-Core/stepper_driver.c **** }
+ 1073              		.loc 1 336 1 is_stmt 0 view .LVU313
+ 1074 00d6 08BD     		pop	{r3, pc}
+ 1075              	.L97:
+ 1076              		.align	2
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 29
+
+
+ 1077              	.L96:
+ 1078 00d8 00000000 		.word	g_stepper
+ 1079 00dc 1F85EB51 		.word	1374389535
+ 1080              		.cfi_endproc
+ 1081              	.LFE349:
+ 1083              		.section	.text.HAL_TIM_PeriodElapsedCallback,"ax",%progbits
+ 1084              		.align	1
+ 1085              		.global	HAL_TIM_PeriodElapsedCallback
+ 1086              		.syntax unified
+ 1087              		.thumb
+ 1088              		.thumb_func
+ 1090              	HAL_TIM_PeriodElapsedCallback:
+ 1091              	.LVL90:
+ 1092              	.LFB350:
+ 337:Glider-Core/stepper_driver.c **** 
+ 338:Glider-Core/stepper_driver.c **** /* 拦截 HAL 的定时器溢出回调，这里是由于不需要再修改 main 或者 stm32h_it.c 
+ 339:Glider-Core/stepper_driver.c **** void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+ 340:Glider-Core/stepper_driver.c **** {
+ 1093              		.loc 1 340 1 is_stmt 1 view -0
+ 1094              		.cfi_startproc
+ 1095              		@ args = 0, pretend = 0, frame = 0
+ 1096              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1097              		.loc 1 340 1 is_stmt 0 view .LVU315
+ 1098 0000 08B5     		push	{r3, lr}
+ 1099              	.LCFI9:
+ 1100              		.cfi_def_cfa_offset 8
+ 1101              		.cfi_offset 3, -8
+ 1102              		.cfi_offset 14, -4
+ 341:Glider-Core/stepper_driver.c ****     if (htim->Instance == TIM1)
+ 1103              		.loc 1 341 5 is_stmt 1 view .LVU316
+ 1104              		.loc 1 341 13 is_stmt 0 view .LVU317
+ 1105 0002 0268     		ldr	r2, [r0]
+ 1106              		.loc 1 341 8 view .LVU318
+ 1107 0004 034B     		ldr	r3, .L102
+ 1108 0006 9A42     		cmp	r2, r3
+ 1109 0008 00D0     		beq	.L101
+ 1110              	.LVL91:
+ 1111              	.L98:
+ 342:Glider-Core/stepper_driver.c ****     {
+ 343:Glider-Core/stepper_driver.c ****         Stepper_TIM_IRQHandler(); 
+ 344:Glider-Core/stepper_driver.c ****     }
+ 345:Glider-Core/stepper_driver.c **** }
+ 1112              		.loc 1 345 1 view .LVU319
+ 1113 000a 08BD     		pop	{r3, pc}
+ 1114              	.LVL92:
+ 1115              	.L101:
+ 343:Glider-Core/stepper_driver.c ****     }
+ 1116              		.loc 1 343 9 is_stmt 1 view .LVU320
+ 1117 000c FFF7FEFF 		bl	Stepper_TIM_IRQHandler
+ 1118              	.LVL93:
+ 1119              		.loc 1 345 1 is_stmt 0 view .LVU321
+ 1120 0010 FBE7     		b	.L98
+ 1121              	.L103:
+ 1122 0012 00BF     		.align	2
+ 1123              	.L102:
+ 1124 0014 00000140 		.word	1073807360
+ 1125              		.cfi_endproc
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 30
+
+
+ 1126              	.LFE350:
+ 1128              		.section	.text.Stepper_TestTask,"ax",%progbits
+ 1129              		.align	1
+ 1130              		.global	Stepper_TestTask
+ 1131              		.syntax unified
+ 1132              		.thumb
+ 1133              		.thumb_func
+ 1135              	Stepper_TestTask:
+ 1136              	.LVL94:
+ 1137              	.LFB351:
+ 346:Glider-Core/stepper_driver.c **** 
+ 347:Glider-Core/stepper_driver.c **** /* 在 StartServoTask 中被挂载的测试本体 */
+ 348:Glider-Core/stepper_driver.c **** void Stepper_TestTask(void *argument)
+ 349:Glider-Core/stepper_driver.c **** {
+ 1138              		.loc 1 349 1 is_stmt 1 view -0
+ 1139              		.cfi_startproc
+ 1140              		@ Volatile: function does not return.
+ 1141              		@ args = 0, pretend = 0, frame = 0
+ 1142              		@ frame_needed = 0, uses_anonymous_args = 0
+ 1143              		.loc 1 349 1 is_stmt 0 view .LVU323
+ 1144 0000 08B5     		push	{r3, lr}
+ 1145              	.LCFI10:
+ 1146              		.cfi_def_cfa_offset 8
+ 1147              		.cfi_offset 3, -8
+ 1148              		.cfi_offset 14, -4
+ 350:Glider-Core/stepper_driver.c ****     (void)argument;
+ 1149              		.loc 1 350 5 is_stmt 1 view .LVU324
+ 351:Glider-Core/stepper_driver.c **** 
+ 352:Glider-Core/stepper_driver.c ****     Stepper_Init();
+ 1150              		.loc 1 352 5 view .LVU325
+ 1151 0002 FFF7FEFF 		bl	Stepper_Init
+ 1152              	.LVL95:
+ 353:Glider-Core/stepper_driver.c **** 
+ 354:Glider-Core/stepper_driver.c ****     /* 等待接收机和驱动稳定 */
+ 355:Glider-Core/stepper_driver.c ****     osDelay(1000);
+ 1153              		.loc 1 355 5 view .LVU326
+ 1154 0006 4FF47A70 		mov	r0, #1000
+ 1155 000a FFF7FEFF 		bl	osDelay
+ 1156              	.LVL96:
+ 1157 000e 07E0     		b	.L105
+ 1158              	.L106:
+ 356:Glider-Core/stepper_driver.c **** 
+ 357:Glider-Core/stepper_driver.c ****     for (;;)
+ 358:Glider-Core/stepper_driver.c ****     {
+ 359:Glider-Core/stepper_driver.c ****         if (SbusDriver_IsFrameFresh(osKernelGetTickCount(), STEPPER_TEST_FRAME_TIMEOUT_MS) == 0U ||
+ 360:Glider-Core/stepper_driver.c ****             g_sbus_readout.failsafe != 0U)
+ 361:Glider-Core/stepper_driver.c ****         {
+ 362:Glider-Core/stepper_driver.c ****             g_stepper_test_cmd_rpm = 0;
+ 1159              		.loc 1 362 13 discriminator 3 view .LVU327
+ 1160              		.loc 1 362 36 is_stmt 0 discriminator 3 view .LVU328
+ 1161 0010 0020     		movs	r0, #0
+ 1162 0012 124B     		ldr	r3, .L110
+ 1163 0014 1860     		str	r0, [r3]
+ 363:Glider-Core/stepper_driver.c ****             Stepper_ApplySignedRpmCommand(0);
+ 1164              		.loc 1 363 13 is_stmt 1 discriminator 3 view .LVU329
+ 1165 0016 FFF7FEFF 		bl	Stepper_ApplySignedRpmCommand
+ 1166              	.LVL97:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 31
+
+
+ 364:Glider-Core/stepper_driver.c ****             osDelay(STEPPER_TEST_POLL_MS);
+ 1167              		.loc 1 364 13 discriminator 3 view .LVU330
+ 1168 001a 1420     		movs	r0, #20
+ 1169 001c FFF7FEFF 		bl	osDelay
+ 1170              	.LVL98:
+ 365:Glider-Core/stepper_driver.c ****             continue;
+ 1171              		.loc 1 365 13 discriminator 3 view .LVU331
+ 1172              	.L105:
+ 357:Glider-Core/stepper_driver.c ****     {
+ 1173              		.loc 1 357 5 view .LVU332
+ 359:Glider-Core/stepper_driver.c ****             g_sbus_readout.failsafe != 0U)
+ 1174              		.loc 1 359 9 view .LVU333
+ 359:Glider-Core/stepper_driver.c ****             g_sbus_readout.failsafe != 0U)
+ 1175              		.loc 1 359 13 is_stmt 0 view .LVU334
+ 1176 0020 FFF7FEFF 		bl	osKernelGetTickCount
+ 1177              	.LVL99:
+ 1178 0024 9621     		movs	r1, #150
+ 1179 0026 FFF7FEFF 		bl	SbusDriver_IsFrameFresh
+ 1180              	.LVL100:
+ 359:Glider-Core/stepper_driver.c ****             g_sbus_readout.failsafe != 0U)
+ 1181              		.loc 1 359 12 view .LVU335
+ 1182 002a 0028     		cmp	r0, #0
+ 1183 002c F0D0     		beq	.L106
+ 360:Glider-Core/stepper_driver.c ****         {
+ 1184              		.loc 1 360 27 discriminator 2 view .LVU336
+ 1185 002e 0C4B     		ldr	r3, .L110+4
+ 1186 0030 9B6E     		ldr	r3, [r3, #104]
+ 359:Glider-Core/stepper_driver.c ****             g_sbus_readout.failsafe != 0U)
+ 1187              		.loc 1 359 98 discriminator 2 view .LVU337
+ 1188 0032 002B     		cmp	r3, #0
+ 1189 0034 ECD1     		bne	.L106
+ 366:Glider-Core/stepper_driver.c ****         }
+ 367:Glider-Core/stepper_driver.c **** 
+ 368:Glider-Core/stepper_driver.c ****         g_stepper_test_raw_left_y = g_sbus_readout.controls.left_stick_y;
+ 1190              		.loc 1 368 9 is_stmt 1 view .LVU338
+ 1191              		.loc 1 368 60 is_stmt 0 view .LVU339
+ 1192 0036 0A4B     		ldr	r3, .L110+4
+ 1193 0038 B3F85430 		ldrh	r3, [r3, #84]
+ 1194 003c 9BB2     		uxth	r3, r3
+ 1195              		.loc 1 368 35 view .LVU340
+ 1196 003e 094A     		ldr	r2, .L110+8
+ 1197 0040 1380     		strh	r3, [r2]	@ movhi
+ 369:Glider-Core/stepper_driver.c ****         g_stepper_test_cmd_rpm = Stepper_MapLeftStickToSignedRpm(g_stepper_test_raw_left_y);
+ 1198              		.loc 1 369 9 is_stmt 1 view .LVU341
+ 1199              		.loc 1 369 34 is_stmt 0 view .LVU342
+ 1200 0042 1088     		ldrh	r0, [r2]
+ 1201 0044 80B2     		uxth	r0, r0
+ 1202 0046 FFF7FEFF 		bl	Stepper_MapLeftStickToSignedRpm
+ 1203              	.LVL101:
+ 1204              		.loc 1 369 32 view .LVU343
+ 1205 004a 044B     		ldr	r3, .L110
+ 1206 004c 1860     		str	r0, [r3]
+ 370:Glider-Core/stepper_driver.c **** 
+ 371:Glider-Core/stepper_driver.c ****         Stepper_ApplySignedRpmCommand(g_stepper_test_cmd_rpm);
+ 1207              		.loc 1 371 9 is_stmt 1 view .LVU344
+ 1208 004e 1868     		ldr	r0, [r3]
+ 1209 0050 FFF7FEFF 		bl	Stepper_ApplySignedRpmCommand
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 32
+
+
+ 1210              	.LVL102:
+ 372:Glider-Core/stepper_driver.c ****         osDelay(STEPPER_TEST_POLL_MS);
+ 1211              		.loc 1 372 9 view .LVU345
+ 1212 0054 1420     		movs	r0, #20
+ 1213 0056 FFF7FEFF 		bl	osDelay
+ 1214              	.LVL103:
+ 1215 005a E1E7     		b	.L105
+ 1216              	.L111:
+ 1217              		.align	2
+ 1218              	.L110:
+ 1219 005c 00000000 		.word	g_stepper_test_cmd_rpm
+ 1220 0060 00000000 		.word	g_sbus_state
+ 1221 0064 00000000 		.word	g_stepper_test_raw_left_y
+ 1222              		.cfi_endproc
+ 1223              	.LFE351:
+ 1225              		.section	.bss.g_stepper_test_cmd_rpm,"aw",%nobits
+ 1226              		.align	2
+ 1229              	g_stepper_test_cmd_rpm:
+ 1230 0000 00000000 		.space	4
+ 1231              		.section	.data.g_stepper_test_raw_left_y,"aw"
+ 1232              		.align	1
+ 1235              	g_stepper_test_raw_left_y:
+ 1236 0000 0004     		.short	1024
+ 1237              		.section	.bss.g_stepper,"aw",%nobits
+ 1238              		.align	2
+ 1241              	g_stepper:
+ 1242 0000 00000000 		.space	32
+ 1242      00000000 
+ 1242      00000000 
+ 1242      00000000 
+ 1242      00000000 
+ 1243              		.text
+ 1244              	.Letext0:
+ 1245              		.file 2 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 1246              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 1247              		.file 4 "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h743xx.h"
+ 1248              		.file 5 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h"
+ 1249              		.file 6 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_gpio.h"
+ 1250              		.file 7 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma.h"
+ 1251              		.file 8 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_tim.h"
+ 1252              		.file 9 "Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h"
+ 1253              		.file 10 "Glider-Core/sbus_driver.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 33
 
 
 DEFINED SYMBOLS
                             *ABS*:00000000 stepper_driver.c
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:20     .text.Stepper_UpdateARR:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:25     .text.Stepper_UpdateARR:00000000 Stepper_UpdateARR
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:98     .text.Stepper_UpdateARR:00000038 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:105    .text.Stepper_Init:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:111    .text.Stepper_Init:00000000 Stepper_Init
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:166    .text.Stepper_Init:0000003c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:865    .bss.g_stepper:00000000 g_stepper
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:173    .text.Stepper_Stop:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:179    .text.Stepper_Stop:00000000 Stepper_Stop
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:221    .text.Stepper_Stop:0000002c $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:227    .text.Stepper_MoveRelative:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:233    .text.Stepper_MoveRelative:00000000 Stepper_MoveRelative
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:401    .text.Stepper_MoveRelative:000000a8 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:408    .text.Stepper_MoveAbsolute:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:414    .text.Stepper_MoveAbsolute:00000000 Stepper_MoveAbsolute
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:443    .text.Stepper_MoveAbsolute:00000010 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:448    .text.Stepper_IsRunning:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:454    .text.Stepper_IsRunning:00000000 Stepper_IsRunning
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:470    .text.Stepper_IsRunning:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:475    .text.Stepper_GetCurrentPosition:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:481    .text.Stepper_GetCurrentPosition:00000000 Stepper_GetCurrentPosition
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:497    .text.Stepper_GetCurrentPosition:00000008 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:502    .text.Stepper_TIM_IRQHandler:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:508    .text.Stepper_TIM_IRQHandler:00000000 Stepper_TIM_IRQHandler
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:731    .text.Stepper_TIM_IRQHandler:000000d8 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:737    .text.HAL_TIM_PeriodElapsedCallback:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:743    .text.HAL_TIM_PeriodElapsedCallback:00000000 HAL_TIM_PeriodElapsedCallback
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:777    .text.HAL_TIM_PeriodElapsedCallback:00000014 $d
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:782    .text.Stepper_TestTask:00000000 $t
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:788    .text.Stepper_TestTask:00000000 Stepper_TestTask
-C:\Users\OUFARU~1\AppData\Local\Temp\cc1pGwci.s:862    .bss.g_stepper:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:20     .text.Stepper_ClampSignedRpm:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:25     .text.Stepper_ClampSignedRpm:00000000 Stepper_ClampSignedRpm
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:58     .text.Stepper_ClampSignedRpm:00000018 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:63     .text.Stepper_MapLeftStickToSignedRpm:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:68     .text.Stepper_MapLeftStickToSignedRpm:00000000 Stepper_MapLeftStickToSignedRpm
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:184    .text.Stepper_MapLeftStickToSignedRpm:00000058 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:191    .text.Stepper_UpdateARR:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:196    .text.Stepper_UpdateARR:00000000 Stepper_UpdateARR
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:269    .text.Stepper_UpdateARR:00000038 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:276    .text.Stepper_Init:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:282    .text.Stepper_Init:00000000 Stepper_Init
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:337    .text.Stepper_Init:0000003c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1241   .bss.g_stepper:00000000 g_stepper
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:344    .text.Stepper_Stop:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:350    .text.Stepper_Stop:00000000 Stepper_Stop
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:392    .text.Stepper_Stop:0000002c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:398    .text.Stepper_MoveRelative:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:404    .text.Stepper_MoveRelative:00000000 Stepper_MoveRelative
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:572    .text.Stepper_MoveRelative:000000a8 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:579    .text.Stepper_MoveAbsolute:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:585    .text.Stepper_MoveAbsolute:00000000 Stepper_MoveAbsolute
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:614    .text.Stepper_MoveAbsolute:00000010 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:619    .text.Stepper_IsRunning:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:625    .text.Stepper_IsRunning:00000000 Stepper_IsRunning
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:641    .text.Stepper_IsRunning:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:646    .text.Stepper_ApplySignedRpmCommand:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:651    .text.Stepper_ApplySignedRpmCommand:00000000 Stepper_ApplySignedRpmCommand
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:815    .text.Stepper_ApplySignedRpmCommand:00000084 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:822    .text.Stepper_GetCurrentPosition:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:828    .text.Stepper_GetCurrentPosition:00000000 Stepper_GetCurrentPosition
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:844    .text.Stepper_GetCurrentPosition:00000008 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:849    .text.Stepper_TIM_IRQHandler:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:855    .text.Stepper_TIM_IRQHandler:00000000 Stepper_TIM_IRQHandler
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1078   .text.Stepper_TIM_IRQHandler:000000d8 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1084   .text.HAL_TIM_PeriodElapsedCallback:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1090   .text.HAL_TIM_PeriodElapsedCallback:00000000 HAL_TIM_PeriodElapsedCallback
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1124   .text.HAL_TIM_PeriodElapsedCallback:00000014 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1129   .text.Stepper_TestTask:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1135   .text.Stepper_TestTask:00000000 Stepper_TestTask
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1219   .text.Stepper_TestTask:0000005c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1229   .bss.g_stepper_test_cmd_rpm:00000000 g_stepper_test_cmd_rpm
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1235   .data.g_stepper_test_raw_left_y:00000000 g_stepper_test_raw_left_y
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1226   .bss.g_stepper_test_cmd_rpm:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1232   .data.g_stepper_test_raw_left_y:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s:1238   .bss.g_stepper:00000000 $d
 
 UNDEFINED SYMBOLS
 htim1
@@ -1343,3 +1961,9 @@ HAL_TIM_PWM_Stop
 HAL_TIM_Base_Stop
 HAL_TIM_PWM_Start
 osDelay
+osKernelGetTickCount
+SbusDriver_IsFrameFresh
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccE92xFy.s 			page 34
+
+
+g_sbus_state

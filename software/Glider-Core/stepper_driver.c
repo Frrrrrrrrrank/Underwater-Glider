@@ -1,6 +1,7 @@
 #include "stepper_driver.h"
 #include "stm32h7xx_hal.h"
 #include "cmsis_os.h"
+#include "sbus_driver.h"
 
 /* 
  * 硬件资源映射：
@@ -36,6 +37,12 @@ extern TIM_HandleTypeDef htim1;
 /* 默认梯形加减速段所消耗的脉冲数 (比如 400个脉冲相当于1/4圈用来加速) */
 #define STEPPER_ACCEL_PULSES   400U
 
+#define STEPPER_TEST_MAX_RPM            800U
+#define STEPPER_TEST_STICK_DEADBAND     40U
+#define STEPPER_TEST_POLL_MS            20U
+#define STEPPER_TEST_FRAME_TIMEOUT_MS   150U
+#define STEPPER_TEST_CONTINUOUS_PULSES  ((int32_t)1000000000)
+
 typedef struct {
     volatile int32_t current_pos;
     volatile int32_t target_pos;
@@ -49,6 +56,125 @@ typedef struct {
 } StepperCtrl_t;
 
 static StepperCtrl_t g_stepper = {0};
+
+/* Debug watch helpers for SBUS-controlled test */
+static volatile uint16_t g_stepper_test_raw_left_y = SBUS_VALUE_CENTER_OBSERVED;
+static volatile int32_t g_stepper_test_cmd_rpm = 0;
+
+static int32_t Stepper_ClampSignedRpm(int32_t value)
+{
+    if (value > (int32_t)STEPPER_TEST_MAX_RPM)
+    {
+        return (int32_t)STEPPER_TEST_MAX_RPM;
+    }
+    if (value < -(int32_t)STEPPER_TEST_MAX_RPM)
+    {
+        return -(int32_t)STEPPER_TEST_MAX_RPM;
+    }
+    return value;
+}
+
+static int32_t Stepper_MapLeftStickToSignedRpm(uint16_t raw)
+{
+    const uint32_t center = SBUS_VALUE_CENTER_OBSERVED;
+    const uint32_t min_v = SBUS_VALUE_MIN_OBSERVED;
+    const uint32_t max_v = SBUS_VALUE_MAX_OBSERVED;
+    const uint32_t deadband = STEPPER_TEST_STICK_DEADBAND;
+    uint32_t threshold_high;
+    uint32_t threshold_low;
+
+    threshold_high = center + deadband;
+    threshold_low = center - deadband;
+
+    if ((uint32_t)raw > threshold_high)
+    {
+        uint32_t num = (uint32_t)raw - threshold_high;
+        uint32_t den = max_v - threshold_high;
+        uint32_t rpm = 0U;
+
+        if (den != 0U)
+        {
+            rpm = (num * STEPPER_TEST_MAX_RPM) / den;
+        }
+        if (rpm > 0U && rpm < STEPPER_START_RPM)
+        {
+            rpm = STEPPER_START_RPM;
+        }
+        return Stepper_ClampSignedRpm((int32_t)rpm);
+    }
+
+    if ((uint32_t)raw < threshold_low)
+    {
+        uint32_t num = threshold_low - (uint32_t)raw;
+        uint32_t den = threshold_low - min_v;
+        uint32_t rpm = 0U;
+
+        if (den != 0U)
+        {
+            rpm = (num * STEPPER_TEST_MAX_RPM) / den;
+        }
+        if (rpm > 0U && rpm < STEPPER_START_RPM)
+        {
+            rpm = STEPPER_START_RPM;
+        }
+        return Stepper_ClampSignedRpm(-(int32_t)rpm);
+    }
+
+    return 0;
+}
+
+static void Stepper_ApplySignedRpmCommand(int32_t signed_rpm)
+{
+    int8_t desired_dir = 0;
+    uint16_t abs_rpm = 0U;
+
+    signed_rpm = Stepper_ClampSignedRpm(signed_rpm);
+
+    if (signed_rpm > 0)
+    {
+        desired_dir = 1;
+        abs_rpm = (uint16_t)signed_rpm;
+    }
+    else if (signed_rpm < 0)
+    {
+        desired_dir = -1;
+        abs_rpm = (uint16_t)(-signed_rpm);
+    }
+
+    if (desired_dir == 0)
+    {
+        if (Stepper_IsRunning() != 0U)
+        {
+            Stepper_Stop();
+        }
+        g_stepper.target_rpm = 0U;
+        return;
+    }
+
+    if (abs_rpm < STEPPER_START_RPM)
+    {
+        abs_rpm = STEPPER_START_RPM;
+    }
+    if (abs_rpm > STEPPER_TEST_MAX_RPM)
+    {
+        abs_rpm = STEPPER_TEST_MAX_RPM;
+    }
+
+    if (g_stepper.is_running == 0U)
+    {
+        Stepper_MoveRelative((desired_dir > 0) ? STEPPER_TEST_CONTINUOUS_PULSES : -STEPPER_TEST_CONTINUOUS_PULSES, abs_rpm);
+        return;
+    }
+
+    if (g_stepper.direction != desired_dir)
+    {
+        Stepper_Stop();
+        Stepper_MoveRelative((desired_dir > 0) ? STEPPER_TEST_CONTINUOUS_PULSES : -STEPPER_TEST_CONTINUOUS_PULSES, abs_rpm);
+        return;
+    }
+
+    g_stepper.target_rpm = abs_rpm;
+}
 
 void Stepper_Init(void) 
 {
@@ -222,35 +348,27 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Stepper_TestTask(void *argument)
 {
     (void)argument;
-    
+
     Stepper_Init();
-    
-    /* 停顿两秒等待驱动器上电准备好 */
-    osDelay(2000);
-    
+
+    /* 等待接收机和驱动稳定 */
+    osDelay(1000);
+
     for (;;)
     {
-        /* 1600细分下，发 16000 脉冲就是 10 圈 */
-        /* 加了平滑加减速后，我们可以安全地飙到 600 RPM 甚至更快，体验如丝般顺滑 */
-        Stepper_MoveRelative(16000, 800);
-        
-        while (Stepper_IsRunning()) 
+        if (SbusDriver_IsFrameFresh(osKernelGetTickCount(), STEPPER_TEST_FRAME_TIMEOUT_MS) == 0U ||
+            g_sbus_readout.failsafe != 0U)
         {
-            osDelay(50);
+            g_stepper_test_cmd_rpm = 0;
+            Stepper_ApplySignedRpmCommand(0);
+            osDelay(STEPPER_TEST_POLL_MS);
+            continue;
         }
-        
-        /* 走到目标后停顿 2 秒 */
-        osDelay(2000);
-        
-        /* 反转：返回0位置(回到刚才起点), 速度同样 600RPM */
-        Stepper_MoveAbsolute(0, 800);
-        
-        while (Stepper_IsRunning()) 
-        {
-            osDelay(50);
-        }
-        
-        /* 停顿 2 秒，接着再正转，如此往复... */
-        osDelay(2000);
+
+        g_stepper_test_raw_left_y = g_sbus_readout.controls.left_stick_y;
+        g_stepper_test_cmd_rpm = Stepper_MapLeftStickToSignedRpm(g_stepper_test_raw_left_y);
+
+        Stepper_ApplySignedRpmCommand(g_stepper_test_cmd_rpm);
+        osDelay(STEPPER_TEST_POLL_MS);
     }
 }

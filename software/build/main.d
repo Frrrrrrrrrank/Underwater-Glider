@@ -52,7 +52,8 @@ build/main.o: Core/Src/main.c Core/Inc/main.h \
  Glider-Core/glider_core.h Glider-Core/glider_rdss_codec.h \
  Glider-Core/glider_rdss_codec.h Glider-Core/imu_core.h \
  Glider-Core/servo_driver.h Glider-Core/displacement_sensor.h \
- Glider-Core/motor_driver.h Glider-Core/pressure_sensor_driver.h
+ Glider-Core/motor_driver.h Glider-Core/pressure_sensor_driver.h \
+ Glider-Core/sbus_driver.h
 Core/Inc/main.h:
 Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal.h:
 Core/Inc/stm32h7xx_hal_conf.h:
@@ -114,3 +115,4 @@ Glider-Core/servo_driver.h:
 Glider-Core/displacement_sensor.h:
 Glider-Core/motor_driver.h:
 Glider-Core/pressure_sensor_driver.h:
+Glider-Core/sbus_driver.h:

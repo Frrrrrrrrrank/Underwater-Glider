@@ -164,3 +164,44 @@ Non-RS485 UART instances:
 - `Glider-Core/glider_core.h`
 - `Glider-Core/glider_core.c`
 - `Glider-Core/glider_rdss_codec.h`
+
+## 10) SBUS Channel Mapping (FS-iA10)
+
+### 10.1 Value Convention
+
+- Typical observed min: `240`
+- Typical observed center: `1024`
+- Typical observed max: `1807`
+- Keep raw values as `uint16_t` in driver outputs and apply normalization in control layers.
+
+### 10.2 Channel Semantics
+
+| Channel | Code Index Constant | Named Field | Meaning | Direction/Range Notes |
+|---|---|---|---|---|
+| CH0 | `SBUS_CH_RIGHT_STICK_X` | `right_stick_x` | Right stick left/right | Center ~1024, left to ~240, right to ~1807 |
+| CH1 | `SBUS_CH_RIGHT_STICK_Y` | `right_stick_y` | Right stick up/down | Center ~1024, up increase, down decrease |
+| CH2 | `SBUS_CH_LEFT_STICK_Y` | `left_stick_y` | Left stick up/down | Same trend as CH1 |
+| CH3 | `SBUS_CH_LEFT_STICK_X` | `left_stick_x` | Left stick left/right | Same trend as CH0 |
+| CH4 | `SBUS_CH_SWITCH_LEFT_OUTER` | `switch_left_outer` | Left-most switch (2-pos) | Up ~240, down ~1807 |
+| CH5 | `SBUS_CH_SWITCH_LEFT_MID_1` | `switch_left_mid_1` | Left side 2nd switch (3-pos) | Up ~240, mid ~1024, down ~1807 |
+| CH6 | `SBUS_CH_SWITCH_LEFT_MID_2` | `switch_left_mid_2` | Left side 3rd switch (3-pos) | Same as CH5 |
+| CH7 | `SBUS_CH_SWITCH_RIGHT_OUTER` | `switch_right_outer` | Right-most switch (2-pos) | Same as CH4 |
+| CH8 | `SBUS_CH_WHEEL_LEFT` | `wheel_left` | Left wheel | Left roll decreases to ~240, center ~1024, right roll ~1807 |
+| CH9 | `SBUS_CH_WHEEL_RIGHT` | `wheel_right` | Right wheel | Current record says left roll increases; recheck hardware trend before closed-loop use |
+
+### 10.3 Suggested Thresholds for Switch Parsing
+
+- Two-position switch:
+  - UP: `< 640`
+  - DOWN: `> 1400`
+- Three-position switch:
+  - UP: `< 640`
+  - MID: `640..1400`
+  - DOWN: `> 1400`
+
+### 10.4 Debug Watch Targets
+
+- Raw channels: `g_sbus_readout.channels[]`
+- Named controls: `g_sbus_readout.controls.*`
+- Link status: `g_sbus_readout.frame_lost`, `g_sbus_readout.failsafe`
+- Update indicator: `g_sbus_readout.frame_update_count`

@@ -10907,7 +10907,7 @@
 		)
 		(uuid "4e919eba-02d6-48ff-82c0-c231e3b30cf3")
 	)
-	(text "迭代意见:\n接口用竖插的\n电源分少一些别再这块板上画了\nUART2-485 A layout少一根线\n板载imu不一定要了 IMU封装有问题阻焊层没去掉\n把其他引脚也引出来\nSD卡测试完再迭代还是直接迭\nUART3有个丝印反了\n舵机pwm接口丝印反了"
+	(text "迭代意见:\n接口用竖插的\n电源分少一些别再这块板上画了\nUART2-485 A layout少一根线\n板载imu不一定要了 IMU封装有问题阻焊层没去掉\n把其他引脚也引出来\nSD卡测试完再迭代还是直接迭\nUART3有个丝印反了\n舵机pwm接口丝印反了\nUART8 TX RX反了！"
 		(exclude_from_sim no)
 		(at -165.354 58.674 0)
 		(effects

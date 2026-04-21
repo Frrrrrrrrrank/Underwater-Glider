@@ -29,6 +29,7 @@
 #include "displacement_sensor.h"
 #include "motor_driver.h"
 #include "pressure_sensor_driver.h"
+#include "sbus_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -444,6 +445,9 @@ int main(void)
 
   /* Initialize pressure sensor non-blocking RX driver */
   PressureSensorDriver_Init(&huart1);
+
+  /* Initialize SBUS non-blocking RX driver on UART8 */
+  SbusDriver_Init(&huart8);
 
   /* USER CODE END 2 */
 
@@ -1114,16 +1118,18 @@ static void MX_UART8_Init(void)
 
   /* USER CODE END UART8_Init 1 */
   huart8.Instance = UART8;
-  huart8.Init.BaudRate = 115200;
-  huart8.Init.WordLength = UART_WORDLENGTH_8B;
-  huart8.Init.StopBits = UART_STOPBITS_1;
-  huart8.Init.Parity = UART_PARITY_NONE;
-  huart8.Init.Mode = UART_MODE_TX_RX;
+  huart8.Init.BaudRate = 100000;
+  huart8.Init.WordLength = UART_WORDLENGTH_9B;
+  huart8.Init.StopBits = UART_STOPBITS_2;
+  huart8.Init.Parity = UART_PARITY_EVEN;
+  huart8.Init.Mode = UART_MODE_RX;
   huart8.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart8.Init.OverSampling = UART_OVERSAMPLING_16;
   huart8.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   huart8.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart8.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  huart8.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_RXINVERT_INIT|UART_ADVFEATURE_SWAP_INIT;
+  huart8.AdvancedInit.RxPinLevelInvert = UART_ADVFEATURE_RXINV_ENABLE;
+  huart8.AdvancedInit.Swap = UART_ADVFEATURE_SWAP_ENABLE;
   if (HAL_UART_Init(&huart8) != HAL_OK)
   {
     Error_Handler();
@@ -1833,6 +1839,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   }
 
   PressureSensorDriver_OnError(huart);
+  SbusDriver_OnError(huart);
 }
 
 void vAssertCalled(const char *file, int line)
@@ -2153,10 +2160,11 @@ void Start_IMU_Task(void *argument)
 void StartServoTask(void *argument)
 {
   /* USER CODE BEGIN StartServoTask */
-  
-  /* 挂载开环步进电机测试任务 */
-  extern void Stepper_TestTask(void *argument);
-  Stepper_TestTask(argument);
+  (void)argument;
+
+  /* 步进电机测试任务已停用；后续调试时取消下面两行注释即可恢复 */
+  /* extern void Stepper_TestTask(void *argument); */
+  /* Stepper_TestTask(argument); */
   
   /* Infinite loop (fallback) */
   for(;;)

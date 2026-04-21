@@ -4,6 +4,7 @@
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
 #include "pressure_sensor_driver.h"
+#include "sbus_driver.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -1231,6 +1232,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   }
 
   PressureSensorDriver_OnRxComplete(huart);
+  SbusDriver_OnRxComplete(huart);
 
   /* Forward to IMU module if it's UART4 */
   IMU_OnUART_RxComplete(huart);
