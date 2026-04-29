@@ -69,6 +69,8 @@ extern volatile uint32_t g_dbg_systick_count;
 extern volatile uint32_t g_dbg_fault_code;
 extern volatile uint32_t g_dbg_fault_count;
 extern volatile uint32_t g_dbg_uart4_irq_count;
+extern volatile uint32_t g_dbg_uart3_irq_count;
+extern volatile uint32_t g_dbg_uart3_rxne_count;
 
 /* USER CODE END EV */
 
@@ -249,6 +251,11 @@ void USART2_IRQHandler(void)
 void USART3_IRQHandler(void)
 {
   /* USER CODE BEGIN USART3_IRQn 0 */
+  g_dbg_uart3_irq_count++;
+  if (__HAL_UART_GET_FLAG(&huart3, UART_FLAG_RXNE) != 0U)
+  {
+    g_dbg_uart3_rxne_count++;
+  }
 
   /* USER CODE END USART3_IRQn 0 */
   HAL_UART_IRQHandler(&huart3);

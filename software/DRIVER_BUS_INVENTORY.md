@@ -12,21 +12,22 @@
 | `Glider-Core/glider_core.c` | RDSS AT/NMEA communication and short-message state machine | `StartUartRxTask` + `StartUartTxTask` | `UART7` | `PE8 TX`, `PE7 RX` | `115200`, `8N1` | Target platform card ID macro: `381127` |
 | `Glider-Core/glider_rdss_codec.c` | RDSS/NMEA frame parser only | Called by `glider_core` | No direct hardware | N/A | N/A | N/A |
 | `Glider-Core/imu_core.c` | IMU frame receive/parse/cache | `Start_IMU_Task` + `IMU_Core_Init(&huart4)` | `UART4` | `PB9 TX`, `PB8 RX`, `PB15 CTS` | `115200`, `8N1` | No bus address (point-to-point UART) |
-| `Glider-Core/displacement_sensor.c` | Linear displacement sensor (MODBUS-RTU) | `StartUsart3Task -> Displacement_StartTask` | `USART3` RS485 | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
-| `Glider-Core/motor_driver.c` | Closed-loop stepper multi-node control (MODBUS-RTU) | `StartUsart2Task -> UMotor_StartTask` | `USART2` RS485 | `PA2 TX`, `PA3 RX`, `PA1 DE` | `115200`, `8N1`, RS485 DE high | Node IDs `0x01`~`0x04` |
-| `Glider-Core/stepper_driver.c` | Open-loop pulse/dir stepper control | Currently mounted in `StartServoTask` via `Stepper_TestTask` | `TIM1 CH2` + GPIO | `PE11` pulse, `PE13` dir, `PE10` PUL-, `PE12` DIR- | PWM pulse generation (timer-based) | No bus address |
+| `Glider-Core/displacement_sensor.c` | Linear displacement sensor for oil-out volume estimation (MODBUS-RTU) | `StartUsart3Task -> Displacement_StartTask` | `USART3` RS485 | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
+| `Glider-Core/motor_driver.c` | Pump actuator motor control (MODBUS-RTU closed-loop stepper) | `StartUsart2Task -> UMotor_StartTask` | `USART3` RS485 (shared) | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | Default active node ID `0x03` |
+| `Glider-Core/rs485_shared_bus.c` | Shared RS485 bus arbitration mutex | Init in `main.c` + called by motor/displacement drivers | No direct hardware | N/A | RTOS mutex lock/unlock | N/A |
+| `Glider-Core/stepper_driver.c` | Open-loop pulse/dir stepper control | Called by `StartServoTask` RC control loop (`Stepper_SetContinuousSignedRpm`) | `TIM1 CH2` + GPIO | `PE11` pulse, `PE13` dir, `PE10` PUL-, `PE12` DIR- | PWM pulse generation (timer-based) | No bus address |
 | `Glider-Core/servo_driver.c` | DS3120 servo angle-to-PWM helper | `StartServoTask_Disabled` (not currently mounted) | `TIM4 CH3` | `PD14` | 50 Hz class PWM timing via TIM4 config | No bus address |
 
 ## 2) Bus-to-Device Mount Table
 
 ### UART/RS485 buses
-- `USART2` RS485 (`PA1/PA2/PA3`): motor bus, 4 nodes (`0x01`~`0x04`).
-- `USART3` RS485 (`PD12/PD8/PD9`): displacement sensor, slave `0x02`.
+- `USART3` RS485 (`PD12/PD8/PD9`): shared MODBUS bus for displacement sensor (`0x02`) and motor (`0x03`), serialized by `rs485_shared_bus` mutex.
 - `UART4` (`PB9/PB8`): IMU module.
 - `UART7` (`PE8/PE7`): RDSS terminal module (`glider_core`).
 
 ### Configured but currently not used by Glider-Core modules
 - `USART1` RS485 (`PA12/PA9/PA10`): initialized in HAL, no `Glider-Core` module bound.
+- `USART2` RS485 (`PA1/PA2/PA3`): initialized in HAL, currently no `Glider-Core` module directly bound.
 - `UART5` (`PB13/PB12`): initialized in HAL, no `Glider-Core` module bound.
 - `UART8` (`PE1/PE0`): initialized in HAL, no `Glider-Core` module bound.
 - `SPI1` (`PA4/PA5/PA6/PA7`): configured master, no current device driver in `Glider-Core`.
@@ -51,9 +52,9 @@ Non-RS485 UART instances:
 
 ## 4) Device Addressing and Protocol Details
 
-### 4.1 Motor bus (`motor_driver` on USART2)
+### 4.1 Motor bus (`motor_driver` on shared USART3)
 - Node count macro: `UMOTOR_NODE_COUNT = 4`.
-- Default enabled node IDs in `g_umotor`: `0x01`, `0x02`, `0x03`, `0x04`.
+- Default enabled node IDs in `g_umotor`: only `0x03` enabled by default, other slots disabled.
 - MODBUS function codes used:
   - `0x06` write single register
   - `0x03` read holding registers
@@ -135,12 +136,12 @@ Non-RS485 UART instances:
 - `StartUartTxTask` -> `GliderCore_RunTxTask`
 - `Start_IMU_Task` -> IMU data update loop + `IMU_Core_RunRxTask`
 - `StartUsart3Task` -> `Displacement_StartTask`
-- `StartUsart2Task` -> `UMotor_StartTask`
-- `StartServoTask` currently calls `Stepper_TestTask` (not servo task)
+- `StartUsart2Task` -> `UMotor_StartTask` (motor driver traffic goes through shared `USART3` bus in current code)
+- `StartServoTask` runs RC control state machine: OFF/all-up interlock + open-loop mode (CH5 mid), left stick controls `UMotor` node `0x03`, right stick controls open-loop stepper.
 
 ## 8) Notes / To-Confirm Items
 
-- `servo_driver` exists, but `StartServoTask` in `main.c` currently mounts stepper test logic instead.
+- `servo_driver` exists but is not mounted by default; `StartServoTask` is now used for SBUS-based motor/stepper RC control.
 - `main.h` defines `IMU_DRY_Pin` on `PC4`, while `MX_GPIO_Init` configures `IMU_DRY_Pin` plus `PC7` as inputs.
 - `SDMMC1` init function exists but `MX_SDMMC1_MMC_Init()` call is commented out in startup path.
 - `USART1`/`UART5`/`UART8` are initialized but not bound to current custom drivers.
@@ -153,6 +154,8 @@ Non-RS485 UART instances:
 - `software.ioc`
 - `Glider-Core/motor_driver.h`
 - `Glider-Core/motor_driver.c`
+- `Glider-Core/rs485_shared_bus.h`
+- `Glider-Core/rs485_shared_bus.c`
 - `Glider-Core/displacement_sensor.h`
 - `Glider-Core/displacement_sensor.c`
 - `Glider-Core/imu_core.h`
@@ -205,3 +208,6 @@ Non-RS485 UART instances:
 - Named controls: `g_sbus_readout.controls.*`
 - Link status: `g_sbus_readout.frame_lost`, `g_sbus_readout.failsafe`
 - Update indicator: `g_sbus_readout.frame_update_count`
+- RC control state: `g_rc_ctrl_mode`, `g_rc_ctrl_off_reason`
+- RC command outputs: `g_rc_worm_cmd_rpm`, `g_rc_stepper_cmd_rpm`
+- RC key inputs: `g_rc_sw_left_outer`, `g_rc_sw_left_mid_1`, `g_rc_sw_left_mid_2`, `g_rc_sw_right_outer`, `g_rc_left_stick_y`, `g_rc_right_stick_y`

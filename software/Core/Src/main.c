@@ -26,10 +26,12 @@
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
 #include "servo_driver.h"
-#include "displacement_sensor.h"
 #include "motor_driver.h"
+#include "pump_driver.h"
+#include "pump_driver.h"
 #include "pressure_sensor_driver.h"
 #include "sbus_driver.h"
+#include "stepper_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -339,12 +341,24 @@ volatile uint32_t g_dbg_bdpwi_field2 = 0U;
 volatile uint32_t g_dbg_bdpwi_field1_valid = 0U;
 volatile uint32_t g_dbg_bdpwi_field2_valid = 0U;
 volatile uint32_t g_dbg_uart4_irq_count = 0U;
+volatile uint32_t g_dbg_uart3_irq_count = 0U;
+volatile uint32_t g_dbg_uart3_rxne_count = 0U;
 volatile uint32_t g_dbg_uart4_error_count = 0U;
 volatile uint32_t g_dbg_uart4_last_error = 0U;
 volatile uint32_t g_dbg_imu_task_loop_count = 0U;
 volatile uint32_t g_dbg_servo_start_ok = 0U;
 volatile uint32_t g_dbg_servo_step_count = 0U;
 volatile uint32_t g_dbg_servo_pulse_us = 1500U;
+volatile uint32_t g_rc_ctrl_mode = 0U;
+volatile uint32_t g_rc_ctrl_off_reason = 0U;
+volatile int32_t g_rc_worm_cmd_rpm = 0;
+volatile int32_t g_rc_stepper_cmd_rpm = 0;
+volatile uint16_t g_rc_sw_left_outer = 0U;
+volatile uint16_t g_rc_sw_left_mid_1 = 0U;
+volatile uint16_t g_rc_sw_left_mid_2 = 0U;
+volatile uint16_t g_rc_sw_right_outer = 0U;
+volatile uint16_t g_rc_left_stick_y = SBUS_VALUE_CENTER_OBSERVED;
+volatile uint16_t g_rc_right_stick_y = SBUS_VALUE_CENTER_OBSERVED;
 volatile GliderDebugView g_dbg_view = {0};
 volatile GliderDebugQuickView g_dbg_quick = {0};
 volatile IMUDebugView g_imu_debug = {0};
@@ -383,6 +397,96 @@ void StartUsart2Task(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+#define RC_SWITCH_UP_THRESHOLD     640U
+#define RC_SWITCH_DOWN_THRESHOLD   1400U
+#define RC_STICK_DEADBAND          40U
+#define RC_CONTROL_PERIOD_MS       20U
+#define RC_FRAME_TIMEOUT_MS        150U
+
+#define RC_WORM_MOTOR_NODE_ID      0x03U
+#define RC_WORM_MOTOR_SLOT         0U
+#define RC_WORM_MOTOR_MAX_RPM      600U
+#define RC_STEPPER_MAX_RPM         800U
+
+#define RC_OFF_REASON_NONE                 0U
+#define RC_OFF_REASON_FRAME_TIMEOUT        1U
+#define RC_OFF_REASON_FAILSAFE_OR_LOST     2U
+#define RC_OFF_REASON_ALL_SWITCH_UP        3U
+#define RC_OFF_REASON_MODE_SWITCH_NOT_MID  4U
+
+typedef enum
+{
+  RC_CTRL_MODE_OFF = 0U,
+  RC_CTRL_MODE_OPEN_LOOP_SPEED = 1U
+} RcControlMode;
+
+static uint32_t RcControl_IsSwitchUp(uint16_t raw)
+{
+  return (raw < RC_SWITCH_UP_THRESHOLD) ? 1U : 0U;
+}
+
+static uint32_t RcControl_IsSwitchMid(uint16_t raw)
+{
+  return ((raw >= RC_SWITCH_UP_THRESHOLD) && (raw <= RC_SWITCH_DOWN_THRESHOLD)) ? 1U : 0U;
+}
+
+static int32_t RcControl_ClampSigned(int32_t value, int32_t limit)
+{
+  if (limit < 0)
+  {
+    limit = -limit;
+  }
+
+  if (value > limit)
+  {
+    return limit;
+  }
+
+  if (value < -limit)
+  {
+    return -limit;
+  }
+
+  return value;
+}
+
+/* Map SBUS stick raw value to signed RPM with a deadband around center. */
+static int32_t RcControl_MapStickToSignedRpm(uint16_t raw, uint16_t max_rpm)
+{
+  const uint32_t center = SBUS_VALUE_CENTER_OBSERVED;
+  const uint32_t min_v = SBUS_VALUE_MIN_OBSERVED;
+  const uint32_t max_v = SBUS_VALUE_MAX_OBSERVED;
+  const uint32_t threshold_high = center + RC_STICK_DEADBAND;
+  const uint32_t threshold_low = center - RC_STICK_DEADBAND;
+  int32_t signed_rpm = 0;
+
+  if (max_rpm == 0U)
+  {
+    return 0;
+  }
+
+  if ((uint32_t)raw > threshold_high)
+  {
+    const uint32_t num = (uint32_t)raw - threshold_high;
+    const uint32_t den = max_v - threshold_high;
+    if (den != 0U)
+    {
+      signed_rpm = (int32_t)((num * (uint32_t)max_rpm) / den);
+    }
+  }
+  else if ((uint32_t)raw < threshold_low)
+  {
+    const uint32_t num = threshold_low - (uint32_t)raw;
+    const uint32_t den = threshold_low - min_v;
+    if (den != 0U)
+    {
+      signed_rpm = -(int32_t)((num * (uint32_t)max_rpm) / den);
+    }
+  }
+
+  return RcControl_ClampSigned(signed_rpm, (int32_t)max_rpm);
+}
 
 /* USER CODE END 0 */
 
@@ -456,6 +560,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
+  PumpDriver_Init(&huart3);
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -2160,16 +2265,113 @@ void Start_IMU_Task(void *argument)
 void StartServoTask(void *argument)
 {
   /* USER CODE BEGIN StartServoTask */
+  uint16_t channels[SBUS_CHANNEL_COUNT] = {0U};
+  uint32_t frame_lost = 0U;
+  uint32_t failsafe = 0U;
+  uint32_t mode = RC_CTRL_MODE_OFF;
+  uint32_t off_reason = RC_OFF_REASON_NONE;
+  uint32_t now_tick;
+  uint32_t channel_count;
+  uint8_t motor_enabled = 0U;
+  uint16_t sw_left_outer;
+  uint16_t sw_left_mid_1;
+  uint16_t sw_left_mid_2;
+  uint16_t sw_right_outer;
+  int32_t worm_cmd_rpm;
+  int32_t stepper_cmd_rpm;
+
   (void)argument;
 
-  /* 步进电机测试任务已停用；后续调试时取消下面两行注释即可恢复 */
-  /* extern void Stepper_TestTask(void *argument); */
-  /* Stepper_TestTask(argument); */
-  
-  /* Infinite loop (fallback) */
+  Stepper_Init();
+  Stepper_SetContinuousSignedRpm(0);
+  UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, 0);
+  UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 0U);
+
   for(;;)
   {
-    osDelay(1);
+    now_tick = osKernelGetTickCount();
+    channel_count = SbusDriver_GetChannels(channels, SBUS_CHANNEL_COUNT,
+                                           &frame_lost, &failsafe, NULL);
+
+    worm_cmd_rpm = 0;
+    stepper_cmd_rpm = 0;
+    mode = RC_CTRL_MODE_OFF;
+    off_reason = RC_OFF_REASON_NONE;
+
+    if ((channel_count < SBUS_CHANNEL_COUNT) ||
+        (SbusDriver_IsFrameFresh(now_tick, RC_FRAME_TIMEOUT_MS) == 0U))
+    {
+      off_reason = RC_OFF_REASON_FRAME_TIMEOUT;
+    }
+    else if ((failsafe != 0U) || (frame_lost != 0U))
+    {
+      off_reason = RC_OFF_REASON_FAILSAFE_OR_LOST;
+    }
+    else
+    {
+      sw_left_outer = channels[SBUS_CH_SWITCH_LEFT_OUTER];
+      sw_left_mid_1 = channels[SBUS_CH_SWITCH_LEFT_MID_1];
+      sw_left_mid_2 = channels[SBUS_CH_SWITCH_LEFT_MID_2];
+      sw_right_outer = channels[SBUS_CH_SWITCH_RIGHT_OUTER];
+
+      g_rc_sw_left_outer = sw_left_outer;
+      g_rc_sw_left_mid_1 = sw_left_mid_1;
+      g_rc_sw_left_mid_2 = sw_left_mid_2;
+      g_rc_sw_right_outer = sw_right_outer;
+
+      if ((RcControl_IsSwitchUp(sw_left_outer) != 0U) &&
+          (RcControl_IsSwitchUp(sw_left_mid_1) != 0U) &&
+          (RcControl_IsSwitchUp(sw_left_mid_2) != 0U) &&
+          (RcControl_IsSwitchUp(sw_right_outer) != 0U))
+      {
+        off_reason = RC_OFF_REASON_ALL_SWITCH_UP;
+      }
+      else if (RcControl_IsSwitchMid(sw_left_mid_1) != 0U)
+      {
+        mode = RC_CTRL_MODE_OPEN_LOOP_SPEED;
+      }
+      else
+      {
+        off_reason = RC_OFF_REASON_MODE_SWITCH_NOT_MID;
+      }
+    }
+
+    if (mode == RC_CTRL_MODE_OPEN_LOOP_SPEED)
+    {
+      g_rc_left_stick_y = channels[SBUS_CH_LEFT_STICK_Y];
+      g_rc_right_stick_y = channels[SBUS_CH_RIGHT_STICK_Y];
+
+      worm_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_left_stick_y, RC_WORM_MOTOR_MAX_RPM);
+      stepper_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_right_stick_y, RC_STEPPER_MAX_RPM);
+
+      if (motor_enabled == 0U)
+      {
+        UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 1U);
+        motor_enabled = 1U;
+      }
+
+      UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, worm_cmd_rpm);
+      Stepper_SetContinuousSignedRpm(stepper_cmd_rpm);
+    }
+    else
+    {
+      UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, 0);
+
+      if (motor_enabled != 0U)
+      {
+        UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 0U);
+        motor_enabled = 0U;
+      }
+
+      Stepper_SetContinuousSignedRpm(0);
+    }
+
+    g_rc_ctrl_mode = mode;
+    g_rc_ctrl_off_reason = off_reason;
+    g_rc_worm_cmd_rpm = worm_cmd_rpm;
+    g_rc_stepper_cmd_rpm = stepper_cmd_rpm;
+
+    osDelay(RC_CONTROL_PERIOD_MS);
   }
   /* USER CODE END StartServoTask */
 }
@@ -2184,7 +2386,14 @@ void StartServoTask(void *argument)
 void StartUsart3Task(void *argument)
 {
   /* USER CODE BEGIN StartUsart3Task */
-  Displacement_StartTask(argument);
+  (void)argument;
+
+  for (;;)
+  {
+    uint32_t now = osKernelGetTickCount();
+    PumpDriver_Poll(now);
+    osDelay(10);
+  }
   /* USER CODE END StartUsart3Task */
 }
 

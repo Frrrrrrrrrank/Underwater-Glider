@@ -3,14 +3,14 @@
 GraphedExpression="(g_displacement_sensor).displacement_mm", Color=#e56a6f
 GraphedExpression="((g_sbus_state).readout).channels[3]", DisplayFormat=DISPLAY_FORMAT_DEC, Color=#35792b
 GraphedExpression="((g_sbus_state).readout).channels[2]", DisplayFormat=DISPLAY_FORMAT_DEC, Color=#769dda
+OpenDocument="pump_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/pump_driver.h", Line=32
 OpenDocument="sbus_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/sbus_driver.h", Line=0
-OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=383
-OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=50
+OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=488
+OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=53
 OpenDocument="stm32h7xx_hal_uart.h", FilePath="D:/Projects/UnderwaterGlider/software/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h", Line=224
 OpenDocument="tasks.c", FilePath="D:/Projects/UnderwaterGlider/software/Middlewares/Third_Party/FreeRTOS/Source/tasks.c", Line=3423
 OpenDocument="motor_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/motor_driver.h", Line=113
 OpenDocument="glider_core.c", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/glider_core.c", Line=124
-OpenDocument="displacement_sensor.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/displacement_sensor.h", Line=37
 OpenDocument="stm32h7xx_it.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/stm32h7xx_it.c", Line=88
 OpenToolbar="Debug", Floating=0, x=0, y=0
 OpenWindow="Call Stack", DockArea=RIGHT, x=0, y=2, w=459, h=158, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
@@ -19,12 +19,12 @@ OpenWindow="Disassembly", DockArea=RIGHT, x=0, y=0, w=459, h=157, FilterBarShown
 OpenWindow="Local Data", DockArea=RIGHT, x=0, y=1, w=459, h=158, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
 OpenWindow="Watched Data 1", DockArea=LEFT, x=0, y=0, w=730, h=635, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
 OpenWindow="Data Sampling", DockArea=BOTTOM, x=0, y=0, w=662, h=392, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0, VisibleTab=0, UniformSampleSpacing=0
-OpenWindow="Timeline", DockArea=BOTTOM, x=1, y=0, w=1257, h=392, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=1, DataPaneShown=1, PowerPaneShown=0, CodePaneShown=0, PinCursor="Cursor Movable", TimePerDiv="10 s / Div", TimeStampFormat="Time", DataGraphDrawAsPoints=0, DataGraphLegendShown=1, DataGraphUniformSampleSpacing=0, DataGraphLegendPosition="0;0", DataGraphShowNamesAtCursor=0, PowerGraphDrawAsPoints=0, PowerGraphLegendShown=0, PowerGraphAvgFilterTime=Off, PowerGraphAvgFilterLen=Off, PowerGraphUniformSampleSpacing=0, PowerGraphLegendPosition="1015;-69", CodeGraphLegendShown=0, CodeGraphLegendPosition="1033;0"
+OpenWindow="Timeline", DockArea=BOTTOM, x=1, y=0, w=1257, h=392, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=1, DataPaneShown=1, PowerPaneShown=0, CodePaneShown=0, PinCursor="Cursor Movable", TimePerDiv="10 s / Div", TimeStampFormat="Time", DataGraphDrawAsPoints=0, DataGraphLegendShown=1, DataGraphUniformSampleSpacing=0, DataGraphLegendPosition="0;0", DataGraphShowNamesAtCursor=0, PowerGraphDrawAsPoints=0, PowerGraphLegendShown=0, PowerGraphAvgFilterTime=Off, PowerGraphAvgFilterLen=Off, PowerGraphUniformSampleSpacing=0, PowerGraphLegendPosition="1014;-69", CodeGraphLegendShown=0, CodeGraphLegendPosition="1032;0"
 SmartViewPlugin="", Page="", Toolbar="Hidden", Window="SmartView 1"
 TableHeader="Local Data", SortCol="Name", SortOrder="DESCENDING", VisibleCols=["Name";"Value";"Location";"Size";"Type";"Scope"], ColWidths=[100;100;100;100;190;100]
 TableHeader="Call Stack", SortCol="Function", SortOrder="ASCENDING", VisibleCols=["Function";"Stack Frame";"Source";"PC";"Return Address";"Stack Used"], ColWidths=[227;179;185;113;256;106]
 TableHeader="Data Sampling Table", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";" (g_displacement_sensor).displacement_mm";" ((g_sbus_state).readout).channels[3]";" ((g_sbus_state).readout).channels[2]"], ColWidths=[100;100;100;100;100]
-TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;168;100;100;100;124;113;131;131]
+TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;168;100;100;100;100;113;131;131]
 TableHeader="Power Sampling", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";"Ch 0"], ColWidths=[100;100;100]
 TableHeader="Registers 1", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Description"], ColWidths=[100;118;329]
 TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[330;330;146]
@@ -44,4 +44,5 @@ WatchedExpression="g_displacement_sensor", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_umotor", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_pressure_sensor_state", RefreshRate=5, Window=Watched Data 1
 WatchedExpression="g_sbus_state", RefreshRate=5, Window=Watched Data 1
-WatchedExpression="&huart8", RefreshRate=5, Window=Watched Data 1
+WatchedExpression="g_pump_driver_status", RefreshRate=5, Window=Watched Data 1
+WatchedExpression="&huart3", RefreshRate=5, Window=Watched Data 1

@@ -1,7 +1,7 @@
 /*
  * motor_driver.c
  *
- * RS485 closed-loop stepper motor driver on USART2.
+ * RS485 closed-loop stepper motor driver on shared USART3 bus.
  */
 
 #include "motor_driver.h"
@@ -12,74 +12,10 @@
 
 extern UART_HandleTypeDef huart2;
 
+#define MOTOR_RS485_UART (&huart2)
+
 volatile UMotor g_umotor = {
   .nodes = {
-    {
-      .enabled = 1U,
-      .node_id = 0x01U,
-      .enable_speed_ctrl = 1U,
-      .enable_poll = 1U,
-      .target_speed_rpm = 0,
-      .feedback_speed_rpm = 0,
-      .status_word = 0U,
-      .comm_ok = 0U,
-      .valid = 0U,
-      .tx_count = 0U,
-      .rx_count = 0U,
-      .timeout_count = 0U,
-      .crc_error_count = 0U,
-      .protocol_error_count = 0U,
-      .last_exception_func = 0U,
-      .last_exception_code = 0U,
-      .reg_map = {
-        .reg_cmd_speed_rpm = MOTOR_REG_CMD_SPEED_RPM,
-        .reg_cmd_start = MOTOR_REG_CMD_START,
-        .cmd_start_speed_mode_value = MOTOR_CMD_START_SPEED_MODE,
-        .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
-        .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
-        .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
-        .status_read_reg_count = 0U,
-        .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
-        .fault_read_reg_count = 0U
-      },
-      .verify_regs = {0},
-      .status_regs = {0},
-      .fault_regs = {0},
-      .debug = {0}
-    },
-    {
-      .enabled = 1U,
-      .node_id = 0x02U,
-      .enable_speed_ctrl = 1U,
-      .enable_poll = 1U,
-      .target_speed_rpm = 0,
-      .feedback_speed_rpm = 0,
-      .status_word = 0U,
-      .comm_ok = 0U,
-      .valid = 0U,
-      .tx_count = 0U,
-      .rx_count = 0U,
-      .timeout_count = 0U,
-      .crc_error_count = 0U,
-      .protocol_error_count = 0U,
-      .last_exception_func = 0U,
-      .last_exception_code = 0U,
-      .reg_map = {
-        .reg_cmd_speed_rpm = MOTOR_REG_CMD_SPEED_RPM,
-        .reg_cmd_start = MOTOR_REG_CMD_START,
-        .cmd_start_speed_mode_value = MOTOR_CMD_START_SPEED_MODE,
-        .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
-        .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
-        .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
-        .status_read_reg_count = 0U,
-        .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
-        .fault_read_reg_count = 0U
-      },
-      .verify_regs = {0},
-      .status_regs = {0},
-      .fault_regs = {0},
-      .debug = {0}
-    },
     {
       .enabled = 1U,
       .node_id = 0x03U,
@@ -114,8 +50,74 @@ volatile UMotor g_umotor = {
       .debug = {0}
     },
     {
-      .enabled = 1U,
+      .enabled = 0U,
       .node_id = 0x04U,
+      .enable_speed_ctrl = 1U,
+      .enable_poll = 1U,
+      .target_speed_rpm = 0,
+      .feedback_speed_rpm = 0,
+      .status_word = 0U,
+      .comm_ok = 0U,
+      .valid = 0U,
+      .tx_count = 0U,
+      .rx_count = 0U,
+      .timeout_count = 0U,
+      .crc_error_count = 0U,
+      .protocol_error_count = 0U,
+      .last_exception_func = 0U,
+      .last_exception_code = 0U,
+      .reg_map = {
+        .reg_cmd_speed_rpm = MOTOR_REG_CMD_SPEED_RPM,
+        .reg_cmd_start = MOTOR_REG_CMD_START,
+        .cmd_start_speed_mode_value = MOTOR_CMD_START_SPEED_MODE,
+        .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
+        .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
+        .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
+        .status_read_reg_count = 0U,
+        .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
+        .fault_read_reg_count = 0U
+      },
+      .verify_regs = {0},
+      .status_regs = {0},
+      .fault_regs = {0},
+      .debug = {0}
+    },
+    {
+      .enabled = 0U,
+      .node_id = 0x05U,
+      .enable_speed_ctrl = 1U,
+      .enable_poll = 1U,
+      .target_speed_rpm = 0,
+      .feedback_speed_rpm = 0,
+      .status_word = 0U,
+      .comm_ok = 0U,
+      .valid = 0U,
+      .tx_count = 0U,
+      .rx_count = 0U,
+      .timeout_count = 0U,
+      .crc_error_count = 0U,
+      .protocol_error_count = 0U,
+      .last_exception_func = 0U,
+      .last_exception_code = 0U,
+      .reg_map = {
+        .reg_cmd_speed_rpm = MOTOR_REG_CMD_SPEED_RPM,
+        .reg_cmd_start = MOTOR_REG_CMD_START,
+        .cmd_start_speed_mode_value = MOTOR_CMD_START_SPEED_MODE,
+        .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
+        .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
+        .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
+        .status_read_reg_count = 0U,
+        .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
+        .fault_read_reg_count = 0U
+      },
+      .verify_regs = {0},
+      .status_regs = {0},
+      .fault_regs = {0},
+      .debug = {0}
+    },
+    {
+      .enabled = 0U,
+      .node_id = 0x06U,
       .enable_speed_ctrl = 1U,
       .enable_poll = 1U,
       .target_speed_rpm = 0,
@@ -248,7 +250,7 @@ static uint8_t Motor_ReceiveExact(uint8_t *buffer, uint16_t expected_len, uint32
 
   for (index = 0U; index < expected_len; index++)
   {
-    rx_status = HAL_UART_Receive(&huart2, &buffer[index], 1U, timeout_ms);
+    rx_status = HAL_UART_Receive(MOTOR_RS485_UART, &buffer[index], 1U, timeout_ms);
     if (rx_status != HAL_OK)
     {
       return 0U;
@@ -268,6 +270,7 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   uint8_t header[3];
   uint16_t byte_count;
   uint16_t expected_len;
+  uint8_t transfer_ok = 0U;
 
   if (tx_frame == NULL || rx_frame == NULL || rx_got_len == NULL || tx_len == 0U || rx_capacity == 0U)
   {
@@ -277,11 +280,11 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
 
   *rx_got_len = 0U;
 
-  tx_status = HAL_UART_Transmit(&huart2, (uint8_t *)tx_frame, tx_len, MOTOR_UART_TX_TIMEOUT_MS);
+  tx_status = HAL_UART_Transmit(MOTOR_RS485_UART, (uint8_t *)tx_frame, tx_len, MOTOR_UART_TX_TIMEOUT_MS);
   if (tx_status != HAL_OK)
   {
     g_motor_bus_diag.last_error = 2U;
-    return 0U;
+    goto transfer_exit;
   }
 
   g_motor_bus_diag.total_tx_count++;
@@ -300,7 +303,7 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   {
     g_motor_bus_diag.total_timeout_count++;
     g_motor_bus_diag.last_error = 3U;
-    return 0U;
+    goto transfer_exit;
   }
 
   rx_frame[0] = header[0];
@@ -324,7 +327,7 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   if (expected_len > rx_capacity)
   {
     g_motor_bus_diag.last_error = 20U;
-    return 0U;
+    goto transfer_exit;
   }
 
   if (expected_len > 3U)
@@ -333,7 +336,7 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
     {
       g_motor_bus_diag.total_timeout_count++;
       g_motor_bus_diag.last_error = 3U;
-      return 0U;
+      goto transfer_exit;
     }
   }
 
@@ -346,7 +349,10 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   }
   memcpy((void *)g_motor_bus_diag.last_rx_frame, rx_frame, expected_len);
 
-  return 1U;
+  transfer_ok = 1U;
+
+transfer_exit:
+  return transfer_ok;
 }
 
 static uint8_t Motor_ParseWriteAck(uint8_t node_id, const uint8_t *rx_frame, uint16_t rx_len)

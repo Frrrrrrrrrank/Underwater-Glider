@@ -29,6 +29,12 @@ void Stepper_MoveAbsolute(int32_t target_pos, uint16_t rpm);
 /* 立即停止正在进行的运动 */
 void Stepper_Stop(void);
 
+/*
+ * Continuous speed command (open-loop):
+ *  signed_rpm > 0: forward, signed_rpm < 0: reverse, 0: stop.
+ */
+void Stepper_SetContinuousSignedRpm(int32_t signed_rpm);
+
 /* 检查电机是否正在运行 (1=运行中, 0=已停止) */
 uint8_t Stepper_IsRunning(void);
 

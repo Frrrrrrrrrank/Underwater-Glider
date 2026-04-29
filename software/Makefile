@@ -43,7 +43,7 @@ Glider-Core/glider_core.c \
 Glider-Core/glider_rdss_codec.c \
 Glider-Core/imu_core.c \
 Glider-Core/servo_driver.c \
-Glider-Core/displacement_sensor.c \
+Glider-Core/pump_driver.c \
 Glider-Core/motor_driver.c \
 Glider-Core/stepper_driver.c \
 Glider-Core/pressure_sensor_driver.c \

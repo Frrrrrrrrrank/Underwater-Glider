@@ -1,0 +1,1854 @@
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 1
+
+
+   1              		.cpu cortex-m7
+   2              		.arch armv7e-m
+   3              		.fpu fpv5-d16
+   4              		.eabi_attribute 28, 1
+   5              		.eabi_attribute 20, 1
+   6              		.eabi_attribute 21, 1
+   7              		.eabi_attribute 23, 3
+   8              		.eabi_attribute 24, 1
+   9              		.eabi_attribute 25, 1
+  10              		.eabi_attribute 26, 1
+  11              		.eabi_attribute 30, 1
+  12              		.eabi_attribute 34, 1
+  13              		.eabi_attribute 18, 4
+  14              		.file	"pump_driver.c"
+  15              		.text
+  16              	.Ltext0:
+  17              		.cfi_sections	.debug_frame
+  18              		.file 1 "Glider-Core/pump_driver.c"
+  19              		.section	.text.Modbus_CRC16,"ax",%progbits
+  20              		.align	1
+  21              		.syntax unified
+  22              		.thumb
+  23              		.thumb_func
+  25              	Modbus_CRC16:
+  26              	.LVL0:
+  27              	.LFB339:
+   1:Glider-Core/pump_driver.c **** #include "pump_driver.h"
+   2:Glider-Core/pump_driver.c **** #include "stm32h7xx_hal.h"
+   3:Glider-Core/pump_driver.c **** #include "cmsis_os.h"
+   4:Glider-Core/pump_driver.c **** 
+   5:Glider-Core/pump_driver.c **** #include <string.h>
+   6:Glider-Core/pump_driver.c **** 
+   7:Glider-Core/pump_driver.c **** /* --- Displacement sensor internals (migrated here so pump_driver is the single UART3 owner) --- *
+   8:Glider-Core/pump_driver.c **** 
+   9:Glider-Core/pump_driver.c **** extern UART_HandleTypeDef huart3;
+  10:Glider-Core/pump_driver.c **** 
+  11:Glider-Core/pump_driver.c **** static void PumpDriver_BusInit(void);
+  12:Glider-Core/pump_driver.c **** static uint32_t PumpDriver_BusLock(uint32_t timeout_ms);
+  13:Glider-Core/pump_driver.c **** static void PumpDriver_BusUnlock(void);
+  14:Glider-Core/pump_driver.c **** 
+  15:Glider-Core/pump_driver.c **** /* Constants */
+  16:Glider-Core/pump_driver.c **** #define DISPLACEMENT_SENSOR_ID          0x02U
+  17:Glider-Core/pump_driver.c **** #define DISPLACEMENT_SENSOR_TIMEOUT_MS  100U
+  18:Glider-Core/pump_driver.c **** #define DISPLACEMENT_SENSOR_UPDATE_MS   100U
+  19:Glider-Core/pump_driver.c **** #define MODBUS_FUNC_READ_HOLDING_REGS   0x03U
+  20:Glider-Core/pump_driver.c **** 
+  21:Glider-Core/pump_driver.c **** typedef struct
+  22:Glider-Core/pump_driver.c **** {
+  23:Glider-Core/pump_driver.c ****   float displacement_mm;
+  24:Glider-Core/pump_driver.c ****   uint8_t sensor_id;
+  25:Glider-Core/pump_driver.c ****   uint32_t valid;
+  26:Glider-Core/pump_driver.c **** } DisplacementSensorData;
+  27:Glider-Core/pump_driver.c **** 
+  28:Glider-Core/pump_driver.c **** typedef struct
+  29:Glider-Core/pump_driver.c **** {
+  30:Glider-Core/pump_driver.c ****   uint32_t last_error;
+  31:Glider-Core/pump_driver.c ****   uint32_t comm_ok;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 2
+
+
+  32:Glider-Core/pump_driver.c ****   uint32_t tx_count;
+  33:Glider-Core/pump_driver.c ****   uint32_t rx_count;
+  34:Glider-Core/pump_driver.c ****   uint32_t timeout_count;
+  35:Glider-Core/pump_driver.c ****   uint32_t crc_error_count;
+  36:Glider-Core/pump_driver.c ****   uint16_t last_rx_len;
+  37:Glider-Core/pump_driver.c ****   uint8_t last_rx_frame[40];
+  38:Glider-Core/pump_driver.c ****   uint16_t last_tx_len;
+  39:Glider-Core/pump_driver.c ****   uint8_t last_tx_frame[8];
+  40:Glider-Core/pump_driver.c ****   uint32_t uart_rx_state;
+  41:Glider-Core/pump_driver.c ****   uint32_t uart_error_code;
+  42:Glider-Core/pump_driver.c **** } DisplacementSensorDiag;
+  43:Glider-Core/pump_driver.c **** 
+  44:Glider-Core/pump_driver.c **** volatile DisplacementSensorData g_displacement_sensor = {0.0f, DISPLACEMENT_SENSOR_ID, 0U};
+  45:Glider-Core/pump_driver.c **** volatile DisplacementSensorDiag g_displacement_diag = {0U,0U,0U,0U,0U,0U,0U,{0},0U,{0},0U,0U};
+  46:Glider-Core/pump_driver.c **** 
+  47:Glider-Core/pump_driver.c **** typedef struct
+  48:Glider-Core/pump_driver.c **** {
+  49:Glider-Core/pump_driver.c ****   uint32_t initialized;
+  50:Glider-Core/pump_driver.c ****   uint32_t comm_ok;
+  51:Glider-Core/pump_driver.c ****   uint32_t last_error;
+  52:Glider-Core/pump_driver.c ****   uint32_t tx_count;
+  53:Glider-Core/pump_driver.c ****   uint32_t rx_count;
+  54:Glider-Core/pump_driver.c ****   uint32_t timeout_count;
+  55:Glider-Core/pump_driver.c ****   uint32_t crc_error_count;
+  56:Glider-Core/pump_driver.c ****   uint8_t rx_buffer[256];
+  57:Glider-Core/pump_driver.c ****   uint16_t rx_data_len;
+  58:Glider-Core/pump_driver.c **** } DisplacementSensorInternal;
+  59:Glider-Core/pump_driver.c **** 
+  60:Glider-Core/pump_driver.c **** static DisplacementSensorInternal s_disp_internal = {0U,0U,0U,0U,0U,0U,0U,{0},0U};
+  61:Glider-Core/pump_driver.c **** 
+  62:Glider-Core/pump_driver.c **** static uint16_t Modbus_CRC16(const uint8_t *data, uint16_t len)
+  63:Glider-Core/pump_driver.c **** {
+  28              		.loc 1 63 1 view -0
+  29              		.cfi_startproc
+  30              		@ args = 0, pretend = 0, frame = 0
+  31              		@ frame_needed = 0, uses_anonymous_args = 0
+  32              		.loc 1 63 1 is_stmt 0 view .LVU1
+  33 0000 00B5     		push	{lr}
+  34              	.LCFI0:
+  35              		.cfi_def_cfa_offset 4
+  36              		.cfi_offset 14, -4
+  37 0002 8646     		mov	lr, r0
+  64:Glider-Core/pump_driver.c ****   uint16_t crc = 0xFFFFU;
+  38              		.loc 1 64 3 is_stmt 1 view .LVU2
+  39              	.LVL1:
+  65:Glider-Core/pump_driver.c ****   uint16_t i;
+  40              		.loc 1 65 3 view .LVU3
+  66:Glider-Core/pump_driver.c ****   uint8_t bit;
+  41              		.loc 1 66 3 view .LVU4
+  67:Glider-Core/pump_driver.c **** 
+  68:Glider-Core/pump_driver.c ****   for (i = 0U; i < len; i++)
+  42              		.loc 1 68 3 view .LVU5
+  43              		.loc 1 68 10 is_stmt 0 view .LVU6
+  44 0004 4FF0000C 		mov	ip, #0
+  64:Glider-Core/pump_driver.c ****   uint16_t i;
+  45              		.loc 1 64 12 view .LVU7
+  46 0008 4FF6FF70 		movw	r0, #65535
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 3
+
+
+  47              	.LVL2:
+  48              		.loc 1 68 3 view .LVU8
+  49 000c 10E0     		b	.L2
+  50              	.LVL3:
+  51              	.L4:
+  69:Glider-Core/pump_driver.c ****   {
+  70:Glider-Core/pump_driver.c ****     crc ^= data[i];
+  71:Glider-Core/pump_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  72:Glider-Core/pump_driver.c ****     {
+  73:Glider-Core/pump_driver.c ****       if ((crc & 0x0001U) != 0U)
+  74:Glider-Core/pump_driver.c ****       {
+  75:Glider-Core/pump_driver.c ****         crc = (uint16_t)((crc >> 1) ^ 0xA001U);
+  76:Glider-Core/pump_driver.c ****       }
+  77:Glider-Core/pump_driver.c ****       else
+  78:Glider-Core/pump_driver.c ****       {
+  79:Glider-Core/pump_driver.c ****         crc >>= 1;
+  52              		.loc 1 79 9 is_stmt 1 view .LVU9
+  53              		.loc 1 79 13 is_stmt 0 view .LVU10
+  54 000e 4008     		lsrs	r0, r0, #1
+  55              	.LVL4:
+  56              	.L5:
+  71:Glider-Core/pump_driver.c ****     {
+  57              		.loc 1 71 33 is_stmt 1 discriminator 2 view .LVU11
+  58 0010 0133     		adds	r3, r3, #1
+  59              	.LVL5:
+  71:Glider-Core/pump_driver.c ****     {
+  60              		.loc 1 71 33 is_stmt 0 discriminator 2 view .LVU12
+  61 0012 DBB2     		uxtb	r3, r3
+  62              	.LVL6:
+  63              	.L3:
+  71:Glider-Core/pump_driver.c ****     {
+  64              		.loc 1 71 24 is_stmt 1 discriminator 1 view .LVU13
+  65 0014 072B     		cmp	r3, #7
+  66 0016 07D8     		bhi	.L9
+  73:Glider-Core/pump_driver.c ****       {
+  67              		.loc 1 73 7 view .LVU14
+  73:Glider-Core/pump_driver.c ****       {
+  68              		.loc 1 73 10 is_stmt 0 view .LVU15
+  69 0018 10F0010F 		tst	r0, #1
+  70 001c F7D0     		beq	.L4
+  75:Glider-Core/pump_driver.c ****       }
+  71              		.loc 1 75 9 is_stmt 1 view .LVU16
+  75:Glider-Core/pump_driver.c ****       }
+  72              		.loc 1 75 13 is_stmt 0 view .LVU17
+  73 001e 4AF20102 		movw	r2, #40961
+  74 0022 82EA5000 		eor	r0, r2, r0, lsr #1
+  75              	.LVL7:
+  75:Glider-Core/pump_driver.c ****       }
+  76              		.loc 1 75 13 view .LVU18
+  77 0026 F3E7     		b	.L5
+  78              	.L9:
+  68:Glider-Core/pump_driver.c ****   {
+  79              		.loc 1 68 26 is_stmt 1 discriminator 2 view .LVU19
+  80 0028 0CF1010C 		add	ip, ip, #1
+  81              	.LVL8:
+  68:Glider-Core/pump_driver.c ****   {
+  82              		.loc 1 68 26 is_stmt 0 discriminator 2 view .LVU20
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 4
+
+
+  83 002c 1FFA8CFC 		uxth	ip, ip
+  84              	.LVL9:
+  85              	.L2:
+  68:Glider-Core/pump_driver.c ****   {
+  86              		.loc 1 68 18 is_stmt 1 discriminator 1 view .LVU21
+  87 0030 8C45     		cmp	ip, r1
+  88 0032 04D2     		bcs	.L10
+  70:Glider-Core/pump_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  89              		.loc 1 70 5 view .LVU22
+  70:Glider-Core/pump_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  90              		.loc 1 70 16 is_stmt 0 view .LVU23
+  91 0034 1EF80C30 		ldrb	r3, [lr, ip]	@ zero_extendqisi2
+  70:Glider-Core/pump_driver.c ****     for (bit = 0U; bit < 8U; bit++)
+  92              		.loc 1 70 9 view .LVU24
+  93 0038 5840     		eors	r0, r0, r3
+  94              	.LVL10:
+  71:Glider-Core/pump_driver.c ****     {
+  95              		.loc 1 71 5 is_stmt 1 view .LVU25
+  71:Glider-Core/pump_driver.c ****     {
+  96              		.loc 1 71 14 is_stmt 0 view .LVU26
+  97 003a 0023     		movs	r3, #0
+  71:Glider-Core/pump_driver.c ****     {
+  98              		.loc 1 71 5 view .LVU27
+  99 003c EAE7     		b	.L3
+ 100              	.LVL11:
+ 101              	.L10:
+  80:Glider-Core/pump_driver.c ****       }
+  81:Glider-Core/pump_driver.c ****     }
+  82:Glider-Core/pump_driver.c ****   }
+  83:Glider-Core/pump_driver.c **** 
+  84:Glider-Core/pump_driver.c ****   return crc;
+ 102              		.loc 1 84 3 is_stmt 1 view .LVU28
+  85:Glider-Core/pump_driver.c **** }
+ 103              		.loc 1 85 1 is_stmt 0 view .LVU29
+ 104 003e 5DF804FB 		ldr	pc, [sp], #4
+ 105              		.cfi_endproc
+ 106              	.LFE339:
+ 108              		.section	.text.PumpDriver_BuildReadHoldingReg,"ax",%progbits
+ 109              		.align	1
+ 110              		.syntax unified
+ 111              		.thumb
+ 112              		.thumb_func
+ 114              	PumpDriver_BuildReadHoldingReg:
+ 115              	.LVL12:
+ 116              	.LFB347:
+  86:Glider-Core/pump_driver.c **** 
+  87:Glider-Core/pump_driver.c **** static uint16_t Displacement_BuildReadFrame(uint8_t *frame)
+  88:Glider-Core/pump_driver.c **** {
+  89:Glider-Core/pump_driver.c ****   uint16_t crc;
+  90:Glider-Core/pump_driver.c **** 
+  91:Glider-Core/pump_driver.c ****   frame[0] = DISPLACEMENT_SENSOR_ID;
+  92:Glider-Core/pump_driver.c ****   frame[1] = MODBUS_FUNC_READ_HOLDING_REGS;
+  93:Glider-Core/pump_driver.c ****   frame[2] = 0x00;
+  94:Glider-Core/pump_driver.c ****   frame[3] = 0x00;
+  95:Glider-Core/pump_driver.c ****   frame[4] = 0x00;
+  96:Glider-Core/pump_driver.c ****   frame[5] = 0x10;
+  97:Glider-Core/pump_driver.c **** 
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 5
+
+
+  98:Glider-Core/pump_driver.c ****   crc = Modbus_CRC16(frame, 6U);
+  99:Glider-Core/pump_driver.c ****   frame[6] = (uint8_t)(crc & 0xFFU);
+ 100:Glider-Core/pump_driver.c ****   frame[7] = (uint8_t)((crc >> 8) & 0xFFU);
+ 101:Glider-Core/pump_driver.c **** 
+ 102:Glider-Core/pump_driver.c ****   return 8U;
+ 103:Glider-Core/pump_driver.c **** }
+ 104:Glider-Core/pump_driver.c **** 
+ 105:Glider-Core/pump_driver.c **** static uint8_t Displacement_ParseResponse(const uint8_t *frame, uint16_t frame_len)
+ 106:Glider-Core/pump_driver.c **** {
+ 107:Glider-Core/pump_driver.c ****   uint16_t recv_crc;
+ 108:Glider-Core/pump_driver.c ****   uint16_t calc_crc;
+ 109:Glider-Core/pump_driver.c ****   uint16_t reg8_high;
+ 110:Glider-Core/pump_driver.c ****   uint16_t reg9_low;
+ 111:Glider-Core/pump_driver.c ****   uint32_t bits;
+ 112:Glider-Core/pump_driver.c ****   float displacement;
+ 113:Glider-Core/pump_driver.c **** 
+ 114:Glider-Core/pump_driver.c ****   if (frame == NULL || frame_len < 37U)
+ 115:Glider-Core/pump_driver.c ****   {
+ 116:Glider-Core/pump_driver.c ****     s_disp_internal.last_error = 1U;
+ 117:Glider-Core/pump_driver.c ****     return 0U;
+ 118:Glider-Core/pump_driver.c ****   }
+ 119:Glider-Core/pump_driver.c **** 
+ 120:Glider-Core/pump_driver.c ****   if (frame[0] != DISPLACEMENT_SENSOR_ID)
+ 121:Glider-Core/pump_driver.c ****   {
+ 122:Glider-Core/pump_driver.c ****     s_disp_internal.last_error = 2U;
+ 123:Glider-Core/pump_driver.c ****     return 0U;
+ 124:Glider-Core/pump_driver.c ****   }
+ 125:Glider-Core/pump_driver.c **** 
+ 126:Glider-Core/pump_driver.c ****   if (frame[1] != MODBUS_FUNC_READ_HOLDING_REGS)
+ 127:Glider-Core/pump_driver.c ****   {
+ 128:Glider-Core/pump_driver.c ****     s_disp_internal.last_error = 3U;
+ 129:Glider-Core/pump_driver.c ****     return 0U;
+ 130:Glider-Core/pump_driver.c ****   }
+ 131:Glider-Core/pump_driver.c **** 
+ 132:Glider-Core/pump_driver.c ****   if (frame[2] != 32U)
+ 133:Glider-Core/pump_driver.c ****   {
+ 134:Glider-Core/pump_driver.c ****     s_disp_internal.last_error = 4U;
+ 135:Glider-Core/pump_driver.c ****     return 0U;
+ 136:Glider-Core/pump_driver.c ****   }
+ 137:Glider-Core/pump_driver.c **** 
+ 138:Glider-Core/pump_driver.c ****   recv_crc = (uint16_t)(((uint16_t)frame[36] << 8) | frame[35]);
+ 139:Glider-Core/pump_driver.c ****   calc_crc = Modbus_CRC16(frame, 35U);
+ 140:Glider-Core/pump_driver.c ****   if (recv_crc != calc_crc)
+ 141:Glider-Core/pump_driver.c ****   {
+ 142:Glider-Core/pump_driver.c ****     s_disp_internal.crc_error_count++;
+ 143:Glider-Core/pump_driver.c ****     s_disp_internal.last_error = 5U;
+ 144:Glider-Core/pump_driver.c ****     return 0U;
+ 145:Glider-Core/pump_driver.c ****   }
+ 146:Glider-Core/pump_driver.c **** 
+ 147:Glider-Core/pump_driver.c ****   reg8_high = (uint16_t)(((uint16_t)frame[19] << 8) | frame[20]);
+ 148:Glider-Core/pump_driver.c ****   reg9_low  = (uint16_t)(((uint16_t)frame[21] << 8) | frame[22]);
+ 149:Glider-Core/pump_driver.c ****   bits = ((uint32_t)reg8_high << 16) | reg9_low;
+ 150:Glider-Core/pump_driver.c ****   memcpy(&displacement, &bits, sizeof(float));
+ 151:Glider-Core/pump_driver.c **** 
+ 152:Glider-Core/pump_driver.c ****   g_displacement_sensor.displacement_mm = displacement;
+ 153:Glider-Core/pump_driver.c ****   g_displacement_sensor.sensor_id = frame[0];
+ 154:Glider-Core/pump_driver.c ****   g_displacement_sensor.valid = 1U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 6
+
+
+ 155:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.last_seen_tick = osKernelGetTickCount();
+ 156:Glider-Core/pump_driver.c **** 
+ 157:Glider-Core/pump_driver.c ****   s_disp_internal.last_error = 0U;
+ 158:Glider-Core/pump_driver.c ****   s_disp_internal.comm_ok = 1U;
+ 159:Glider-Core/pump_driver.c ****   s_disp_internal.rx_count++;
+ 160:Glider-Core/pump_driver.c ****   return 1U;
+ 161:Glider-Core/pump_driver.c **** }
+ 162:Glider-Core/pump_driver.c **** 
+ 163:Glider-Core/pump_driver.c **** static void Displacement_Poll(uint32_t now_ms)
+ 164:Glider-Core/pump_driver.c **** {
+ 165:Glider-Core/pump_driver.c ****   uint8_t tx_frame[8] = {0};
+ 166:Glider-Core/pump_driver.c ****   uint8_t rx_frame[40] = {0};
+ 167:Glider-Core/pump_driver.c ****   uint16_t tx_len;
+ 168:Glider-Core/pump_driver.c ****   static uint32_t last_send_tick = 0U;
+ 169:Glider-Core/pump_driver.c ****   uint8_t bus_locked = 0U;
+ 170:Glider-Core/pump_driver.c **** 
+ 171:Glider-Core/pump_driver.c ****   if ((now_ms - last_send_tick) < DISPLACEMENT_SENSOR_UPDATE_MS)
+ 172:Glider-Core/pump_driver.c ****   {
+ 173:Glider-Core/pump_driver.c ****     return;
+ 174:Glider-Core/pump_driver.c ****   }
+ 175:Glider-Core/pump_driver.c ****   last_send_tick = now_ms;
+ 176:Glider-Core/pump_driver.c **** 
+ 177:Glider-Core/pump_driver.c ****   tx_len = Displacement_BuildReadFrame(tx_frame);
+ 178:Glider-Core/pump_driver.c ****   g_displacement_diag.last_tx_len = tx_len;
+ 179:Glider-Core/pump_driver.c ****   memcpy((void *)g_displacement_diag.last_tx_frame, tx_frame, tx_len);
+ 180:Glider-Core/pump_driver.c **** 
+ 181:Glider-Core/pump_driver.c ****   if (PumpDriver_BusLock(DISPLACEMENT_SENSOR_TIMEOUT_MS + 20U) == 0U)
+ 182:Glider-Core/pump_driver.c ****   {
+ 183:Glider-Core/pump_driver.c ****     s_disp_internal.comm_ok = 0U;
+ 184:Glider-Core/pump_driver.c ****     s_disp_internal.last_error = 8U;
+ 185:Glider-Core/pump_driver.c ****     g_displacement_sensor.valid = 0U;
+ 186:Glider-Core/pump_driver.c ****     return;
+ 187:Glider-Core/pump_driver.c ****   }
+ 188:Glider-Core/pump_driver.c ****   bus_locked = 1U;
+ 189:Glider-Core/pump_driver.c **** 
+ 190:Glider-Core/pump_driver.c ****   if (HAL_UART_Transmit(&huart3, tx_frame, tx_len, 50U) == HAL_OK)
+ 191:Glider-Core/pump_driver.c ****   {
+ 192:Glider-Core/pump_driver.c ****     s_disp_internal.tx_count++;
+ 193:Glider-Core/pump_driver.c **** 
+ 194:Glider-Core/pump_driver.c ****     osDelay(2U);
+ 195:Glider-Core/pump_driver.c **** 
+ 196:Glider-Core/pump_driver.c ****     if (HAL_UART_Receive(&huart3, rx_frame, 37U, DISPLACEMENT_SENSOR_TIMEOUT_MS) == HAL_OK)
+ 197:Glider-Core/pump_driver.c ****     {
+ 198:Glider-Core/pump_driver.c ****       s_disp_internal.rx_data_len = 37U;
+ 199:Glider-Core/pump_driver.c ****       memcpy(s_disp_internal.rx_buffer, rx_frame, 37U);
+ 200:Glider-Core/pump_driver.c ****       (void)Displacement_ParseResponse(s_disp_internal.rx_buffer, s_disp_internal.rx_data_len);
+ 201:Glider-Core/pump_driver.c ****     }
+ 202:Glider-Core/pump_driver.c ****     else
+ 203:Glider-Core/pump_driver.c ****     {
+ 204:Glider-Core/pump_driver.c ****       s_disp_internal.timeout_count++;
+ 205:Glider-Core/pump_driver.c ****       s_disp_internal.comm_ok = 0U;
+ 206:Glider-Core/pump_driver.c ****       s_disp_internal.last_error = 6U;
+ 207:Glider-Core/pump_driver.c ****       g_displacement_sensor.valid = 0U;
+ 208:Glider-Core/pump_driver.c ****     }
+ 209:Glider-Core/pump_driver.c ****   }
+ 210:Glider-Core/pump_driver.c ****   else
+ 211:Glider-Core/pump_driver.c ****   {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 7
+
+
+ 212:Glider-Core/pump_driver.c ****     s_disp_internal.comm_ok = 0U;
+ 213:Glider-Core/pump_driver.c ****     s_disp_internal.last_error = 7U;
+ 214:Glider-Core/pump_driver.c ****     g_displacement_sensor.valid = 0U;
+ 215:Glider-Core/pump_driver.c ****   }
+ 216:Glider-Core/pump_driver.c **** 
+ 217:Glider-Core/pump_driver.c ****   if (bus_locked != 0U)
+ 218:Glider-Core/pump_driver.c ****   {
+ 219:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 220:Glider-Core/pump_driver.c ****   }
+ 221:Glider-Core/pump_driver.c **** }
+ 222:Glider-Core/pump_driver.c **** 
+ 223:Glider-Core/pump_driver.c **** /* --- end displacement internals --- */
+ 224:Glider-Core/pump_driver.c **** 
+ 225:Glider-Core/pump_driver.c **** static UART_HandleTypeDef *s_huart = NULL;
+ 226:Glider-Core/pump_driver.c **** volatile PumpMotorUart3Diag g_pump_motor_uart3_diag = {0};
+ 227:Glider-Core/pump_driver.c **** volatile PumpDriverStatus g_pump_driver_status = {0};
+ 228:Glider-Core/pump_driver.c **** 
+ 229:Glider-Core/pump_driver.c **** /* Inline UART3 bus guard so pump_driver is the single owner of UART3 resources */
+ 230:Glider-Core/pump_driver.c **** static osMutexId_t s_pump_bus_mutex = NULL;
+ 231:Glider-Core/pump_driver.c **** static const osMutexAttr_t s_pump_bus_mutex_attr = {
+ 232:Glider-Core/pump_driver.c ****   .name = "pumpUart3Bus"
+ 233:Glider-Core/pump_driver.c **** };
+ 234:Glider-Core/pump_driver.c **** 
+ 235:Glider-Core/pump_driver.c **** static void PumpDriver_BusInit(void)
+ 236:Glider-Core/pump_driver.c **** {
+ 237:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex == NULL)
+ 238:Glider-Core/pump_driver.c ****   {
+ 239:Glider-Core/pump_driver.c ****     s_pump_bus_mutex = osMutexNew(&s_pump_bus_mutex_attr);
+ 240:Glider-Core/pump_driver.c ****   }
+ 241:Glider-Core/pump_driver.c **** }
+ 242:Glider-Core/pump_driver.c **** 
+ 243:Glider-Core/pump_driver.c **** static uint32_t PumpDriver_BusLock(uint32_t timeout_ms)
+ 244:Glider-Core/pump_driver.c **** {
+ 245:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex == NULL)
+ 246:Glider-Core/pump_driver.c ****   {
+ 247:Glider-Core/pump_driver.c ****     PumpDriver_BusInit();
+ 248:Glider-Core/pump_driver.c ****   }
+ 249:Glider-Core/pump_driver.c **** 
+ 250:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex == NULL)
+ 251:Glider-Core/pump_driver.c ****   {
+ 252:Glider-Core/pump_driver.c ****     return 0U;
+ 253:Glider-Core/pump_driver.c ****   }
+ 254:Glider-Core/pump_driver.c **** 
+ 255:Glider-Core/pump_driver.c ****   return (osMutexAcquire(s_pump_bus_mutex, timeout_ms) == osOK) ? 1U : 0U;
+ 256:Glider-Core/pump_driver.c **** }
+ 257:Glider-Core/pump_driver.c **** 
+ 258:Glider-Core/pump_driver.c **** static void PumpDriver_BusUnlock(void)
+ 259:Glider-Core/pump_driver.c **** {
+ 260:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex != NULL)
+ 261:Glider-Core/pump_driver.c ****   {
+ 262:Glider-Core/pump_driver.c ****     (void)osMutexRelease(s_pump_bus_mutex);
+ 263:Glider-Core/pump_driver.c ****   }
+ 264:Glider-Core/pump_driver.c **** }
+ 265:Glider-Core/pump_driver.c **** 
+ 266:Glider-Core/pump_driver.c **** void PumpDriver_Init(UART_HandleTypeDef *huart)
+ 267:Glider-Core/pump_driver.c **** {
+ 268:Glider-Core/pump_driver.c ****   s_huart = huart;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 8
+
+
+ 269:Glider-Core/pump_driver.c ****   PumpDriver_BusInit();
+ 270:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.initialized = 1U;
+ 271:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.node_id = PUMP_MOTOR_UART3_DEFAULT_NODE_ID;
+ 272:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.initialized = 1U;
+ 273:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.node_id = PUMP_MOTOR_UART3_DEFAULT_NODE_ID;
+ 274:Glider-Core/pump_driver.c **** }
+ 275:Glider-Core/pump_driver.c **** 
+ 276:Glider-Core/pump_driver.c **** static uint16_t PumpDriver_BuildReadHoldingReg(uint8_t node_id, uint16_t reg_addr, uint8_t *frame)
+ 277:Glider-Core/pump_driver.c **** {
+ 117              		.loc 1 277 1 is_stmt 1 view -0
+ 118              		.cfi_startproc
+ 119              		@ args = 0, pretend = 0, frame = 0
+ 120              		@ frame_needed = 0, uses_anonymous_args = 0
+ 121              		.loc 1 277 1 is_stmt 0 view .LVU31
+ 122 0000 10B5     		push	{r4, lr}
+ 123              	.LCFI1:
+ 124              		.cfi_def_cfa_offset 8
+ 125              		.cfi_offset 4, -8
+ 126              		.cfi_offset 14, -4
+ 127 0002 1446     		mov	r4, r2
+ 278:Glider-Core/pump_driver.c ****   uint16_t crc;
+ 128              		.loc 1 278 3 is_stmt 1 view .LVU32
+ 279:Glider-Core/pump_driver.c **** 
+ 280:Glider-Core/pump_driver.c ****   frame[0] = node_id;
+ 129              		.loc 1 280 3 view .LVU33
+ 130              		.loc 1 280 12 is_stmt 0 view .LVU34
+ 131 0004 1070     		strb	r0, [r2]
+ 281:Glider-Core/pump_driver.c ****   frame[1] = MODBUS_FUNC_READ_HOLDING_REGS;
+ 132              		.loc 1 281 3 is_stmt 1 view .LVU35
+ 133              		.loc 1 281 12 is_stmt 0 view .LVU36
+ 134 0006 0323     		movs	r3, #3
+ 135 0008 5370     		strb	r3, [r2, #1]
+ 282:Glider-Core/pump_driver.c ****   frame[2] = (uint8_t)((reg_addr >> 8) & 0xFFU);
+ 136              		.loc 1 282 3 is_stmt 1 view .LVU37
+ 137              		.loc 1 282 14 is_stmt 0 view .LVU38
+ 138 000a 0B0A     		lsrs	r3, r1, #8
+ 139              		.loc 1 282 12 view .LVU39
+ 140 000c 9370     		strb	r3, [r2, #2]
+ 283:Glider-Core/pump_driver.c ****   frame[3] = (uint8_t)(reg_addr & 0xFFU);
+ 141              		.loc 1 283 3 is_stmt 1 view .LVU40
+ 142              		.loc 1 283 12 is_stmt 0 view .LVU41
+ 143 000e D170     		strb	r1, [r2, #3]
+ 284:Glider-Core/pump_driver.c ****   frame[4] = 0x00U;
+ 144              		.loc 1 284 3 is_stmt 1 view .LVU42
+ 145              		.loc 1 284 12 is_stmt 0 view .LVU43
+ 146 0010 0023     		movs	r3, #0
+ 147 0012 1371     		strb	r3, [r2, #4]
+ 285:Glider-Core/pump_driver.c ****   frame[5] = 0x01U;
+ 148              		.loc 1 285 3 is_stmt 1 view .LVU44
+ 149              		.loc 1 285 12 is_stmt 0 view .LVU45
+ 150 0014 0123     		movs	r3, #1
+ 151 0016 5371     		strb	r3, [r2, #5]
+ 286:Glider-Core/pump_driver.c **** 
+ 287:Glider-Core/pump_driver.c ****   crc = Modbus_CRC16(frame, 6U);
+ 152              		.loc 1 287 3 is_stmt 1 view .LVU46
+ 153              		.loc 1 287 9 is_stmt 0 view .LVU47
+ 154 0018 0621     		movs	r1, #6
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 9
+
+
+ 155              	.LVL13:
+ 156              		.loc 1 287 9 view .LVU48
+ 157 001a 1046     		mov	r0, r2
+ 158              	.LVL14:
+ 159              		.loc 1 287 9 view .LVU49
+ 160 001c FFF7FEFF 		bl	Modbus_CRC16
+ 161              	.LVL15:
+ 288:Glider-Core/pump_driver.c ****   frame[6] = (uint8_t)(crc & 0xFFU);
+ 162              		.loc 1 288 3 is_stmt 1 view .LVU50
+ 163              		.loc 1 288 12 is_stmt 0 view .LVU51
+ 164 0020 A071     		strb	r0, [r4, #6]
+ 289:Glider-Core/pump_driver.c ****   frame[7] = (uint8_t)((crc >> 8) & 0xFFU);
+ 165              		.loc 1 289 3 is_stmt 1 view .LVU52
+ 166              		.loc 1 289 14 is_stmt 0 view .LVU53
+ 167 0022 C0F30720 		ubfx	r0, r0, #8, #8
+ 168              	.LVL16:
+ 169              		.loc 1 289 12 view .LVU54
+ 170 0026 E071     		strb	r0, [r4, #7]
+ 290:Glider-Core/pump_driver.c **** 
+ 291:Glider-Core/pump_driver.c ****   return 8U;
+ 171              		.loc 1 291 3 is_stmt 1 view .LVU55
+ 292:Glider-Core/pump_driver.c **** }
+ 172              		.loc 1 292 1 is_stmt 0 view .LVU56
+ 173 0028 0820     		movs	r0, #8
+ 174 002a 10BD     		pop	{r4, pc}
+ 175              		.loc 1 292 1 view .LVU57
+ 176              		.cfi_endproc
+ 177              	.LFE347:
+ 179              		.section	.text.PumpDriver_SyncStatus,"ax",%progbits
+ 180              		.align	1
+ 181              		.syntax unified
+ 182              		.thumb
+ 183              		.thumb_func
+ 185              	PumpDriver_SyncStatus:
+ 186              	.LVL17:
+ 187              	.LFB349:
+ 293:Glider-Core/pump_driver.c **** 
+ 294:Glider-Core/pump_driver.c **** static uint8_t PumpDriver_ModbusReadHoldingReg(uint16_t reg_addr, uint16_t *out_value)
+ 295:Glider-Core/pump_driver.c **** {
+ 296:Glider-Core/pump_driver.c ****   uint8_t tx_frame[8];
+ 297:Glider-Core/pump_driver.c ****   uint8_t rx_frame[7];
+ 298:Glider-Core/pump_driver.c ****   uint16_t tx_len;
+ 299:Glider-Core/pump_driver.c ****   uint16_t recv_crc;
+ 300:Glider-Core/pump_driver.c ****   uint16_t calc_crc;
+ 301:Glider-Core/pump_driver.c **** 
+ 302:Glider-Core/pump_driver.c ****   if (s_huart == NULL || out_value == NULL)
+ 303:Glider-Core/pump_driver.c ****   {
+ 304:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 1U;
+ 305:Glider-Core/pump_driver.c ****     return 0U;
+ 306:Glider-Core/pump_driver.c ****   }
+ 307:Glider-Core/pump_driver.c **** 
+ 308:Glider-Core/pump_driver.c ****   tx_len = PumpDriver_BuildReadHoldingReg(g_pump_motor_uart3_diag.node_id, reg_addr, tx_frame);
+ 309:Glider-Core/pump_driver.c **** 
+ 310:Glider-Core/pump_driver.c ****   if (PumpDriver_BusLock(PUMP_MOTOR_UART3_TX_TIMEOUT_MS + PUMP_MOTOR_UART3_RX_TIMEOUT_MS + 10U) == 
+ 311:Glider-Core/pump_driver.c ****   {
+ 312:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 21U;
+ 313:Glider-Core/pump_driver.c ****     return 0U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 10
+
+
+ 314:Glider-Core/pump_driver.c ****   }
+ 315:Glider-Core/pump_driver.c **** 
+ 316:Glider-Core/pump_driver.c ****   if (HAL_UART_Transmit(s_huart, tx_frame, tx_len, PUMP_MOTOR_UART3_TX_TIMEOUT_MS) != HAL_OK)
+ 317:Glider-Core/pump_driver.c ****   {
+ 318:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 2U;
+ 319:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 320:Glider-Core/pump_driver.c ****     return 0U;
+ 321:Glider-Core/pump_driver.c ****   }
+ 322:Glider-Core/pump_driver.c **** 
+ 323:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.tx_count++;
+ 324:Glider-Core/pump_driver.c ****   memcpy((void *)g_pump_motor_uart3_diag.last_tx_frame, tx_frame, sizeof(tx_frame));
+ 325:Glider-Core/pump_driver.c **** 
+ 326:Glider-Core/pump_driver.c ****   if (HAL_UART_Receive(s_huart, rx_frame, sizeof(rx_frame), PUMP_MOTOR_UART3_RX_TIMEOUT_MS) != HAL_
+ 327:Glider-Core/pump_driver.c ****   {
+ 328:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.timeout_count++;
+ 329:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 3U;
+ 330:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 331:Glider-Core/pump_driver.c ****     return 0U;
+ 332:Glider-Core/pump_driver.c ****   }
+ 333:Glider-Core/pump_driver.c **** 
+ 334:Glider-Core/pump_driver.c ****   memcpy((void *)g_pump_motor_uart3_diag.last_rx_frame, rx_frame, sizeof(rx_frame));
+ 335:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.rx_count++;
+ 336:Glider-Core/pump_driver.c **** 
+ 337:Glider-Core/pump_driver.c ****   if (rx_frame[0] != g_pump_motor_uart3_diag.node_id)
+ 338:Glider-Core/pump_driver.c ****   {
+ 339:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 4U;
+ 340:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 341:Glider-Core/pump_driver.c ****     return 0U;
+ 342:Glider-Core/pump_driver.c ****   }
+ 343:Glider-Core/pump_driver.c **** 
+ 344:Glider-Core/pump_driver.c ****   if (rx_frame[1] == (uint8_t)(MODBUS_FUNC_READ_HOLDING_REGS | 0x80U))
+ 345:Glider-Core/pump_driver.c ****   {
+ 346:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 6U;
+ 347:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 348:Glider-Core/pump_driver.c ****     return 0U;
+ 349:Glider-Core/pump_driver.c ****   }
+ 350:Glider-Core/pump_driver.c **** 
+ 351:Glider-Core/pump_driver.c ****   if (rx_frame[1] != MODBUS_FUNC_READ_HOLDING_REGS || rx_frame[2] != 2U)
+ 352:Glider-Core/pump_driver.c ****   {
+ 353:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 4U;
+ 354:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 355:Glider-Core/pump_driver.c ****     return 0U;
+ 356:Glider-Core/pump_driver.c ****   }
+ 357:Glider-Core/pump_driver.c **** 
+ 358:Glider-Core/pump_driver.c ****   recv_crc = (uint16_t)(((uint16_t)rx_frame[6] << 8) | rx_frame[5]);
+ 359:Glider-Core/pump_driver.c ****   calc_crc = Modbus_CRC16(rx_frame, 5U);
+ 360:Glider-Core/pump_driver.c ****   if (recv_crc != calc_crc)
+ 361:Glider-Core/pump_driver.c ****   {
+ 362:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 5U;
+ 363:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 364:Glider-Core/pump_driver.c ****     return 0U;
+ 365:Glider-Core/pump_driver.c ****   }
+ 366:Glider-Core/pump_driver.c **** 
+ 367:Glider-Core/pump_driver.c ****   *out_value = (uint16_t)(((uint16_t)rx_frame[3] << 8) | rx_frame[4]);
+ 368:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.last_error = 0U;
+ 369:Glider-Core/pump_driver.c **** 
+ 370:Glider-Core/pump_driver.c ****   PumpDriver_BusUnlock();
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 11
+
+
+ 371:Glider-Core/pump_driver.c ****   return 1U;
+ 372:Glider-Core/pump_driver.c **** }
+ 373:Glider-Core/pump_driver.c **** 
+ 374:Glider-Core/pump_driver.c **** static void PumpDriver_SyncStatus(uint32_t now_ms)
+ 375:Glider-Core/pump_driver.c **** {
+ 188              		.loc 1 375 1 is_stmt 1 view -0
+ 189              		.cfi_startproc
+ 190              		@ args = 0, pretend = 0, frame = 0
+ 191              		@ frame_needed = 0, uses_anonymous_args = 0
+ 192              		@ link register save eliminated.
+ 376:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.valid = g_displacement_sensor.valid;
+ 193              		.loc 1 376 3 view .LVU59
+ 194              		.loc 1 376 66 is_stmt 0 view .LVU60
+ 195 0000 2A4A     		ldr	r2, .L20
+ 196 0002 9168     		ldr	r1, [r2, #8]
+ 197              		.loc 1 376 43 view .LVU61
+ 198 0004 C9B2     		uxtb	r1, r1
+ 199 0006 2A4B     		ldr	r3, .L20+4
+ 200 0008 5970     		strb	r1, [r3, #1]
+ 377:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.sensor_id = g_displacement_sensor.sensor_id;
+ 201              		.loc 1 377 3 is_stmt 1 view .LVU62
+ 202              		.loc 1 377 70 is_stmt 0 view .LVU63
+ 203 000a 1179     		ldrb	r1, [r2, #4]	@ zero_extendqisi2
+ 204 000c C9B2     		uxtb	r1, r1
+ 205              		.loc 1 377 47 view .LVU64
+ 206 000e 9970     		strb	r1, [r3, #2]
+ 378:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.displacement_mm = g_displacement_sensor.displacement_mm;
+ 207              		.loc 1 378 3 is_stmt 1 view .LVU65
+ 208              		.loc 1 378 76 is_stmt 0 view .LVU66
+ 209 0010 1268     		ldr	r2, [r2]	@ float
+ 210              		.loc 1 378 53 view .LVU67
+ 211 0012 5A60     		str	r2, [r3, #4]	@ float
+ 379:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.tx_count = g_displacement_diag.tx_count;
+ 212              		.loc 1 379 3 is_stmt 1 view .LVU68
+ 213              		.loc 1 379 67 is_stmt 0 view .LVU69
+ 214 0014 274A     		ldr	r2, .L20+8
+ 215 0016 9168     		ldr	r1, [r2, #8]
+ 216              		.loc 1 379 46 view .LVU70
+ 217 0018 9960     		str	r1, [r3, #8]
+ 380:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.rx_count = g_displacement_diag.rx_count;
+ 218              		.loc 1 380 3 is_stmt 1 view .LVU71
+ 219              		.loc 1 380 67 is_stmt 0 view .LVU72
+ 220 001a D168     		ldr	r1, [r2, #12]
+ 221              		.loc 1 380 46 view .LVU73
+ 222 001c D960     		str	r1, [r3, #12]
+ 381:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.timeout_count = g_displacement_diag.timeout_count;
+ 223              		.loc 1 381 3 is_stmt 1 view .LVU74
+ 224              		.loc 1 381 72 is_stmt 0 view .LVU75
+ 225 001e 1169     		ldr	r1, [r2, #16]
+ 226              		.loc 1 381 51 view .LVU76
+ 227 0020 1961     		str	r1, [r3, #16]
+ 382:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.crc_error_count = g_displacement_diag.crc_error_count;
+ 228              		.loc 1 382 3 is_stmt 1 view .LVU77
+ 229              		.loc 1 382 74 is_stmt 0 view .LVU78
+ 230 0022 5169     		ldr	r1, [r2, #20]
+ 231              		.loc 1 382 53 view .LVU79
+ 232 0024 5961     		str	r1, [r3, #20]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 12
+
+
+ 383:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.last_error = g_displacement_diag.last_error;
+ 233              		.loc 1 383 3 is_stmt 1 view .LVU80
+ 234              		.loc 1 383 69 is_stmt 0 view .LVU81
+ 235 0026 1268     		ldr	r2, [r2]
+ 236              		.loc 1 383 48 view .LVU82
+ 237 0028 9A61     		str	r2, [r3, #24]
+ 384:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.online =
+ 238              		.loc 1 384 3 is_stmt 1 view .LVU83
+ 385:Glider-Core/pump_driver.c ****     (g_pump_driver_status.displacement.last_seen_tick != 0U &&
+ 239              		.loc 1 385 39 is_stmt 0 view .LVU84
+ 240 002a DB69     		ldr	r3, [r3, #28]
+ 384:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.online =
+ 241              		.loc 1 384 44 view .LVU85
+ 242 002c 3BB1     		cbz	r3, .L16
+ 386:Glider-Core/pump_driver.c ****      (now_ms - g_pump_driver_status.displacement.last_seen_tick) < 500U) ? 1U : 0U;
+ 243              		.loc 1 386 49 view .LVU86
+ 244 002e 204B     		ldr	r3, .L20+4
+ 245 0030 DB69     		ldr	r3, [r3, #28]
+ 246              		.loc 1 386 14 view .LVU87
+ 247 0032 C31A     		subs	r3, r0, r3
+ 385:Glider-Core/pump_driver.c ****     (g_pump_driver_status.displacement.last_seen_tick != 0U &&
+ 248              		.loc 1 385 61 view .LVU88
+ 249 0034 B3F5FA7F 		cmp	r3, #500
+ 250 0038 2FD3     		bcc	.L17
+ 384:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.online =
+ 251              		.loc 1 384 44 view .LVU89
+ 252 003a 0022     		movs	r2, #0
+ 253 003c 00E0     		b	.L14
+ 254              	.L16:
+ 255 003e 0022     		movs	r2, #0
+ 256              	.L14:
+ 384:Glider-Core/pump_driver.c ****   g_pump_driver_status.displacement.online =
+ 257              		.loc 1 384 44 discriminator 3 view .LVU90
+ 258 0040 1B4B     		ldr	r3, .L20+4
+ 259 0042 1A70     		strb	r2, [r3]
+ 387:Glider-Core/pump_driver.c **** 
+ 388:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.initialized = g_pump_motor_uart3_diag.initialized;
+ 260              		.loc 1 388 3 is_stmt 1 discriminator 3 view .LVU91
+ 261              		.loc 1 388 67 is_stmt 0 discriminator 3 view .LVU92
+ 262 0044 1C4A     		ldr	r2, .L20+12
+ 263 0046 1178     		ldrb	r1, [r2]	@ zero_extendqisi2
+ 264 0048 C9B2     		uxtb	r1, r1
+ 265              		.loc 1 388 42 discriminator 3 view .LVU93
+ 266 004a 83F82110 		strb	r1, [r3, #33]
+ 389:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.node_id = g_pump_motor_uart3_diag.node_id;
+ 267              		.loc 1 389 3 is_stmt 1 discriminator 3 view .LVU94
+ 268              		.loc 1 389 63 is_stmt 0 discriminator 3 view .LVU95
+ 269 004e 5178     		ldrb	r1, [r2, #1]	@ zero_extendqisi2
+ 270 0050 C9B2     		uxtb	r1, r1
+ 271              		.loc 1 389 38 discriminator 3 view .LVU96
+ 272 0052 83F82210 		strb	r1, [r3, #34]
+ 390:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.valid = g_pump_motor_uart3_diag.valid;
+ 273              		.loc 1 390 3 is_stmt 1 discriminator 3 view .LVU97
+ 274              		.loc 1 390 61 is_stmt 0 discriminator 3 view .LVU98
+ 275 0056 9178     		ldrb	r1, [r2, #2]	@ zero_extendqisi2
+ 276 0058 C9B2     		uxtb	r1, r1
+ 277              		.loc 1 390 36 discriminator 3 view .LVU99
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 13
+
+
+ 278 005a 83F82310 		strb	r1, [r3, #35]
+ 391:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.status_code = g_pump_motor_uart3_diag.status_code;
+ 279              		.loc 1 391 3 is_stmt 1 discriminator 3 view .LVU100
+ 280              		.loc 1 391 67 is_stmt 0 discriminator 3 view .LVU101
+ 281 005e B2F86210 		ldrh	r1, [r2, #98]
+ 282 0062 89B2     		uxth	r1, r1
+ 283              		.loc 1 391 42 discriminator 3 view .LVU102
+ 284 0064 1986     		strh	r1, [r3, #48]	@ movhi
+ 392:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.alarm_code = g_pump_motor_uart3_diag.alarm_code;
+ 285              		.loc 1 392 3 is_stmt 1 discriminator 3 view .LVU103
+ 286              		.loc 1 392 66 is_stmt 0 discriminator 3 view .LVU104
+ 287 0066 B2F86410 		ldrh	r1, [r2, #100]
+ 288 006a 89B2     		uxth	r1, r1
+ 289              		.loc 1 392 41 discriminator 3 view .LVU105
+ 290 006c 5986     		strh	r1, [r3, #50]	@ movhi
+ 393:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.feedback_speed_rpm = g_pump_motor_uart3_diag.feedback_speed_rpm;
+ 291              		.loc 1 393 3 is_stmt 1 discriminator 3 view .LVU106
+ 292              		.loc 1 393 74 is_stmt 0 discriminator 3 view .LVU107
+ 293 006e 916E     		ldr	r1, [r2, #104]
+ 294              		.loc 1 393 49 discriminator 3 view .LVU108
+ 295 0070 5962     		str	r1, [r3, #36]
+ 394:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.tx_count = g_pump_motor_uart3_diag.tx_count;
+ 296              		.loc 1 394 3 is_stmt 1 discriminator 3 view .LVU109
+ 297              		.loc 1 394 64 is_stmt 0 discriminator 3 view .LVU110
+ 298 0072 5168     		ldr	r1, [r2, #4]
+ 299              		.loc 1 394 39 discriminator 3 view .LVU111
+ 300 0074 9962     		str	r1, [r3, #40]
+ 395:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.rx_count = g_pump_motor_uart3_diag.rx_count;
+ 301              		.loc 1 395 3 is_stmt 1 discriminator 3 view .LVU112
+ 302              		.loc 1 395 64 is_stmt 0 discriminator 3 view .LVU113
+ 303 0076 9168     		ldr	r1, [r2, #8]
+ 304              		.loc 1 395 39 discriminator 3 view .LVU114
+ 305 0078 D962     		str	r1, [r3, #44]
+ 396:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.timeout_count = g_pump_motor_uart3_diag.timeout_count;
+ 306              		.loc 1 396 3 is_stmt 1 discriminator 3 view .LVU115
+ 307              		.loc 1 396 69 is_stmt 0 discriminator 3 view .LVU116
+ 308 007a D168     		ldr	r1, [r2, #12]
+ 309              		.loc 1 396 44 discriminator 3 view .LVU117
+ 310 007c 5963     		str	r1, [r3, #52]
+ 397:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.last_error = g_pump_motor_uart3_diag.last_error;
+ 311              		.loc 1 397 3 is_stmt 1 discriminator 3 view .LVU118
+ 312              		.loc 1 397 66 is_stmt 0 discriminator 3 view .LVU119
+ 313 007e 92F86020 		ldrb	r2, [r2, #96]	@ zero_extendqisi2
+ 314 0082 D2B2     		uxtb	r2, r2
+ 315              		.loc 1 397 41 discriminator 3 view .LVU120
+ 316 0084 9A63     		str	r2, [r3, #56]
+ 398:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.online =
+ 317              		.loc 1 398 3 is_stmt 1 discriminator 3 view .LVU121
+ 399:Glider-Core/pump_driver.c ****     (g_pump_driver_status.motor.last_seen_tick != 0U &&
+ 318              		.loc 1 399 32 is_stmt 0 discriminator 3 view .LVU122
+ 319 0086 DB6B     		ldr	r3, [r3, #60]
+ 398:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.online =
+ 320              		.loc 1 398 37 discriminator 3 view .LVU123
+ 321 0088 4BB1     		cbz	r3, .L18
+ 400:Glider-Core/pump_driver.c ****      (now_ms - g_pump_driver_status.motor.last_seen_tick) < 500U) ? 1U : 0U;
+ 322              		.loc 1 400 42 view .LVU124
+ 323 008a 094B     		ldr	r3, .L20+4
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 14
+
+
+ 324 008c DB6B     		ldr	r3, [r3, #60]
+ 325              		.loc 1 400 14 view .LVU125
+ 326 008e C01A     		subs	r0, r0, r3
+ 327              	.LVL18:
+ 399:Glider-Core/pump_driver.c ****     (g_pump_driver_status.motor.last_seen_tick != 0U &&
+ 328              		.loc 1 399 54 view .LVU126
+ 329 0090 B0F5FA7F 		cmp	r0, #500
+ 330 0094 08D3     		bcc	.L19
+ 398:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.online =
+ 331              		.loc 1 398 37 view .LVU127
+ 332 0096 0022     		movs	r2, #0
+ 333 0098 02E0     		b	.L15
+ 334              	.LVL19:
+ 335              	.L17:
+ 384:Glider-Core/pump_driver.c ****     (g_pump_driver_status.displacement.last_seen_tick != 0U &&
+ 336              		.loc 1 384 44 view .LVU128
+ 337 009a 0122     		movs	r2, #1
+ 338 009c D0E7     		b	.L14
+ 339              	.L18:
+ 398:Glider-Core/pump_driver.c ****     (g_pump_driver_status.motor.last_seen_tick != 0U &&
+ 340              		.loc 1 398 37 view .LVU129
+ 341 009e 0022     		movs	r2, #0
+ 342              	.LVL20:
+ 343              	.L15:
+ 398:Glider-Core/pump_driver.c ****     (g_pump_driver_status.motor.last_seen_tick != 0U &&
+ 344              		.loc 1 398 37 discriminator 3 view .LVU130
+ 345 00a0 034B     		ldr	r3, .L20+4
+ 346 00a2 83F82020 		strb	r2, [r3, #32]
+ 401:Glider-Core/pump_driver.c **** }
+ 347              		.loc 1 401 1 discriminator 3 view .LVU131
+ 348 00a6 7047     		bx	lr
+ 349              	.L19:
+ 398:Glider-Core/pump_driver.c ****     (g_pump_driver_status.motor.last_seen_tick != 0U &&
+ 350              		.loc 1 398 37 view .LVU132
+ 351 00a8 0122     		movs	r2, #1
+ 352 00aa F9E7     		b	.L15
+ 353              	.L21:
+ 354              		.align	2
+ 355              	.L20:
+ 356 00ac 00000000 		.word	g_displacement_sensor
+ 357 00b0 00000000 		.word	g_pump_driver_status
+ 358 00b4 00000000 		.word	g_displacement_diag
+ 359 00b8 00000000 		.word	g_pump_motor_uart3_diag
+ 360              		.cfi_endproc
+ 361              	.LFE349:
+ 363              		.section	.text.PumpDriver_BusInit,"ax",%progbits
+ 364              		.align	1
+ 365              		.syntax unified
+ 366              		.thumb
+ 367              		.thumb_func
+ 369              	PumpDriver_BusInit:
+ 370              	.LFB343:
+ 236:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex == NULL)
+ 371              		.loc 1 236 1 is_stmt 1 view -0
+ 372              		.cfi_startproc
+ 373              		@ args = 0, pretend = 0, frame = 0
+ 374              		@ frame_needed = 0, uses_anonymous_args = 0
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 15
+
+
+ 375 0000 08B5     		push	{r3, lr}
+ 376              	.LCFI2:
+ 377              		.cfi_def_cfa_offset 8
+ 378              		.cfi_offset 3, -8
+ 379              		.cfi_offset 14, -4
+ 237:Glider-Core/pump_driver.c ****   {
+ 380              		.loc 1 237 3 view .LVU134
+ 237:Glider-Core/pump_driver.c ****   {
+ 381              		.loc 1 237 24 is_stmt 0 view .LVU135
+ 382 0002 054B     		ldr	r3, .L26
+ 383 0004 1B68     		ldr	r3, [r3]
+ 237:Glider-Core/pump_driver.c ****   {
+ 384              		.loc 1 237 6 view .LVU136
+ 385 0006 03B1     		cbz	r3, .L25
+ 386              	.L22:
+ 241:Glider-Core/pump_driver.c **** 
+ 387              		.loc 1 241 1 view .LVU137
+ 388 0008 08BD     		pop	{r3, pc}
+ 389              	.L25:
+ 239:Glider-Core/pump_driver.c ****   }
+ 390              		.loc 1 239 5 is_stmt 1 view .LVU138
+ 239:Glider-Core/pump_driver.c ****   }
+ 391              		.loc 1 239 24 is_stmt 0 view .LVU139
+ 392 000a 0448     		ldr	r0, .L26+4
+ 393 000c FFF7FEFF 		bl	osMutexNew
+ 394              	.LVL21:
+ 239:Glider-Core/pump_driver.c ****   }
+ 395              		.loc 1 239 22 view .LVU140
+ 396 0010 014B     		ldr	r3, .L26
+ 397 0012 1860     		str	r0, [r3]
+ 241:Glider-Core/pump_driver.c **** 
+ 398              		.loc 1 241 1 view .LVU141
+ 399 0014 F8E7     		b	.L22
+ 400              	.L27:
+ 401 0016 00BF     		.align	2
+ 402              	.L26:
+ 403 0018 00000000 		.word	s_pump_bus_mutex
+ 404 001c 00000000 		.word	s_pump_bus_mutex_attr
+ 405              		.cfi_endproc
+ 406              	.LFE343:
+ 408              		.section	.text.PumpDriver_BusLock,"ax",%progbits
+ 409              		.align	1
+ 410              		.syntax unified
+ 411              		.thumb
+ 412              		.thumb_func
+ 414              	PumpDriver_BusLock:
+ 415              	.LVL22:
+ 416              	.LFB344:
+ 244:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex == NULL)
+ 417              		.loc 1 244 1 is_stmt 1 view -0
+ 418              		.cfi_startproc
+ 419              		@ args = 0, pretend = 0, frame = 0
+ 420              		@ frame_needed = 0, uses_anonymous_args = 0
+ 244:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex == NULL)
+ 421              		.loc 1 244 1 is_stmt 0 view .LVU143
+ 422 0000 10B5     		push	{r4, lr}
+ 423              	.LCFI3:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 16
+
+
+ 424              		.cfi_def_cfa_offset 8
+ 425              		.cfi_offset 4, -8
+ 426              		.cfi_offset 14, -4
+ 427 0002 0446     		mov	r4, r0
+ 245:Glider-Core/pump_driver.c ****   {
+ 428              		.loc 1 245 3 is_stmt 1 view .LVU144
+ 245:Glider-Core/pump_driver.c ****   {
+ 429              		.loc 1 245 24 is_stmt 0 view .LVU145
+ 430 0004 094B     		ldr	r3, .L35
+ 431 0006 1B68     		ldr	r3, [r3]
+ 245:Glider-Core/pump_driver.c ****   {
+ 432              		.loc 1 245 6 view .LVU146
+ 433 0008 43B1     		cbz	r3, .L34
+ 434              	.LVL23:
+ 435              	.L29:
+ 250:Glider-Core/pump_driver.c ****   {
+ 436              		.loc 1 250 3 is_stmt 1 view .LVU147
+ 250:Glider-Core/pump_driver.c ****   {
+ 437              		.loc 1 250 24 is_stmt 0 view .LVU148
+ 438 000a 084B     		ldr	r3, .L35
+ 439 000c 1868     		ldr	r0, [r3]
+ 250:Glider-Core/pump_driver.c ****   {
+ 440              		.loc 1 250 6 view .LVU149
+ 441 000e 40B1     		cbz	r0, .L31
+ 255:Glider-Core/pump_driver.c **** }
+ 442              		.loc 1 255 3 is_stmt 1 view .LVU150
+ 255:Glider-Core/pump_driver.c **** }
+ 443              		.loc 1 255 11 is_stmt 0 view .LVU151
+ 444 0010 2146     		mov	r1, r4
+ 445 0012 FFF7FEFF 		bl	osMutexAcquire
+ 446              	.LVL24:
+ 255:Glider-Core/pump_driver.c **** }
+ 447              		.loc 1 255 70 view .LVU152
+ 448 0016 30B9     		cbnz	r0, .L32
+ 449 0018 0120     		movs	r0, #1
+ 450              	.L28:
+ 256:Glider-Core/pump_driver.c **** 
+ 451              		.loc 1 256 1 view .LVU153
+ 452 001a 10BD     		pop	{r4, pc}
+ 453              	.LVL25:
+ 454              	.L34:
+ 247:Glider-Core/pump_driver.c ****   }
+ 455              		.loc 1 247 5 is_stmt 1 view .LVU154
+ 456 001c FFF7FEFF 		bl	PumpDriver_BusInit
+ 457              	.LVL26:
+ 247:Glider-Core/pump_driver.c ****   }
+ 458              		.loc 1 247 5 is_stmt 0 view .LVU155
+ 459 0020 F3E7     		b	.L29
+ 460              	.L31:
+ 252:Glider-Core/pump_driver.c ****   }
+ 461              		.loc 1 252 12 view .LVU156
+ 462 0022 0020     		movs	r0, #0
+ 463 0024 F9E7     		b	.L28
+ 464              	.L32:
+ 255:Glider-Core/pump_driver.c **** }
+ 465              		.loc 1 255 70 view .LVU157
+ 466 0026 0020     		movs	r0, #0
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 17
+
+
+ 467 0028 F7E7     		b	.L28
+ 468              	.L36:
+ 469 002a 00BF     		.align	2
+ 470              	.L35:
+ 471 002c 00000000 		.word	s_pump_bus_mutex
+ 472              		.cfi_endproc
+ 473              	.LFE344:
+ 475              		.section	.text.PumpDriver_BusUnlock,"ax",%progbits
+ 476              		.align	1
+ 477              		.syntax unified
+ 478              		.thumb
+ 479              		.thumb_func
+ 481              	PumpDriver_BusUnlock:
+ 482              	.LFB345:
+ 259:Glider-Core/pump_driver.c ****   if (s_pump_bus_mutex != NULL)
+ 483              		.loc 1 259 1 is_stmt 1 view -0
+ 484              		.cfi_startproc
+ 485              		@ args = 0, pretend = 0, frame = 0
+ 486              		@ frame_needed = 0, uses_anonymous_args = 0
+ 487 0000 08B5     		push	{r3, lr}
+ 488              	.LCFI4:
+ 489              		.cfi_def_cfa_offset 8
+ 490              		.cfi_offset 3, -8
+ 491              		.cfi_offset 14, -4
+ 260:Glider-Core/pump_driver.c ****   {
+ 492              		.loc 1 260 3 view .LVU159
+ 260:Glider-Core/pump_driver.c ****   {
+ 493              		.loc 1 260 24 is_stmt 0 view .LVU160
+ 494 0002 034B     		ldr	r3, .L40
+ 495 0004 1868     		ldr	r0, [r3]
+ 260:Glider-Core/pump_driver.c ****   {
+ 496              		.loc 1 260 6 view .LVU161
+ 497 0006 08B1     		cbz	r0, .L37
+ 262:Glider-Core/pump_driver.c ****   }
+ 498              		.loc 1 262 5 is_stmt 1 view .LVU162
+ 262:Glider-Core/pump_driver.c ****   }
+ 499              		.loc 1 262 11 is_stmt 0 view .LVU163
+ 500 0008 FFF7FEFF 		bl	osMutexRelease
+ 501              	.LVL27:
+ 502              	.L37:
+ 264:Glider-Core/pump_driver.c **** 
+ 503              		.loc 1 264 1 view .LVU164
+ 504 000c 08BD     		pop	{r3, pc}
+ 505              	.L41:
+ 506 000e 00BF     		.align	2
+ 507              	.L40:
+ 508 0010 00000000 		.word	s_pump_bus_mutex
+ 509              		.cfi_endproc
+ 510              	.LFE345:
+ 512              		.section	.text.PumpDriver_ModbusReadHoldingReg,"ax",%progbits
+ 513              		.align	1
+ 514              		.syntax unified
+ 515              		.thumb
+ 516              		.thumb_func
+ 518              	PumpDriver_ModbusReadHoldingReg:
+ 519              	.LVL28:
+ 520              	.LFB348:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 18
+
+
+ 295:Glider-Core/pump_driver.c ****   uint8_t tx_frame[8];
+ 521              		.loc 1 295 1 is_stmt 1 view -0
+ 522              		.cfi_startproc
+ 523              		@ args = 0, pretend = 0, frame = 16
+ 524              		@ frame_needed = 0, uses_anonymous_args = 0
+ 295:Glider-Core/pump_driver.c ****   uint8_t tx_frame[8];
+ 525              		.loc 1 295 1 is_stmt 0 view .LVU166
+ 526 0000 70B5     		push	{r4, r5, r6, lr}
+ 527              	.LCFI5:
+ 528              		.cfi_def_cfa_offset 16
+ 529              		.cfi_offset 4, -16
+ 530              		.cfi_offset 5, -12
+ 531              		.cfi_offset 6, -8
+ 532              		.cfi_offset 14, -4
+ 533 0002 84B0     		sub	sp, sp, #16
+ 534              	.LCFI6:
+ 535              		.cfi_def_cfa_offset 32
+ 296:Glider-Core/pump_driver.c ****   uint8_t rx_frame[7];
+ 536              		.loc 1 296 3 is_stmt 1 view .LVU167
+ 297:Glider-Core/pump_driver.c ****   uint16_t tx_len;
+ 537              		.loc 1 297 3 view .LVU168
+ 298:Glider-Core/pump_driver.c ****   uint16_t recv_crc;
+ 538              		.loc 1 298 3 view .LVU169
+ 299:Glider-Core/pump_driver.c ****   uint16_t calc_crc;
+ 539              		.loc 1 299 3 view .LVU170
+ 300:Glider-Core/pump_driver.c **** 
+ 540              		.loc 1 300 3 view .LVU171
+ 302:Glider-Core/pump_driver.c ****   {
+ 541              		.loc 1 302 3 view .LVU172
+ 302:Glider-Core/pump_driver.c ****   {
+ 542              		.loc 1 302 15 is_stmt 0 view .LVU173
+ 543 0004 504B     		ldr	r3, .L59
+ 544 0006 1B68     		ldr	r3, [r3]
+ 302:Glider-Core/pump_driver.c ****   {
+ 545              		.loc 1 302 6 view .LVU174
+ 546 0008 A3B1     		cbz	r3, .L43
+ 547 000a 0D46     		mov	r5, r1
+ 302:Glider-Core/pump_driver.c ****   {
+ 548              		.loc 1 302 23 discriminator 1 view .LVU175
+ 549 000c 91B1     		cbz	r1, .L43
+ 308:Glider-Core/pump_driver.c **** 
+ 550              		.loc 1 308 3 is_stmt 1 view .LVU176
+ 308:Glider-Core/pump_driver.c **** 
+ 551              		.loc 1 308 66 is_stmt 0 view .LVU177
+ 552 000e 4F4B     		ldr	r3, .L59+4
+ 553 0010 5B78     		ldrb	r3, [r3, #1]	@ zero_extendqisi2
+ 308:Glider-Core/pump_driver.c **** 
+ 554              		.loc 1 308 12 view .LVU178
+ 555 0012 02AA     		add	r2, sp, #8
+ 556 0014 0146     		mov	r1, r0
+ 557              	.LVL29:
+ 308:Glider-Core/pump_driver.c **** 
+ 558              		.loc 1 308 12 view .LVU179
+ 559 0016 1846     		mov	r0, r3
+ 560              	.LVL30:
+ 308:Glider-Core/pump_driver.c **** 
+ 561              		.loc 1 308 12 view .LVU180
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 19
+
+
+ 562 0018 FFF7FEFF 		bl	PumpDriver_BuildReadHoldingReg
+ 563              	.LVL31:
+ 564 001c 0446     		mov	r4, r0
+ 565              	.LVL32:
+ 310:Glider-Core/pump_driver.c ****   {
+ 566              		.loc 1 310 3 is_stmt 1 view .LVU181
+ 310:Glider-Core/pump_driver.c ****   {
+ 567              		.loc 1 310 7 is_stmt 0 view .LVU182
+ 568 001e 4FF48270 		mov	r0, #260
+ 569 0022 FFF7FEFF 		bl	PumpDriver_BusLock
+ 570              	.LVL33:
+ 310:Glider-Core/pump_driver.c ****   {
+ 571              		.loc 1 310 6 view .LVU183
+ 572 0026 68B9     		cbnz	r0, .L46
+ 312:Glider-Core/pump_driver.c ****     return 0U;
+ 573              		.loc 1 312 5 is_stmt 1 view .LVU184
+ 312:Glider-Core/pump_driver.c ****     return 0U;
+ 574              		.loc 1 312 40 is_stmt 0 view .LVU185
+ 575 0028 484B     		ldr	r3, .L59+4
+ 576 002a 1522     		movs	r2, #21
+ 577 002c 83F86020 		strb	r2, [r3, #96]
+ 313:Glider-Core/pump_driver.c ****   }
+ 578              		.loc 1 313 5 is_stmt 1 view .LVU186
+ 313:Glider-Core/pump_driver.c ****   }
+ 579              		.loc 1 313 12 is_stmt 0 view .LVU187
+ 580 0030 0024     		movs	r4, #0
+ 581              	.LVL34:
+ 313:Glider-Core/pump_driver.c ****   }
+ 582              		.loc 1 313 12 view .LVU188
+ 583 0032 04E0     		b	.L45
+ 584              	.LVL35:
+ 585              	.L43:
+ 304:Glider-Core/pump_driver.c ****     return 0U;
+ 586              		.loc 1 304 5 is_stmt 1 view .LVU189
+ 304:Glider-Core/pump_driver.c ****     return 0U;
+ 587              		.loc 1 304 40 is_stmt 0 view .LVU190
+ 588 0034 454B     		ldr	r3, .L59+4
+ 589 0036 0122     		movs	r2, #1
+ 590 0038 83F86020 		strb	r2, [r3, #96]
+ 305:Glider-Core/pump_driver.c ****   }
+ 591              		.loc 1 305 5 is_stmt 1 view .LVU191
+ 305:Glider-Core/pump_driver.c ****   }
+ 592              		.loc 1 305 12 is_stmt 0 view .LVU192
+ 593 003c 0024     		movs	r4, #0
+ 594              	.LVL36:
+ 595              	.L45:
+ 372:Glider-Core/pump_driver.c **** 
+ 596              		.loc 1 372 1 view .LVU193
+ 597 003e 2046     		mov	r0, r4
+ 598 0040 04B0     		add	sp, sp, #16
+ 599              	.LCFI7:
+ 600              		.cfi_remember_state
+ 601              		.cfi_def_cfa_offset 16
+ 602              		@ sp needed
+ 603 0042 70BD     		pop	{r4, r5, r6, pc}
+ 604              	.LVL37:
+ 605              	.L46:
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 20
+
+
+ 606              	.LCFI8:
+ 607              		.cfi_restore_state
+ 316:Glider-Core/pump_driver.c ****   {
+ 608              		.loc 1 316 3 is_stmt 1 view .LVU194
+ 316:Glider-Core/pump_driver.c ****   {
+ 609              		.loc 1 316 7 is_stmt 0 view .LVU195
+ 610 0044 3223     		movs	r3, #50
+ 611 0046 2246     		mov	r2, r4
+ 612 0048 02A9     		add	r1, sp, #8
+ 613 004a 3F48     		ldr	r0, .L59
+ 614 004c 0068     		ldr	r0, [r0]
+ 615 004e FFF7FEFF 		bl	HAL_UART_Transmit
+ 616              	.LVL38:
+ 316:Glider-Core/pump_driver.c ****   {
+ 617              		.loc 1 316 6 view .LVU196
+ 618 0052 0646     		mov	r6, r0
+ 619 0054 0028     		cmp	r0, #0
+ 620 0056 34D1     		bne	.L55
+ 323:Glider-Core/pump_driver.c ****   memcpy((void *)g_pump_motor_uart3_diag.last_tx_frame, tx_frame, sizeof(tx_frame));
+ 621              		.loc 1 323 3 is_stmt 1 view .LVU197
+ 323:Glider-Core/pump_driver.c ****   memcpy((void *)g_pump_motor_uart3_diag.last_tx_frame, tx_frame, sizeof(tx_frame));
+ 622              		.loc 1 323 26 is_stmt 0 view .LVU198
+ 623 0058 3C4B     		ldr	r3, .L59+4
+ 624 005a 5A68     		ldr	r2, [r3, #4]
+ 323:Glider-Core/pump_driver.c ****   memcpy((void *)g_pump_motor_uart3_diag.last_tx_frame, tx_frame, sizeof(tx_frame));
+ 625              		.loc 1 323 35 view .LVU199
+ 626 005c 0132     		adds	r2, r2, #1
+ 627 005e 5A60     		str	r2, [r3, #4]
+ 324:Glider-Core/pump_driver.c **** 
+ 628              		.loc 1 324 3 is_stmt 1 view .LVU200
+ 629 0060 5033     		adds	r3, r3, #80
+ 630 0062 04AA     		add	r2, sp, #16
+ 631 0064 12E90300 		ldmdb	r2, {r0, r1}
+ 632 0068 83E80300 		stm	r3, {r0, r1}
+ 326:Glider-Core/pump_driver.c ****   {
+ 633              		.loc 1 326 3 view .LVU201
+ 326:Glider-Core/pump_driver.c ****   {
+ 634              		.loc 1 326 7 is_stmt 0 view .LVU202
+ 635 006c C823     		movs	r3, #200
+ 636 006e 0722     		movs	r2, #7
+ 637 0070 6946     		mov	r1, sp
+ 638 0072 3548     		ldr	r0, .L59
+ 639 0074 0068     		ldr	r0, [r0]
+ 640 0076 FFF7FEFF 		bl	HAL_UART_Receive
+ 641              	.LVL39:
+ 326:Glider-Core/pump_driver.c ****   {
+ 642              		.loc 1 326 6 view .LVU203
+ 643 007a 0446     		mov	r4, r0
+ 644              	.LVL40:
+ 326:Glider-Core/pump_driver.c ****   {
+ 645              		.loc 1 326 6 view .LVU204
+ 646 007c 48BB     		cbnz	r0, .L56
+ 334:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.rx_count++;
+ 647              		.loc 1 334 3 is_stmt 1 view .LVU205
+ 648 007e 334B     		ldr	r3, .L59+4
+ 649 0080 6A46     		mov	r2, sp
+ 650 0082 92E80300 		ldm	r2, {r0, r1}
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 21
+
+
+ 651 0086 1861     		str	r0, [r3, #16]
+ 652 0088 9982     		strh	r1, [r3, #20]	@ movhi
+ 653 008a 090C     		lsrs	r1, r1, #16
+ 654 008c 9975     		strb	r1, [r3, #22]
+ 335:Glider-Core/pump_driver.c **** 
+ 655              		.loc 1 335 3 view .LVU206
+ 335:Glider-Core/pump_driver.c **** 
+ 656              		.loc 1 335 26 is_stmt 0 view .LVU207
+ 657 008e 9A68     		ldr	r2, [r3, #8]
+ 335:Glider-Core/pump_driver.c **** 
+ 658              		.loc 1 335 35 view .LVU208
+ 659 0090 0132     		adds	r2, r2, #1
+ 660 0092 9A60     		str	r2, [r3, #8]
+ 337:Glider-Core/pump_driver.c ****   {
+ 661              		.loc 1 337 3 is_stmt 1 view .LVU209
+ 337:Glider-Core/pump_driver.c ****   {
+ 662              		.loc 1 337 15 is_stmt 0 view .LVU210
+ 663 0094 9DF80020 		ldrb	r2, [sp]	@ zero_extendqisi2
+ 337:Glider-Core/pump_driver.c ****   {
+ 664              		.loc 1 337 45 view .LVU211
+ 665 0098 5B78     		ldrb	r3, [r3, #1]	@ zero_extendqisi2
+ 666 009a DBB2     		uxtb	r3, r3
+ 337:Glider-Core/pump_driver.c ****   {
+ 667              		.loc 1 337 6 view .LVU212
+ 668 009c 9A42     		cmp	r2, r3
+ 669 009e 23D1     		bne	.L57
+ 344:Glider-Core/pump_driver.c ****   {
+ 670              		.loc 1 344 3 is_stmt 1 view .LVU213
+ 344:Glider-Core/pump_driver.c ****   {
+ 671              		.loc 1 344 15 is_stmt 0 view .LVU214
+ 672 00a0 9DF80130 		ldrb	r3, [sp, #1]	@ zero_extendqisi2
+ 344:Glider-Core/pump_driver.c ****   {
+ 673              		.loc 1 344 6 view .LVU215
+ 674 00a4 832B     		cmp	r3, #131
+ 675 00a6 26D0     		beq	.L58
+ 351:Glider-Core/pump_driver.c ****   {
+ 676              		.loc 1 351 3 is_stmt 1 view .LVU216
+ 351:Glider-Core/pump_driver.c ****   {
+ 677              		.loc 1 351 6 is_stmt 0 view .LVU217
+ 678 00a8 032B     		cmp	r3, #3
+ 679 00aa 03D1     		bne	.L51
+ 351:Glider-Core/pump_driver.c ****   {
+ 680              		.loc 1 351 63 discriminator 1 view .LVU218
+ 681 00ac 9DF80230 		ldrb	r3, [sp, #2]	@ zero_extendqisi2
+ 351:Glider-Core/pump_driver.c ****   {
+ 682              		.loc 1 351 52 discriminator 1 view .LVU219
+ 683 00b0 022B     		cmp	r3, #2
+ 684 00b2 27D0     		beq	.L52
+ 685              	.L51:
+ 353:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 686              		.loc 1 353 5 is_stmt 1 view .LVU220
+ 353:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 687              		.loc 1 353 40 is_stmt 0 view .LVU221
+ 688 00b4 254B     		ldr	r3, .L59+4
+ 689 00b6 0422     		movs	r2, #4
+ 690 00b8 83F86020 		strb	r2, [r3, #96]
+ 354:Glider-Core/pump_driver.c ****     return 0U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 22
+
+
+ 691              		.loc 1 354 5 is_stmt 1 view .LVU222
+ 692 00bc FFF7FEFF 		bl	PumpDriver_BusUnlock
+ 693              	.LVL41:
+ 355:Glider-Core/pump_driver.c ****   }
+ 694              		.loc 1 355 5 view .LVU223
+ 355:Glider-Core/pump_driver.c ****   }
+ 695              		.loc 1 355 12 is_stmt 0 view .LVU224
+ 696 00c0 BDE7     		b	.L45
+ 697              	.LVL42:
+ 698              	.L55:
+ 318:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 699              		.loc 1 318 5 is_stmt 1 view .LVU225
+ 318:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 700              		.loc 1 318 40 is_stmt 0 view .LVU226
+ 701 00c2 224B     		ldr	r3, .L59+4
+ 702 00c4 0222     		movs	r2, #2
+ 703 00c6 83F86020 		strb	r2, [r3, #96]
+ 319:Glider-Core/pump_driver.c ****     return 0U;
+ 704              		.loc 1 319 5 is_stmt 1 view .LVU227
+ 705 00ca FFF7FEFF 		bl	PumpDriver_BusUnlock
+ 706              	.LVL43:
+ 320:Glider-Core/pump_driver.c ****   }
+ 707              		.loc 1 320 5 view .LVU228
+ 320:Glider-Core/pump_driver.c ****   }
+ 708              		.loc 1 320 12 is_stmt 0 view .LVU229
+ 709 00ce 0024     		movs	r4, #0
+ 710              	.LVL44:
+ 320:Glider-Core/pump_driver.c ****   }
+ 711              		.loc 1 320 12 view .LVU230
+ 712 00d0 B5E7     		b	.L45
+ 713              	.L56:
+ 328:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 3U;
+ 714              		.loc 1 328 5 is_stmt 1 view .LVU231
+ 328:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 3U;
+ 715              		.loc 1 328 28 is_stmt 0 view .LVU232
+ 716 00d2 1E4B     		ldr	r3, .L59+4
+ 717 00d4 DA68     		ldr	r2, [r3, #12]
+ 328:Glider-Core/pump_driver.c ****     g_pump_motor_uart3_diag.last_error = 3U;
+ 718              		.loc 1 328 42 view .LVU233
+ 719 00d6 0132     		adds	r2, r2, #1
+ 720 00d8 DA60     		str	r2, [r3, #12]
+ 329:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 721              		.loc 1 329 5 is_stmt 1 view .LVU234
+ 329:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 722              		.loc 1 329 40 is_stmt 0 view .LVU235
+ 723 00da 0322     		movs	r2, #3
+ 724 00dc 83F86020 		strb	r2, [r3, #96]
+ 330:Glider-Core/pump_driver.c ****     return 0U;
+ 725              		.loc 1 330 5 is_stmt 1 view .LVU236
+ 726 00e0 FFF7FEFF 		bl	PumpDriver_BusUnlock
+ 727              	.LVL45:
+ 331:Glider-Core/pump_driver.c ****   }
+ 728              		.loc 1 331 5 view .LVU237
+ 331:Glider-Core/pump_driver.c ****   }
+ 729              		.loc 1 331 12 is_stmt 0 view .LVU238
+ 730 00e4 3446     		mov	r4, r6
+ 731 00e6 AAE7     		b	.L45
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 23
+
+
+ 732              	.L57:
+ 339:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 733              		.loc 1 339 5 is_stmt 1 view .LVU239
+ 339:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 734              		.loc 1 339 40 is_stmt 0 view .LVU240
+ 735 00e8 184B     		ldr	r3, .L59+4
+ 736 00ea 0422     		movs	r2, #4
+ 737 00ec 83F86020 		strb	r2, [r3, #96]
+ 340:Glider-Core/pump_driver.c ****     return 0U;
+ 738              		.loc 1 340 5 is_stmt 1 view .LVU241
+ 739 00f0 FFF7FEFF 		bl	PumpDriver_BusUnlock
+ 740              	.LVL46:
+ 341:Glider-Core/pump_driver.c ****   }
+ 741              		.loc 1 341 5 view .LVU242
+ 341:Glider-Core/pump_driver.c ****   }
+ 742              		.loc 1 341 12 is_stmt 0 view .LVU243
+ 743 00f4 A3E7     		b	.L45
+ 744              	.L58:
+ 346:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 745              		.loc 1 346 5 is_stmt 1 view .LVU244
+ 346:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 746              		.loc 1 346 40 is_stmt 0 view .LVU245
+ 747 00f6 154B     		ldr	r3, .L59+4
+ 748 00f8 0622     		movs	r2, #6
+ 749 00fa 83F86020 		strb	r2, [r3, #96]
+ 347:Glider-Core/pump_driver.c ****     return 0U;
+ 750              		.loc 1 347 5 is_stmt 1 view .LVU246
+ 751 00fe FFF7FEFF 		bl	PumpDriver_BusUnlock
+ 752              	.LVL47:
+ 348:Glider-Core/pump_driver.c ****   }
+ 753              		.loc 1 348 5 view .LVU247
+ 348:Glider-Core/pump_driver.c ****   }
+ 754              		.loc 1 348 12 is_stmt 0 view .LVU248
+ 755 0102 9CE7     		b	.L45
+ 756              	.L52:
+ 358:Glider-Core/pump_driver.c ****   calc_crc = Modbus_CRC16(rx_frame, 5U);
+ 757              		.loc 1 358 3 is_stmt 1 view .LVU249
+ 358:Glider-Core/pump_driver.c ****   calc_crc = Modbus_CRC16(rx_frame, 5U);
+ 758              		.loc 1 358 44 is_stmt 0 view .LVU250
+ 759 0104 9DF80630 		ldrb	r3, [sp, #6]	@ zero_extendqisi2
+ 358:Glider-Core/pump_driver.c ****   calc_crc = Modbus_CRC16(rx_frame, 5U);
+ 760              		.loc 1 358 64 view .LVU251
+ 761 0108 9DF80560 		ldrb	r6, [sp, #5]	@ zero_extendqisi2
+ 358:Glider-Core/pump_driver.c ****   calc_crc = Modbus_CRC16(rx_frame, 5U);
+ 762              		.loc 1 358 12 view .LVU252
+ 763 010c 46EA0326 		orr	r6, r6, r3, lsl #8
+ 764              	.LVL48:
+ 359:Glider-Core/pump_driver.c ****   if (recv_crc != calc_crc)
+ 765              		.loc 1 359 3 is_stmt 1 view .LVU253
+ 359:Glider-Core/pump_driver.c ****   if (recv_crc != calc_crc)
+ 766              		.loc 1 359 14 is_stmt 0 view .LVU254
+ 767 0110 0521     		movs	r1, #5
+ 768 0112 6846     		mov	r0, sp
+ 769 0114 FFF7FEFF 		bl	Modbus_CRC16
+ 770              	.LVL49:
+ 360:Glider-Core/pump_driver.c ****   {
+ 771              		.loc 1 360 3 is_stmt 1 view .LVU255
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 24
+
+
+ 360:Glider-Core/pump_driver.c ****   {
+ 772              		.loc 1 360 6 is_stmt 0 view .LVU256
+ 773 0118 8642     		cmp	r6, r0
+ 774 011a 06D0     		beq	.L53
+ 362:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 775              		.loc 1 362 5 is_stmt 1 view .LVU257
+ 362:Glider-Core/pump_driver.c ****     PumpDriver_BusUnlock();
+ 776              		.loc 1 362 40 is_stmt 0 view .LVU258
+ 777 011c 0B4B     		ldr	r3, .L59+4
+ 778 011e 0522     		movs	r2, #5
+ 779 0120 83F86020 		strb	r2, [r3, #96]
+ 363:Glider-Core/pump_driver.c ****     return 0U;
+ 780              		.loc 1 363 5 is_stmt 1 view .LVU259
+ 781 0124 FFF7FEFF 		bl	PumpDriver_BusUnlock
+ 782              	.LVL50:
+ 364:Glider-Core/pump_driver.c ****   }
+ 783              		.loc 1 364 5 view .LVU260
+ 364:Glider-Core/pump_driver.c ****   }
+ 784              		.loc 1 364 12 is_stmt 0 view .LVU261
+ 785 0128 89E7     		b	.L45
+ 786              	.LVL51:
+ 787              	.L53:
+ 367:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.last_error = 0U;
+ 788              		.loc 1 367 3 is_stmt 1 view .LVU262
+ 367:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.last_error = 0U;
+ 789              		.loc 1 367 46 is_stmt 0 view .LVU263
+ 790 012a 9DF80320 		ldrb	r2, [sp, #3]	@ zero_extendqisi2
+ 367:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.last_error = 0U;
+ 791              		.loc 1 367 66 view .LVU264
+ 792 012e 9DF80430 		ldrb	r3, [sp, #4]	@ zero_extendqisi2
+ 367:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.last_error = 0U;
+ 793              		.loc 1 367 16 view .LVU265
+ 794 0132 43EA0223 		orr	r3, r3, r2, lsl #8
+ 367:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.last_error = 0U;
+ 795              		.loc 1 367 14 view .LVU266
+ 796 0136 2B80     		strh	r3, [r5]	@ movhi
+ 368:Glider-Core/pump_driver.c **** 
+ 797              		.loc 1 368 3 is_stmt 1 view .LVU267
+ 368:Glider-Core/pump_driver.c **** 
+ 798              		.loc 1 368 38 is_stmt 0 view .LVU268
+ 799 0138 044B     		ldr	r3, .L59+4
+ 800 013a 0022     		movs	r2, #0
+ 801 013c 83F86020 		strb	r2, [r3, #96]
+ 370:Glider-Core/pump_driver.c ****   return 1U;
+ 802              		.loc 1 370 3 is_stmt 1 view .LVU269
+ 803 0140 FFF7FEFF 		bl	PumpDriver_BusUnlock
+ 804              	.LVL52:
+ 371:Glider-Core/pump_driver.c **** }
+ 805              		.loc 1 371 3 view .LVU270
+ 371:Glider-Core/pump_driver.c **** }
+ 806              		.loc 1 371 10 is_stmt 0 view .LVU271
+ 807 0144 0124     		movs	r4, #1
+ 808 0146 7AE7     		b	.L45
+ 809              	.L60:
+ 810              		.align	2
+ 811              	.L59:
+ 812 0148 00000000 		.word	s_huart
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 25
+
+
+ 813 014c 00000000 		.word	g_pump_motor_uart3_diag
+ 814              		.cfi_endproc
+ 815              	.LFE348:
+ 817              		.section	.text.PumpDriver_Init,"ax",%progbits
+ 818              		.align	1
+ 819              		.global	PumpDriver_Init
+ 820              		.syntax unified
+ 821              		.thumb
+ 822              		.thumb_func
+ 824              	PumpDriver_Init:
+ 825              	.LVL53:
+ 826              	.LFB346:
+ 267:Glider-Core/pump_driver.c ****   s_huart = huart;
+ 827              		.loc 1 267 1 is_stmt 1 view -0
+ 828              		.cfi_startproc
+ 829              		@ args = 0, pretend = 0, frame = 0
+ 830              		@ frame_needed = 0, uses_anonymous_args = 0
+ 267:Glider-Core/pump_driver.c ****   s_huart = huart;
+ 831              		.loc 1 267 1 is_stmt 0 view .LVU273
+ 832 0000 08B5     		push	{r3, lr}
+ 833              	.LCFI9:
+ 834              		.cfi_def_cfa_offset 8
+ 835              		.cfi_offset 3, -8
+ 836              		.cfi_offset 14, -4
+ 268:Glider-Core/pump_driver.c ****   PumpDriver_BusInit();
+ 837              		.loc 1 268 3 is_stmt 1 view .LVU274
+ 268:Glider-Core/pump_driver.c ****   PumpDriver_BusInit();
+ 838              		.loc 1 268 11 is_stmt 0 view .LVU275
+ 839 0002 074B     		ldr	r3, .L63
+ 840 0004 1860     		str	r0, [r3]
+ 269:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.initialized = 1U;
+ 841              		.loc 1 269 3 is_stmt 1 view .LVU276
+ 842 0006 FFF7FEFF 		bl	PumpDriver_BusInit
+ 843              	.LVL54:
+ 270:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.node_id = PUMP_MOTOR_UART3_DEFAULT_NODE_ID;
+ 844              		.loc 1 270 3 view .LVU277
+ 270:Glider-Core/pump_driver.c ****   g_pump_motor_uart3_diag.node_id = PUMP_MOTOR_UART3_DEFAULT_NODE_ID;
+ 845              		.loc 1 270 39 is_stmt 0 view .LVU278
+ 846 000a 064B     		ldr	r3, .L63+4
+ 847 000c 0121     		movs	r1, #1
+ 848 000e 1970     		strb	r1, [r3]
+ 271:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.initialized = 1U;
+ 849              		.loc 1 271 3 is_stmt 1 view .LVU279
+ 271:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.initialized = 1U;
+ 850              		.loc 1 271 35 is_stmt 0 view .LVU280
+ 851 0010 0322     		movs	r2, #3
+ 852 0012 5A70     		strb	r2, [r3, #1]
+ 272:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.node_id = PUMP_MOTOR_UART3_DEFAULT_NODE_ID;
+ 853              		.loc 1 272 3 is_stmt 1 view .LVU281
+ 272:Glider-Core/pump_driver.c ****   g_pump_driver_status.motor.node_id = PUMP_MOTOR_UART3_DEFAULT_NODE_ID;
+ 854              		.loc 1 272 42 is_stmt 0 view .LVU282
+ 855 0014 044B     		ldr	r3, .L63+8
+ 856 0016 83F82110 		strb	r1, [r3, #33]
+ 273:Glider-Core/pump_driver.c **** }
+ 857              		.loc 1 273 3 is_stmt 1 view .LVU283
+ 273:Glider-Core/pump_driver.c **** }
+ 858              		.loc 1 273 38 is_stmt 0 view .LVU284
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 26
+
+
+ 859 001a 83F82220 		strb	r2, [r3, #34]
+ 274:Glider-Core/pump_driver.c **** 
+ 860              		.loc 1 274 1 view .LVU285
+ 861 001e 08BD     		pop	{r3, pc}
+ 862              	.L64:
+ 863              		.align	2
+ 864              	.L63:
+ 865 0020 00000000 		.word	s_huart
+ 866 0024 00000000 		.word	g_pump_motor_uart3_diag
+ 867 0028 00000000 		.word	g_pump_driver_status
+ 868              		.cfi_endproc
+ 869              	.LFE346:
+ 871              		.section	.text.PumpDriver_Poll,"ax",%progbits
+ 872              		.align	1
+ 873              		.global	PumpDriver_Poll
+ 874              		.syntax unified
+ 875              		.thumb
+ 876              		.thumb_func
+ 878              	PumpDriver_Poll:
+ 879              	.LVL55:
+ 880              	.LFB350:
+ 402:Glider-Core/pump_driver.c **** 
+ 403:Glider-Core/pump_driver.c **** void PumpDriver_Poll(uint32_t now_ms)
+ 404:Glider-Core/pump_driver.c **** {
+ 881              		.loc 1 404 1 is_stmt 1 view -0
+ 882              		.cfi_startproc
+ 883              		@ args = 0, pretend = 0, frame = 8
+ 884              		@ frame_needed = 0, uses_anonymous_args = 0
+ 885              		.loc 1 404 1 is_stmt 0 view .LVU287
+ 886 0000 10B5     		push	{r4, lr}
+ 887              	.LCFI10:
+ 888              		.cfi_def_cfa_offset 8
+ 889              		.cfi_offset 4, -8
+ 890              		.cfi_offset 14, -4
+ 891 0002 82B0     		sub	sp, sp, #8
+ 892              	.LCFI11:
+ 893              		.cfi_def_cfa_offset 16
+ 894 0004 0446     		mov	r4, r0
+ 405:Glider-Core/pump_driver.c ****   /* Displacement polling temporarily disabled to isolate RS485 traffic. */
+ 406:Glider-Core/pump_driver.c ****   /* Displacement_Poll(now_ms); */
+ 407:Glider-Core/pump_driver.c **** 
+ 408:Glider-Core/pump_driver.c ****   /* Then poll new pump motor on UART3 - Modbus RTU read holding regs */
+ 409:Glider-Core/pump_driver.c ****   static uint32_t last_motor_poll = 0U;
+ 895              		.loc 1 409 3 is_stmt 1 view .LVU288
+ 410:Glider-Core/pump_driver.c ****   static uint8_t next_cmd = 0U; /* 0=Status, 1=Alarm */
+ 896              		.loc 1 410 3 view .LVU289
+ 411:Glider-Core/pump_driver.c ****   uint16_t parsed_value = 0U;
+ 897              		.loc 1 411 3 view .LVU290
+ 898              		.loc 1 411 12 is_stmt 0 view .LVU291
+ 899 0006 0023     		movs	r3, #0
+ 900 0008 ADF80630 		strh	r3, [sp, #6]	@ movhi
+ 412:Glider-Core/pump_driver.c **** 
+ 413:Glider-Core/pump_driver.c ****   if ((now_ms - last_motor_poll) < PUMP_MOTOR_UART3_POLL_PERIOD_MS)
+ 901              		.loc 1 413 3 is_stmt 1 view .LVU292
+ 902              		.loc 1 413 15 is_stmt 0 view .LVU293
+ 903 000c 1B4B     		ldr	r3, .L74
+ 904 000e 1B68     		ldr	r3, [r3]
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 27
+
+
+ 905 0010 C31A     		subs	r3, r0, r3
+ 906              		.loc 1 413 6 view .LVU294
+ 907 0012 B3F57A7F 		cmp	r3, #1000
+ 908 0016 1CD3     		bcc	.L73
+ 414:Glider-Core/pump_driver.c ****   {
+ 415:Glider-Core/pump_driver.c ****     PumpDriver_SyncStatus(now_ms);
+ 416:Glider-Core/pump_driver.c ****     return;
+ 417:Glider-Core/pump_driver.c ****   }
+ 418:Glider-Core/pump_driver.c ****   last_motor_poll = now_ms;
+ 909              		.loc 1 418 3 is_stmt 1 view .LVU295
+ 910              		.loc 1 418 19 is_stmt 0 view .LVU296
+ 911 0018 184B     		ldr	r3, .L74
+ 912 001a 1860     		str	r0, [r3]
+ 419:Glider-Core/pump_driver.c **** 
+ 420:Glider-Core/pump_driver.c ****   if (next_cmd == 0U)
+ 913              		.loc 1 420 3 is_stmt 1 view .LVU297
+ 914              		.loc 1 420 16 is_stmt 0 view .LVU298
+ 915 001c 184B     		ldr	r3, .L74+4
+ 916 001e 1B78     		ldrb	r3, [r3]	@ zero_extendqisi2
+ 917              		.loc 1 420 6 view .LVU299
+ 918 0020 D3B9     		cbnz	r3, .L68
+ 421:Glider-Core/pump_driver.c ****   {
+ 422:Glider-Core/pump_driver.c ****     if (PumpDriver_ModbusReadHoldingReg(0x0001U, &parsed_value) != 0U)
+ 919              		.loc 1 422 5 is_stmt 1 view .LVU300
+ 920              		.loc 1 422 9 is_stmt 0 view .LVU301
+ 921 0022 0DF10601 		add	r1, sp, #6
+ 922 0026 0120     		movs	r0, #1
+ 923              	.LVL56:
+ 924              		.loc 1 422 9 view .LVU302
+ 925 0028 FFF7FEFF 		bl	PumpDriver_ModbusReadHoldingReg
+ 926              	.LVL57:
+ 927              		.loc 1 422 8 view .LVU303
+ 928 002c 48B1     		cbz	r0, .L69
+ 423:Glider-Core/pump_driver.c ****     {
+ 424:Glider-Core/pump_driver.c ****       g_pump_motor_uart3_diag.status_code = parsed_value;
+ 929              		.loc 1 424 7 is_stmt 1 view .LVU304
+ 930              		.loc 1 424 43 is_stmt 0 view .LVU305
+ 931 002e BDF80610 		ldrh	r1, [sp, #6]
+ 932 0032 144A     		ldr	r2, .L74+8
+ 933 0034 A2F86210 		strh	r1, [r2, #98]	@ movhi
+ 425:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.status_code = parsed_value;
+ 934              		.loc 1 425 7 is_stmt 1 view .LVU306
+ 935              		.loc 1 425 46 is_stmt 0 view .LVU307
+ 936 0038 134B     		ldr	r3, .L74+12
+ 937 003a 1986     		strh	r1, [r3, #48]	@ movhi
+ 426:Glider-Core/pump_driver.c ****       g_pump_motor_uart3_diag.valid = 1U;
+ 938              		.loc 1 426 7 is_stmt 1 view .LVU308
+ 939              		.loc 1 426 37 is_stmt 0 view .LVU309
+ 940 003c 0121     		movs	r1, #1
+ 941 003e 9170     		strb	r1, [r2, #2]
+ 427:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.last_seen_tick = now_ms;
+ 942              		.loc 1 427 7 is_stmt 1 view .LVU310
+ 943              		.loc 1 427 49 is_stmt 0 view .LVU311
+ 944 0040 DC63     		str	r4, [r3, #60]
+ 945              	.L69:
+ 428:Glider-Core/pump_driver.c ****     }
+ 429:Glider-Core/pump_driver.c ****     next_cmd = 1U;
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 28
+
+
+ 946              		.loc 1 429 5 is_stmt 1 view .LVU312
+ 947              		.loc 1 429 14 is_stmt 0 view .LVU313
+ 948 0042 0F4B     		ldr	r3, .L74+4
+ 949 0044 0122     		movs	r2, #1
+ 950 0046 1A70     		strb	r2, [r3]
+ 951              	.L70:
+ 430:Glider-Core/pump_driver.c ****   }
+ 431:Glider-Core/pump_driver.c ****   else
+ 432:Glider-Core/pump_driver.c ****   {
+ 433:Glider-Core/pump_driver.c ****     if (PumpDriver_ModbusReadHoldingReg(0x0000U, &parsed_value) != 0U)
+ 434:Glider-Core/pump_driver.c ****     {
+ 435:Glider-Core/pump_driver.c ****       g_pump_motor_uart3_diag.alarm_code = parsed_value;
+ 436:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.alarm_code = parsed_value;
+ 437:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.last_seen_tick = now_ms;
+ 438:Glider-Core/pump_driver.c ****     }
+ 439:Glider-Core/pump_driver.c ****     next_cmd = 0U;
+ 440:Glider-Core/pump_driver.c ****   }
+ 441:Glider-Core/pump_driver.c **** 
+ 442:Glider-Core/pump_driver.c ****   PumpDriver_SyncStatus(now_ms);
+ 952              		.loc 1 442 3 is_stmt 1 view .LVU314
+ 953 0048 2046     		mov	r0, r4
+ 954 004a FFF7FEFF 		bl	PumpDriver_SyncStatus
+ 955              	.LVL58:
+ 956              	.L65:
+ 443:Glider-Core/pump_driver.c **** }
+ 957              		.loc 1 443 1 is_stmt 0 view .LVU315
+ 958 004e 02B0     		add	sp, sp, #8
+ 959              	.LCFI12:
+ 960              		.cfi_remember_state
+ 961              		.cfi_def_cfa_offset 8
+ 962              		@ sp needed
+ 963 0050 10BD     		pop	{r4, pc}
+ 964              	.LVL59:
+ 965              	.L73:
+ 966              	.LCFI13:
+ 967              		.cfi_restore_state
+ 415:Glider-Core/pump_driver.c ****     return;
+ 968              		.loc 1 415 5 is_stmt 1 view .LVU316
+ 969 0052 FFF7FEFF 		bl	PumpDriver_SyncStatus
+ 970              	.LVL60:
+ 416:Glider-Core/pump_driver.c ****   }
+ 971              		.loc 1 416 5 view .LVU317
+ 972 0056 FAE7     		b	.L65
+ 973              	.LVL61:
+ 974              	.L68:
+ 433:Glider-Core/pump_driver.c ****     {
+ 975              		.loc 1 433 5 view .LVU318
+ 433:Glider-Core/pump_driver.c ****     {
+ 976              		.loc 1 433 9 is_stmt 0 view .LVU319
+ 977 0058 0DF10601 		add	r1, sp, #6
+ 978 005c 0020     		movs	r0, #0
+ 979              	.LVL62:
+ 433:Glider-Core/pump_driver.c ****     {
+ 980              		.loc 1 433 9 view .LVU320
+ 981 005e FFF7FEFF 		bl	PumpDriver_ModbusReadHoldingReg
+ 982              	.LVL63:
+ 433:Glider-Core/pump_driver.c ****     {
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 29
+
+
+ 983              		.loc 1 433 8 view .LVU321
+ 984 0062 38B1     		cbz	r0, .L71
+ 435:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.alarm_code = parsed_value;
+ 985              		.loc 1 435 7 is_stmt 1 view .LVU322
+ 435:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.alarm_code = parsed_value;
+ 986              		.loc 1 435 42 is_stmt 0 view .LVU323
+ 987 0064 BDF80620 		ldrh	r2, [sp, #6]
+ 988 0068 064B     		ldr	r3, .L74+8
+ 989 006a A3F86420 		strh	r2, [r3, #100]	@ movhi
+ 436:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.last_seen_tick = now_ms;
+ 990              		.loc 1 436 7 is_stmt 1 view .LVU324
+ 436:Glider-Core/pump_driver.c ****       g_pump_driver_status.motor.last_seen_tick = now_ms;
+ 991              		.loc 1 436 45 is_stmt 0 view .LVU325
+ 992 006e 064B     		ldr	r3, .L74+12
+ 993 0070 5A86     		strh	r2, [r3, #50]	@ movhi
+ 437:Glider-Core/pump_driver.c ****     }
+ 994              		.loc 1 437 7 is_stmt 1 view .LVU326
+ 437:Glider-Core/pump_driver.c ****     }
+ 995              		.loc 1 437 49 is_stmt 0 view .LVU327
+ 996 0072 DC63     		str	r4, [r3, #60]
+ 997              	.L71:
+ 439:Glider-Core/pump_driver.c ****   }
+ 998              		.loc 1 439 5 is_stmt 1 view .LVU328
+ 439:Glider-Core/pump_driver.c ****   }
+ 999              		.loc 1 439 14 is_stmt 0 view .LVU329
+ 1000 0074 024B     		ldr	r3, .L74+4
+ 1001 0076 0022     		movs	r2, #0
+ 1002 0078 1A70     		strb	r2, [r3]
+ 1003 007a E5E7     		b	.L70
+ 1004              	.L75:
+ 1005              		.align	2
+ 1006              	.L74:
+ 1007 007c 00000000 		.word	last_motor_poll.1
+ 1008 0080 00000000 		.word	next_cmd.0
+ 1009 0084 00000000 		.word	g_pump_motor_uart3_diag
+ 1010 0088 00000000 		.word	g_pump_driver_status
+ 1011              		.cfi_endproc
+ 1012              	.LFE350:
+ 1014              		.section	.bss.next_cmd.0,"aw",%nobits
+ 1017              	next_cmd.0:
+ 1018 0000 00       		.space	1
+ 1019              		.section	.bss.last_motor_poll.1,"aw",%nobits
+ 1020              		.align	2
+ 1023              	last_motor_poll.1:
+ 1024 0000 00000000 		.space	4
+ 1025              		.section	.rodata.str1.4,"aMS",%progbits,1
+ 1026              		.align	2
+ 1027              	.LC0:
+ 1028 0000 70756D70 		.ascii	"pumpUart3Bus\000"
+ 1028      55617274 
+ 1028      33427573 
+ 1028      00
+ 1029              		.section	.rodata.s_pump_bus_mutex_attr,"a"
+ 1030              		.align	2
+ 1033              	s_pump_bus_mutex_attr:
+ 1034 0000 00000000 		.word	.LC0
+ 1035 0004 00000000 		.space	12
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 30
+
+
+ 1035      00000000 
+ 1035      00000000 
+ 1036              		.section	.bss.s_pump_bus_mutex,"aw",%nobits
+ 1037              		.align	2
+ 1040              	s_pump_bus_mutex:
+ 1041 0000 00000000 		.space	4
+ 1042              		.global	g_pump_driver_status
+ 1043              		.section	.bss.g_pump_driver_status,"aw",%nobits
+ 1044              		.align	2
+ 1047              	g_pump_driver_status:
+ 1048 0000 00000000 		.space	64
+ 1048      00000000 
+ 1048      00000000 
+ 1048      00000000 
+ 1048      00000000 
+ 1049              		.global	g_pump_motor_uart3_diag
+ 1050              		.section	.bss.g_pump_motor_uart3_diag,"aw",%nobits
+ 1051              		.align	2
+ 1054              	g_pump_motor_uart3_diag:
+ 1055 0000 00000000 		.space	108
+ 1055      00000000 
+ 1055      00000000 
+ 1055      00000000 
+ 1055      00000000 
+ 1056              		.section	.bss.s_huart,"aw",%nobits
+ 1057              		.align	2
+ 1060              	s_huart:
+ 1061 0000 00000000 		.space	4
+ 1062              		.global	g_displacement_diag
+ 1063              		.section	.bss.g_displacement_diag,"aw",%nobits
+ 1064              		.align	2
+ 1067              	g_displacement_diag:
+ 1068 0000 00000000 		.space	84
+ 1068      00000000 
+ 1068      00000000 
+ 1068      00000000 
+ 1068      00000000 
+ 1069              		.global	g_displacement_sensor
+ 1070              		.section	.data.g_displacement_sensor,"aw"
+ 1071              		.align	2
+ 1074              	g_displacement_sensor:
+ 1075 0000 00000000 		.word	0
+ 1076 0004 02       		.byte	2
+ 1077 0005 000000   		.space	3
+ 1078 0008 00000000 		.word	0
+ 1079              		.text
+ 1080              	.Letext0:
+ 1081              		.file 2 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\machine\\_default_types.h"
+ 1082              		.file 3 "c:\\msys64\\mingw64\\arm-none-eabi\\include\\sys\\_stdint.h"
+ 1083              		.file 4 "Drivers/CMSIS/Device/ST/STM32H7xx/Include/stm32h743xx.h"
+ 1084              		.file 5 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_def.h"
+ 1085              		.file 6 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_dma.h"
+ 1086              		.file 7 "Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h"
+ 1087              		.file 8 "Glider-Core/pump_driver.h"
+ 1088              		.file 9 "Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.h"
+ARM GAS  C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s 			page 31
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 pump_driver.c
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:20     .text.Modbus_CRC16:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:25     .text.Modbus_CRC16:00000000 Modbus_CRC16
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:109    .text.PumpDriver_BuildReadHoldingReg:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:114    .text.PumpDriver_BuildReadHoldingReg:00000000 PumpDriver_BuildReadHoldingReg
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:180    .text.PumpDriver_SyncStatus:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:185    .text.PumpDriver_SyncStatus:00000000 PumpDriver_SyncStatus
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:356    .text.PumpDriver_SyncStatus:000000ac $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1074   .data.g_displacement_sensor:00000000 g_displacement_sensor
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1047   .bss.g_pump_driver_status:00000000 g_pump_driver_status
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1067   .bss.g_displacement_diag:00000000 g_displacement_diag
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1054   .bss.g_pump_motor_uart3_diag:00000000 g_pump_motor_uart3_diag
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:364    .text.PumpDriver_BusInit:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:369    .text.PumpDriver_BusInit:00000000 PumpDriver_BusInit
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:403    .text.PumpDriver_BusInit:00000018 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1040   .bss.s_pump_bus_mutex:00000000 s_pump_bus_mutex
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1033   .rodata.s_pump_bus_mutex_attr:00000000 s_pump_bus_mutex_attr
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:409    .text.PumpDriver_BusLock:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:414    .text.PumpDriver_BusLock:00000000 PumpDriver_BusLock
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:471    .text.PumpDriver_BusLock:0000002c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:476    .text.PumpDriver_BusUnlock:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:481    .text.PumpDriver_BusUnlock:00000000 PumpDriver_BusUnlock
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:508    .text.PumpDriver_BusUnlock:00000010 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:513    .text.PumpDriver_ModbusReadHoldingReg:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:518    .text.PumpDriver_ModbusReadHoldingReg:00000000 PumpDriver_ModbusReadHoldingReg
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:812    .text.PumpDriver_ModbusReadHoldingReg:00000148 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1060   .bss.s_huart:00000000 s_huart
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:818    .text.PumpDriver_Init:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:824    .text.PumpDriver_Init:00000000 PumpDriver_Init
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:865    .text.PumpDriver_Init:00000020 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:872    .text.PumpDriver_Poll:00000000 $t
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:878    .text.PumpDriver_Poll:00000000 PumpDriver_Poll
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1007   .text.PumpDriver_Poll:0000007c $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1023   .bss.last_motor_poll.1:00000000 last_motor_poll.1
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1017   .bss.next_cmd.0:00000000 next_cmd.0
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1018   .bss.next_cmd.0:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1020   .bss.last_motor_poll.1:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1026   .rodata.str1.4:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1030   .rodata.s_pump_bus_mutex_attr:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1037   .bss.s_pump_bus_mutex:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1044   .bss.g_pump_driver_status:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1051   .bss.g_pump_motor_uart3_diag:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1057   .bss.s_huart:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1064   .bss.g_displacement_diag:00000000 $d
+C:\Users\OUFARU~1\AppData\Local\Temp\ccPjNesd.s:1071   .data.g_displacement_sensor:00000000 $d
+
+UNDEFINED SYMBOLS
+osMutexNew
+osMutexAcquire
+osMutexRelease
+HAL_UART_Transmit
+HAL_UART_Receive

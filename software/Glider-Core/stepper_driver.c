@@ -123,7 +123,7 @@ static int32_t Stepper_MapLeftStickToSignedRpm(uint16_t raw)
     return 0;
 }
 
-static void Stepper_ApplySignedRpmCommand(int32_t signed_rpm)
+void Stepper_SetContinuousSignedRpm(int32_t signed_rpm)
 {
     int8_t desired_dir = 0;
     uint16_t abs_rpm = 0U;
@@ -360,7 +360,7 @@ void Stepper_TestTask(void *argument)
             g_sbus_readout.failsafe != 0U)
         {
             g_stepper_test_cmd_rpm = 0;
-            Stepper_ApplySignedRpmCommand(0);
+            Stepper_SetContinuousSignedRpm(0);
             osDelay(STEPPER_TEST_POLL_MS);
             continue;
         }
@@ -368,7 +368,7 @@ void Stepper_TestTask(void *argument)
         g_stepper_test_raw_left_y = g_sbus_readout.controls.left_stick_y;
         g_stepper_test_cmd_rpm = Stepper_MapLeftStickToSignedRpm(g_stepper_test_raw_left_y);
 
-        Stepper_ApplySignedRpmCommand(g_stepper_test_cmd_rpm);
+        Stepper_SetContinuousSignedRpm(g_stepper_test_cmd_rpm);
         osDelay(STEPPER_TEST_POLL_MS);
     }
 }
