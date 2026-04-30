@@ -28,7 +28,6 @@
 #include "servo_driver.h"
 #include "motor_driver.h"
 #include "pump_driver.h"
-#include "pump_driver.h"
 #include "pressure_sensor_driver.h"
 #include "sbus_driver.h"
 #include "stepper_driver.h"
@@ -562,6 +561,7 @@ int main(void)
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
   PumpDriver_Init(&huart3);
+  IoControlPump_Init();
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -1370,7 +1370,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
+  huart3.Init.BaudRate = 9600;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -1437,6 +1437,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PD12 - USART3 RS485 Driver Enable */
+  GPIO_InitStruct.Pin = GPIO_PIN_12;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
@@ -2392,7 +2400,7 @@ void StartUsart3Task(void *argument)
   for (;;)
   {
     uint32_t now = osKernelGetTickCount();
-    PumpDriver_Poll(now);
+    IoControlPump_Poll(now);
     osDelay(10);
   }
   /* USER CODE END StartUsart3Task */
