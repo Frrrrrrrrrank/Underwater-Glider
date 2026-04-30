@@ -3,7 +3,7 @@
 GraphedExpression="(g_displacement_sensor).displacement_mm", Color=#e56a6f
 GraphedExpression="((g_sbus_state).readout).channels[3]", DisplayFormat=DISPLAY_FORMAT_DEC, Color=#35792b
 GraphedExpression="((g_sbus_state).readout).channels[2]", DisplayFormat=DISPLAY_FORMAT_DEC, Color=#769dda
-OpenDocument="pump_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/pump_driver.h", Line=32
+OpenDocument="pump_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/pump_driver.h", Line=23
 OpenDocument="sbus_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/sbus_driver.h", Line=0
 OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=488
 OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=53
@@ -24,7 +24,7 @@ SmartViewPlugin="", Page="", Toolbar="Hidden", Window="SmartView 1"
 TableHeader="Local Data", SortCol="Name", SortOrder="DESCENDING", VisibleCols=["Name";"Value";"Location";"Size";"Type";"Scope"], ColWidths=[100;100;100;100;190;100]
 TableHeader="Call Stack", SortCol="Function", SortOrder="ASCENDING", VisibleCols=["Function";"Stack Frame";"Source";"PC";"Return Address";"Stack Used"], ColWidths=[227;179;185;113;256;106]
 TableHeader="Data Sampling Table", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";" (g_displacement_sensor).displacement_mm";" ((g_sbus_state).readout).channels[3]";" ((g_sbus_state).readout).channels[2]"], ColWidths=[100;100;100;100;100]
-TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;168;100;100;100;100;113;131;131]
+TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;168;100;100;100;124;113;131;131]
 TableHeader="Power Sampling", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";"Ch 0"], ColWidths=[100;100;100]
 TableHeader="Registers 1", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Description"], ColWidths=[100;118;329]
 TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[330;330;146]

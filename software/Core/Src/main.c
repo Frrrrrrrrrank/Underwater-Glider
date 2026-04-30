@@ -404,7 +404,8 @@ void StartUsart2Task(void *argument);
 #define RC_CONTROL_PERIOD_MS       20U
 #define RC_FRAME_TIMEOUT_MS        150U
 
-#define RC_WORM_MOTOR_NODE_ID      0x03U
+#define RC_WORM_MOTOR_NODE_ID      0x01U
+/* g_umotor 默认槽位 0x01~0x04 对应 slot 0~3；node_id 0x01 对应 slot 0 */
 #define RC_WORM_MOTOR_SLOT         0U
 #define RC_WORM_MOTOR_MAX_RPM      600U
 #define RC_STEPPER_MAX_RPM         800U
