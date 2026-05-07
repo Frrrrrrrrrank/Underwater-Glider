@@ -496,9 +496,9 @@ void IoControlPump_Poll(uint32_t now_ms)
   
   if (channel_count < 18U || frame_lost != 0U || failsafe != 0U)
   {
-    /* No valid RC signal, default to safe state */
-    IoControlPump_SetSpeed(0U);
-    IoControlPump_SetDirection(0U);
+    /* No valid RC signal: failsafe - pull both LOW */
+    IoControlPump_SetSpeed(1U);      /* Pull M0 LOW (safety: disable by pulling low) */
+    IoControlPump_SetDirection(1U);  /* Pull CW/CCW LOW (safety state) */
     g_io_pump_debug.right_outer_switch = 0U;
     g_io_pump_debug.left_mid2_switch = 0U;
     g_io_pump_debug.speed_triggered = 0U;
