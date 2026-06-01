@@ -3659,7 +3659,7 @@
 			(embedded_fonts no)
 		)
 	)
-	(text "可能要出来的线上或者板子fuse后加个开关"
+	(text "可能要出来的线上或者板子fuse后加个开关\n24v电源先换成28A"
 		(exclude_from_sim no)
 		(at 32.258 16.51 0)
 		(effects
@@ -9699,7 +9699,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "SMCJ51A"
+		(property "Value" "SMCJ28A"
 			(at 49.53 30.4799 90)
 			(effects
 				(font
@@ -13409,7 +13409,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Connector_AMASS:AMASS_XT60-M_1x02_P7.20mm_Vertical"
+		(property "Footprint" "Connector_AMASS:AMASS_XT30U-M_1x02_P5.0mm_Vertical"
 			(at 31.75 27.94 0)
 			(effects
 				(font
