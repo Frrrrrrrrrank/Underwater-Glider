@@ -1,0 +1,14 @@
+# Embedded build outputs
+/software/build/
+
+
+# KiCad local and temporary files
+*.kicad_prl
+fp-info-cache
+*.kicad_sch-bak
+*_autosave-*
+*-backups/
+/UnderwaterGlider/production/backups/
+
+# OS noise
+Thumbs.db
