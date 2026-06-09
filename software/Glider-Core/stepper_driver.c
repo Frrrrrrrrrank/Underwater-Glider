@@ -58,7 +58,7 @@ typedef struct {
 static StepperCtrl_t g_stepper = {0};
 
 /* Debug watch helpers for SBUS-controlled test */
-static volatile uint16_t g_stepper_test_raw_left_y = SBUS_VALUE_CENTER_OBSERVED;
+static volatile uint16_t g_stepper_test_raw_left_x = SBUS_VALUE_CENTER_OBSERVED;
 static volatile int32_t g_stepper_test_cmd_rpm = 0;
 
 static int32_t Stepper_ClampSignedRpm(int32_t value)
@@ -365,8 +365,8 @@ void Stepper_TestTask(void *argument)
             continue;
         }
 
-        g_stepper_test_raw_left_y = g_sbus_readout.controls.left_stick_y;
-        g_stepper_test_cmd_rpm = Stepper_MapLeftStickToSignedRpm(g_stepper_test_raw_left_y);
+        g_stepper_test_raw_left_x = g_sbus_readout.controls.left_stick_x;
+        g_stepper_test_cmd_rpm = Stepper_MapLeftStickToSignedRpm(g_stepper_test_raw_left_x);
 
         Stepper_SetContinuousSignedRpm(g_stepper_test_cmd_rpm);
         osDelay(STEPPER_TEST_POLL_MS);

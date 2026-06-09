@@ -345,6 +345,8 @@ volatile uint32_t g_dbg_uart3_irq_count = 0U;
 volatile uint32_t g_dbg_uart3_rxne_count = 0U;
 volatile uint32_t g_dbg_uart4_error_count = 0U;
 volatile uint32_t g_dbg_uart4_last_error = 0U;
+volatile uint32_t g_dbg_uart3_error_count = 0U;
+volatile uint32_t g_dbg_uart3_last_error = 0U;
 volatile uint32_t g_dbg_imu_task_loop_count = 0U;
 volatile uint32_t g_dbg_servo_start_ok = 0U;
 volatile uint32_t g_dbg_servo_step_count = 0U;
@@ -358,6 +360,7 @@ volatile uint16_t g_rc_sw_left_mid_1 = 0U;
 volatile uint16_t g_rc_sw_left_mid_2 = 0U;
 volatile uint16_t g_rc_sw_right_outer = 0U;
 volatile uint16_t g_rc_left_stick_y = SBUS_VALUE_CENTER_OBSERVED;
+volatile uint16_t g_rc_left_stick_x = SBUS_VALUE_CENTER_OBSERVED;
 volatile uint16_t g_rc_right_stick_y = SBUS_VALUE_CENTER_OBSERVED;
 volatile GliderDebugView g_dbg_view = {0};
 volatile GliderDebugQuickView g_dbg_quick = {0};
@@ -1952,6 +1955,19 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     /* Optionally clear the DMA/reception state to allow recovery */
     huart->RxState = HAL_UART_STATE_READY;
   }
+  else if (huart->Instance == USART3)
+  {
+    g_dbg_uart3_error_count++;
+    g_dbg_uart3_last_error = huart->ErrorCode;
+
+    __HAL_UART_CLEAR_OREFLAG(huart);
+    __HAL_UART_CLEAR_NEFLAG(huart);
+    __HAL_UART_CLEAR_FEFLAG(huart);
+    __HAL_UART_CLEAR_PEFLAG(huart);
+
+    huart->ErrorCode = HAL_UART_ERROR_NONE;
+    huart->RxState = HAL_UART_STATE_READY;
+  }
 
   PressureSensorDriver_OnError(huart);
   SbusDriver_OnError(huart);
@@ -2349,10 +2365,11 @@ void StartServoTask(void *argument)
     if (mode == RC_CTRL_MODE_OPEN_LOOP_SPEED)
     {
       g_rc_left_stick_y = channels[SBUS_CH_LEFT_STICK_Y];
+      g_rc_left_stick_x = channels[SBUS_CH_LEFT_STICK_X];
       g_rc_right_stick_y = channels[SBUS_CH_RIGHT_STICK_Y];
 
       worm_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_left_stick_y, RC_WORM_MOTOR_MAX_RPM);
-      stepper_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_right_stick_y, RC_STEPPER_MAX_RPM);
+      stepper_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_left_stick_x, RC_STEPPER_MAX_RPM);
 
       if (motor_enabled == 0U)
       {

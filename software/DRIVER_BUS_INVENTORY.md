@@ -14,7 +14,7 @@
 | `Glider-Core/imu_core.c` | IMU frame receive/parse/cache | `Start_IMU_Task` + `IMU_Core_Init(&huart4)` | `UART4` | `PB9 TX`, `PB8 RX`, `PB15 CTS` | `115200`, `8N1` | No bus address (point-to-point UART) |
 | `Glider-Core/displacement_sensor.c` | Linear displacement sensor for oil-out volume estimation (MODBUS-RTU) | `StartUsart3Task -> DisplacementSensor_Poll` | `USART3` RS485 / `RS485_Bus3` | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
 | `Glider-Core/pump_driver.c` | Pump RS485 control logic retained for later reuse; GPIO pump control remains active | `IoControlPump_Init` + `IoControlPump_Poll` for GPIO only | GPIO pump control active; RS485 part disabled | `PB10` speed, `PD14` direction | GPIO level control via SBUS switches | N/A |
-| `Glider-Core/motor_driver.c` | Pump actuator motor control (MODBUS-RTU closed-loop stepper) | `StartUsart2Task -> UMotor_StartTask` | `USART2` RS485 | `PA2 TX`, `PA3 RX`, `PA1 DE` | `115200`, `8N1`, RS485 DE high | Default active node ID `0x03` |
+| `Glider-Core/motor_driver.c` | Pump actuator motor control (MODBUS-RTU closed-loop stepper) | `StartUsart2Task -> UMotor_StartTask` | `USART2` RS485 | `PA2 TX`, `PA3 RX`, `PA1 DE` | `115200`, `8N1`, RS485 DE high | Default active node ID `0x01` |
 | `Glider-Core/stepper_driver.c` | Open-loop pulse/dir stepper control | Called by `StartServoTask` RC control loop (`Stepper_SetContinuousSignedRpm`) | `TIM1 CH2` + GPIO | `PE11` pulse, `PE13` dir, `PE10` PUL-, `PE12` DIR- | PWM pulse generation (timer-based) | No bus address |
 | `Glider-Core/servo_driver.c` | DS3120 servo angle-to-PWM helper | `StartServoTask_Disabled` (not currently mounted) | `TIM4 CH3` | `PD14` | 50 Hz class PWM timing via TIM4 config | No bus address |
 
@@ -139,7 +139,7 @@ Intended bus settings for this allocation:
 - `StartUsart3Task` -> `DisplacementSensor_Poll` (`Bus3` for linear displacement sensor) + `IoControlPump_Poll` (GPIO pump control)
 - `StartUsart2Task` -> `UMotor_StartTask`
 - `PumpDriver_*` RS485 code is retained but not mounted by default
-- `StartServoTask` runs RC control state machine: OFF/all-up interlock + open-loop mode (CH5 mid), left stick controls `UMotor` node `0x03`, right stick controls open-loop stepper.
+- `StartServoTask` runs RC control state machine: OFF/all-up interlock + open-loop mode (CH5 mid), left stick Y controls `UMotor` node `0x01`, left stick X controls open-loop stepper.
 
 ## 8) Notes / To-Confirm Items
 
@@ -216,4 +216,4 @@ Intended bus settings for this allocation:
 - Update indicator: `g_sbus_readout.frame_update_count`
 - RC control state: `g_rc_ctrl_mode`, `g_rc_ctrl_off_reason`
 - RC command outputs: `g_rc_worm_cmd_rpm`, `g_rc_stepper_cmd_rpm`
-- RC key inputs: `g_rc_sw_left_outer`, `g_rc_sw_left_mid_1`, `g_rc_sw_left_mid_2`, `g_rc_sw_right_outer`, `g_rc_left_stick_y`, `g_rc_right_stick_y`
+- RC key inputs: `g_rc_sw_left_outer`, `g_rc_sw_left_mid_1`, `g_rc_sw_left_mid_2`, `g_rc_sw_right_outer`, `g_rc_left_stick_y`, `g_rc_left_stick_x`, `g_rc_right_stick_y`

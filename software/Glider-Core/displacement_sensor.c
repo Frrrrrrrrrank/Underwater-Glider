@@ -23,6 +23,7 @@ typedef struct
 {
   UART_HandleTypeDef *huart;
   uint32_t initialized;
+  uint32_t startup_tick;
   uint32_t comm_ok;
   uint32_t last_error;
   uint32_t tx_count;
@@ -35,7 +36,7 @@ typedef struct
 } DisplacementSensorInternal;
 
 static DisplacementSensorInternal s_sensor = {
-  NULL, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, {0}, 0U
+  NULL, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, {0}, 0U
 };
 
 static uint16_t Displacement_CRC16(const uint8_t *data, uint16_t len)
@@ -139,6 +140,27 @@ static uint8_t Displacement_ParseResponse(const uint8_t *frame, uint16_t frame_l
   return 1U;
 }
 
+static void Displacement_ClearUartRx(UART_HandleTypeDef *huart)
+{
+  if (huart == NULL)
+  {
+    return;
+  }
+
+  __HAL_UART_CLEAR_OREFLAG(huart);
+  __HAL_UART_CLEAR_NEFLAG(huart);
+  __HAL_UART_CLEAR_FEFLAG(huart);
+  __HAL_UART_CLEAR_PEFLAG(huart);
+
+  while (__HAL_UART_GET_FLAG(huart, UART_FLAG_RXNE) != RESET)
+  {
+    (void)huart->Instance->RDR;
+  }
+
+  huart->ErrorCode = HAL_UART_ERROR_NONE;
+  huart->RxState = HAL_UART_STATE_READY;
+}
+
 static void Displacement_SyncDiag(void)
 {
   uint16_t copy_len;
@@ -176,6 +198,7 @@ void DisplacementSensor_Init(UART_HandleTypeDef *huart)
 
   s_sensor.huart = huart;
   s_sensor.initialized = (huart != NULL) ? 1U : 0U;
+  s_sensor.startup_tick = HAL_GetTick();
   g_displacement_sensor.sensor_id = DISPLACEMENT_SENSOR_ID;
 }
 
@@ -190,6 +213,12 @@ void DisplacementSensor_Poll(uint32_t now_ms)
     return;
   }
 
+  if ((now_ms - s_sensor.startup_tick) < DISPLACEMENT_SENSOR_STARTUP_DELAY_MS)
+  {
+    Displacement_SyncDiag();
+    return;
+  }
+
   if ((now_ms - s_sensor.last_poll_tick) < DISPLACEMENT_SENSOR_UPDATE_MS)
   {
     Displacement_SyncDiag();
@@ -200,6 +229,8 @@ void DisplacementSensor_Poll(uint32_t now_ms)
   tx_len = Displacement_BuildReadFrame(tx_frame);
   g_displacement_diag.last_tx_len = tx_len;
   memcpy((void *)g_displacement_diag.last_tx_frame, tx_frame, tx_len);
+
+  Displacement_ClearUartRx(s_sensor.huart);
 
   if (HAL_UART_Transmit(s_sensor.huart, tx_frame, tx_len, 50U) == HAL_OK)
   {
