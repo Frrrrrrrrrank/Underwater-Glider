@@ -2,10 +2,11 @@
 
 GraphedExpression="((g_sbus_state).readout).channels[3]", DisplayFormat=DISPLAY_FORMAT_DEC, Color=#e56a6f
 GraphedExpression="((g_sbus_state).readout).channels[2]", DisplayFormat=DISPLAY_FORMAT_DEC, Color=#35792b
-OpenDocument="tasks.c", FilePath="D:/Projects/UnderwaterGlider/software/Middlewares/Third_Party/FreeRTOS/Source/tasks.c", Line=3424
+OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=53
+OpenDocument="tasks.c", FilePath="D:/Projects/UnderwaterGlider/software/Middlewares/Third_Party/FreeRTOS/Source/tasks.c", Line=3642
 OpenDocument="sbus_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/sbus_driver.h", Line=0
 OpenDocument="main.c", FilePath="D:/Projects/UnderwaterGlider/software/Core/Src/main.c", Line=490
-OpenDocument="startup_stm32h743xx.s", FilePath="D:/Projects/UnderwaterGlider/software/startup_stm32h743xx.s", Line=53
+OpenDocument="stm32h7xx_hal_uart.c", FilePath="D:/Projects/UnderwaterGlider/software/Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_uart.c", Line=3443
 OpenDocument="stm32h7xx_hal_uart.h", FilePath="D:/Projects/UnderwaterGlider/software/Drivers/STM32H7xx_HAL_Driver/Inc/stm32h7xx_hal_uart.h", Line=224
 OpenDocument="pump_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/pump_driver.h", Line=23
 OpenDocument="motor_driver.h", FilePath="D:/Projects/UnderwaterGlider/software/Glider-Core/motor_driver.h", Line=113
@@ -26,7 +27,7 @@ TableHeader="Data Sampling Table", SortCol="None", SortOrder="ASCENDING", Visibl
 TableHeader="Data Sampling Setup", SortCol="Type", SortOrder="ASCENDING", VisibleCols=["Expression";"Type";"Value";"Min";"Max";"Average";"# Changes";"Min. Change";"Max. Change"], ColWidths=[225;168;100;100;100;124;113;131;131]
 TableHeader="Power Sampling", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";"Ch 0"], ColWidths=[100;100;100]
 TableHeader="Registers 1", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Description"], ColWidths=[100;118;329]
-TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[330;330;146]
+TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location"], ColWidths=[278;307;146]
 TableHeader="RegisterSelectionDialog", SortCol="None", SortOrder="ASCENDING", VisibleCols=[], ColWidths=[]
 TableHeader="TargetExceptionDialog", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Address";"Description"], ColWidths=[200;100;100;347]
 WatchedExpression="g_dbg_alive_counter", RefreshRate=5, Window=Watched Data 1

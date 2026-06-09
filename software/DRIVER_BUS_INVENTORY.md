@@ -1,9 +1,9 @@
 # UnderwaterGlider Driver and Bus Inventory
 
 ## Scope
-- This is a read-only snapshot of the current workspace configuration.
-- No application source code was modified while creating this file.
-- Peripheral parameters are taken from `Core/Src/main.c`, `Core/Src/stm32h7xx_hal_msp.c`, `software.ioc`, and `Glider-Core/*`.
+- This document records the intended driver/bus allocation for the current hardware iteration.
+- Pump RS485 code is retained in the repository for later use, but `Bus3` is allocated to the linear displacement sensor in this configuration.
+- Pump GPIO control remains active through `IoControlPump_*`.
 
 ## 1) Driver Modules and Hardware Mapping
 
@@ -12,9 +12,9 @@
 | `Glider-Core/glider_core.c` | RDSS AT/NMEA communication and short-message state machine | `StartUartRxTask` + `StartUartTxTask` | `UART7` | `PE8 TX`, `PE7 RX` | `115200`, `8N1` | Target platform card ID macro: `381127` |
 | `Glider-Core/glider_rdss_codec.c` | RDSS/NMEA frame parser only | Called by `glider_core` | No direct hardware | N/A | N/A | N/A |
 | `Glider-Core/imu_core.c` | IMU frame receive/parse/cache | `Start_IMU_Task` + `IMU_Core_Init(&huart4)` | `UART4` | `PB9 TX`, `PB8 RX`, `PB15 CTS` | `115200`, `8N1` | No bus address (point-to-point UART) |
-| `Glider-Core/displacement_sensor.c` | Linear displacement sensor for oil-out volume estimation (MODBUS-RTU) | `StartUsart3Task -> Displacement_StartTask` | `USART3` RS485 | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
+| `Glider-Core/displacement_sensor.c` | Linear displacement sensor for oil-out volume estimation (MODBUS-RTU) | `StartUsart3Task -> DisplacementSensor_Poll` | `USART3` RS485 / `RS485_Bus3` | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
+| `Glider-Core/pump_driver.c` | Pump RS485 control logic retained for later reuse; GPIO pump control remains active | `IoControlPump_Init` + `IoControlPump_Poll` for GPIO only | GPIO pump control active; RS485 part disabled | `PB10` speed, `PD14` direction | GPIO level control via SBUS switches | N/A |
 | `Glider-Core/motor_driver.c` | Pump actuator motor control (MODBUS-RTU closed-loop stepper) | `StartUsart2Task -> UMotor_StartTask` | `USART2` RS485 | `PA2 TX`, `PA3 RX`, `PA1 DE` | `115200`, `8N1`, RS485 DE high | Default active node ID `0x03` |
-| `Glider-Core/rs485_shared_bus.c` | Shared RS485 bus arbitration mutex | Init in `main.c` + called by motor/displacement drivers | No direct hardware | N/A | RTOS mutex lock/unlock | N/A |
 | `Glider-Core/stepper_driver.c` | Open-loop pulse/dir stepper control | Called by `StartServoTask` RC control loop (`Stepper_SetContinuousSignedRpm`) | `TIM1 CH2` + GPIO | `PE11` pulse, `PE13` dir, `PE10` PUL-, `PE12` DIR- | PWM pulse generation (timer-based) | No bus address |
 | `Glider-Core/servo_driver.c` | DS3120 servo angle-to-PWM helper | `StartServoTask_Disabled` (not currently mounted) | `TIM4 CH3` | `PD14` | 50 Hz class PWM timing via TIM4 config | No bus address |
 
@@ -22,37 +22,31 @@
 
 ### UART/RS485 buses
 - `USART2` RS485 (`PA1/PA2/PA3`): motor bus for `UMotor` nodes (`0x01`~`0x04`), handled by `StartUsart2Task -> UMotor_StartTask`.
+- `USART3` RS485 (`PD12/PD8/PD9`, `RS485_Bus3`, external `J17/J18`): linear displacement sensor bus, handled by `StartUsart3Task -> DisplacementSensor_Poll`.
 - `UART4` (`PB9/PB8`): IMU module.
 - `UART7` (`PE8/PE7`): RDSS terminal module (`glider_core`).
 
 ### Configured but currently not used by Glider-Core modules
 - `USART1` RS485 (`PA12/PA9/PA10`): initialized in HAL, no `Glider-Core` module bound.
-- `USART3` RS485 (`PD12/PD8/PD9`): displacement sensor bus, module `StartUsart3Task -> Displacement_StartTask`.
 - `UART5` (`PB13/PB12`): initialized in HAL, no `Glider-Core` module bound.
 - `UART8` (`PE1/PE0`): initialized in HAL, no `Glider-Core` module bound.
 - `SPI1` (`PA4/PA5/PA6/PA7`): configured master, no current device driver in `Glider-Core`.
 - `FDCAN1` (`PD1/PD0`): configured, no current device driver in `Glider-Core`.
 - `TIM2 CH3/CH4` (`PB10/PB11`): configured, no current driver logic attached.
 - `ADC1` (`PC5/PB0/PB1` analog pins): configured with regular channel `ADC_CHANNEL_5`, no active acquisition task found.
+- `Glider-Core/pump_driver.c` RS485 API: retained in repo intentionally, but not mounted by default because `Bus3` is reserved for the displacement sensor. GPIO pump control from this file remains mounted.
 
 ## 3) UART and RS485 Configuration Summary
 
-All UART/USART instances in `main.c` are configured as:
-- Baud rate: `115200`
-- Word length: `8 bits`
-- Stop bits: `1`
-- Parity: `None`
-- Oversampling: `16`
-
-RS485 instances:
-- `USART1`, `USART2`, `USART3` use `HAL_RS485Ex_Init(..., UART_DE_POLARITY_HIGH, 0, 0)`.
-
-Non-RS485 UART instances:
-- `UART4`, `UART5`, `UART7`, `UART8` use `HAL_UART_Init`.
+Intended bus settings for this allocation:
+- `USART2` motor bus: `115200`, `8N1`, RS485 DE high.
+- `USART3` displacement-sensor bus (`Bus3`): `115200`, `8N1`, RS485 DE high.
+- `USART1`: RS485-capable spare bus, no custom driver mounted by default.
+- `UART4`, `UART5`, `UART7`, `UART8`: normal UART links as listed above.
 
 ## 4) Device Addressing and Protocol Details
 
-### 4.1 Motor bus (`motor_driver` on shared USART3)
+### 4.1 Motor bus (`motor_driver` on USART2)
 - Node count macro: `UMOTOR_NODE_COUNT = 4`.
 - Default enabled node IDs in `g_umotor`: only `0x03` enabled by default, other slots disabled.
 - MODBUS function codes used:
@@ -71,7 +65,7 @@ Non-RS485 UART instances:
   - Status block: start `0x0000`, count `16`
   - Fault block: start `0x0194`, count `7`
 
-### 4.2 Displacement sensor (`displacement_sensor` on USART3)
+### 4.2 Displacement sensor (`displacement_sensor` on USART3 / `RS485_Bus3`)
 - MODBUS slave ID: `0x02`.
 - Poll period: `100 ms`.
 - Driver sends read frame for `0x0000` with count `0x0010` (16 regs).
@@ -79,14 +73,21 @@ Non-RS485 UART instances:
   - `0x0008` high word
   - `0x0009` low word
   - Combined as float displacement in mm.
+- Physical RS485 output path: `USART3 -> U15 -> RS485_Bus3 -> J17/J18`.
 
-### 4.3 RDSS terminal (`glider_core` on UART7)
+### 4.3 Pump control reserve (`pump_driver` RS485 kept but not enabled)
+- Keep `Glider-Core/pump_driver.c` in the repository for later pump work.
+- Do not bind `PumpDriver_Init/PumpDriver_Poll` to `Bus3` in this configuration.
+- Keep `IoControlPump_Init/IoControlPump_Poll` active for GPIO pump control.
+- If pump RS485 control is re-enabled later, revisit UART assignment and protocol conflict with the displacement sensor.
+
+### 4.4 RDSS terminal (`glider_core` on UART7)
 - No MODBUS-style numeric device address.
 - Uses AT/NMEA command channel.
 - Target platform card ID macro: `GLIDER_TARGET_CARD_ID = "381127"`.
 - Local card ID is queried at runtime (`$CCICA,0,00*7B`) and stored dynamically.
 
-### 4.4 IMU (`imu_core` on UART4)
+### 4.5 IMU (`imu_core` on UART4)
 - No numeric bus address in current protocol implementation.
 - Frame headers: `0x7E 0x23`.
 - Function codes used by parser include `0x04`, `0x16`, `0x26`, `0x32`, `0x01`, `0x81`.
@@ -130,32 +131,37 @@ Non-RS485 UART instances:
 - Regular conversion configured for `ADC_CHANNEL_5` (single conversion)
 - No periodic ADC sampling task found in current application logic.
 
-## 7) Runtime Thread-to-Driver Binding (from `main.c`)
+## 7) Intended Runtime Thread-to-Driver Binding
 
 - `StartUartRxTask` -> `GliderCore_RunRxTask`
 - `StartUartTxTask` -> `GliderCore_RunTxTask`
 - `Start_IMU_Task` -> IMU data update loop + `IMU_Core_RunRxTask`
-- `StartUsart3Task` -> `Displacement_StartTask`
-- `StartUsart2Task` -> `UMotor_StartTask` (motor driver traffic goes through `USART2` bus in current code)
+- `StartUsart3Task` -> `DisplacementSensor_Poll` (`Bus3` for linear displacement sensor) + `IoControlPump_Poll` (GPIO pump control)
+- `StartUsart2Task` -> `UMotor_StartTask`
+- `PumpDriver_*` RS485 code is retained but not mounted by default
 - `StartServoTask` runs RC control state machine: OFF/all-up interlock + open-loop mode (CH5 mid), left stick controls `UMotor` node `0x03`, right stick controls open-loop stepper.
 
 ## 8) Notes / To-Confirm Items
 
 - `servo_driver` exists but is not mounted by default; `StartServoTask` is now used for SBUS-based motor/stepper RC control.
+- `Bus3` (`USART3 -> U15 -> RS485_Bus3 -> J17/J18`) is reserved for the linear displacement sensor in this document.
+- `PumpDriver_*` RS485 code is intentionally preserved but should remain disabled while `Bus3` is assigned to the displacement sensor; `IoControlPump_*` remains active for GPIO pump control.
 - `main.h` defines `IMU_DRY_Pin` on `PC4`, while `MX_GPIO_Init` configures `IMU_DRY_Pin` plus `PC7` as inputs.
 - `SDMMC1` init function exists but `MX_SDMMC1_MMC_Init()` call is commented out in startup path.
 - `USART1`/`UART5`/`UART8` are initialized but not bound to current custom drivers.
 
 ## 9) Source Files Used for This Inventory
 
+- The custom-driver list below reflects the intended module set for this bus allocation; some files may live on another branch or be reintroduced later.
+
 - `Core/Src/main.c`
 - `Core/Src/stm32h7xx_hal_msp.c`
 - `Core/Inc/main.h`
 - `software.ioc`
+- `Glider-Core/pump_driver.h`
+- `Glider-Core/pump_driver.c`
 - `Glider-Core/motor_driver.h`
 - `Glider-Core/motor_driver.c`
-- `Glider-Core/rs485_shared_bus.h`
-- `Glider-Core/rs485_shared_bus.c`
 - `Glider-Core/displacement_sensor.h`
 - `Glider-Core/displacement_sensor.c`
 - `Glider-Core/imu_core.h`

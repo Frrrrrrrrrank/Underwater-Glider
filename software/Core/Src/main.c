@@ -28,6 +28,7 @@
 #include "servo_driver.h"
 #include "motor_driver.h"
 #include "pump_driver.h"
+#include "displacement_sensor.h"
 #include "pressure_sensor_driver.h"
 #include "sbus_driver.h"
 #include "stepper_driver.h"
@@ -560,7 +561,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
-  PumpDriver_Init(&huart3);
+  DisplacementSensor_Init(&huart3);
   IoControlPump_Init();
   /* USER CODE END RTOS_MUTEX */
 
@@ -1370,7 +1371,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 9600;
+  huart3.Init.BaudRate = 115200;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -2400,6 +2401,7 @@ void StartUsart3Task(void *argument)
   for (;;)
   {
     uint32_t now = osKernelGetTickCount();
+    DisplacementSensor_Poll(now);
     IoControlPump_Poll(now);
     osDelay(10);
   }
