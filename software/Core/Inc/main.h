@@ -61,6 +61,8 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define IMU_DRY_Pin GPIO_PIN_4
 #define IMU_DRY_GPIO_Port GPIOC
+#define LED_Pin GPIO_PIN_0
+#define LED_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

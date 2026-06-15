@@ -57,13 +57,13 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern TIM_HandleTypeDef htim1;
 extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart7;
 extern UART_HandleTypeDef huart8;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
+extern TIM_HandleTypeDef htim1;
 /* USER CODE BEGIN EV */
 extern volatile uint32_t g_dbg_systick_count;
 extern volatile uint32_t g_dbg_fault_code;
