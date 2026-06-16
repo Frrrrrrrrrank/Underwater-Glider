@@ -32,6 +32,7 @@
 #include "sbus_driver.h"
 #include "stepper_driver.h"
 #include "buzzer_driver.h"
+#include "ethernet_uart_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -308,6 +309,13 @@ const osThreadAttr_t Usart2Task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal3,
 };
+/* Definitions for EthernetTask */
+osThreadId_t ethernetTaskHandle;
+const osThreadAttr_t ethernetTask_attributes = {
+  .name = "ethernetTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal2,
+};
 /* USER CODE BEGIN PV */
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
@@ -395,6 +403,7 @@ static void MX_TIM15_Init(void);
 void StartDefaultTask(void *argument);
 void StartUartRxTask(void *argument);
 void StartUartTxTask(void *argument);
+void StartEthernetTask(void *argument);
 void Start_IMU_Task(void *argument);
 void StartServoTask(void *argument);
 void StartUsart3Task(void *argument);
@@ -557,6 +566,9 @@ int main(void)
   g_dbg_boot_stage = 46U;
   GliderCore_Init(&huart7);
   g_dbg_boot_stage = 4U;
+
+  /* Initialize Ethernet UART driver on LPUART1 */
+  EthernetUartDriver_Init(&hlpuart1);
   
   /* Initialize IMU module on UART4 */
   IMU_Core_Init(&huart4);
@@ -634,6 +646,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  ethernetTaskHandle = osThreadNew(StartEthernetTask, NULL, &ethernetTask_attributes);
   g_dbg_boot_stage = 6U;
   /* USER CODE END RTOS_THREADS */
 
@@ -705,7 +718,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.SYSCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV1;
+  RCC_ClkInitStruct.APB3CLKDivider = RCC_APB3_DIV4;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_APB1_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_APB2_DIV4;
   RCC_ClkInitStruct.APB4CLKDivider = RCC_APB4_DIV1;
@@ -902,7 +915,7 @@ static void MX_LPUART1_UART_Init(void)
 
   /* USER CODE END LPUART1_Init 1 */
   hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 209700;
+  hlpuart1.Init.BaudRate = 115200;
   hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
   hlpuart1.Init.StopBits = UART_STOPBITS_1;
   hlpuart1.Init.Parity = UART_PARITY_NONE;
@@ -2220,6 +2233,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 
   PressureSensorDriver_OnError(huart);
   SbusDriver_OnError(huart);
+  EthernetUartDriver_OnError(huart);
 }
 
 void vAssertCalled(const char *file, int line)
@@ -2428,6 +2442,14 @@ void StartUartTxTask(void *argument)
   (void)argument;
   GliderCore_RunTxTask();
   /* USER CODE END StartUartTxTask */
+}
+
+void StartEthernetTask(void *argument)
+{
+  /* USER CODE BEGIN StartEthernetTask */
+  (void)argument;
+  EthernetUartDriver_RunTask(NULL);
+  /* USER CODE END StartEthernetTask */
 }
 
 /* USER CODE BEGIN Header_Start_IMU_Task */
@@ -2654,6 +2676,8 @@ void StartServoTask(void *argument)
     g_rc_ctrl_off_reason = off_reason;
     g_rc_worm_cmd_rpm = worm_cmd_rpm;
     g_rc_stepper_cmd_rpm = stepper_cmd_rpm;
+
+
 
     osDelay(RC_CONTROL_PERIOD_MS);
   }
