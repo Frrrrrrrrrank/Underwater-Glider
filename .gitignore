@@ -6,6 +6,7 @@
 
 # KiCad local and temporary files
 *.kicad_prl
+*.lck
 fp-info-cache
 *.kicad_sch-bak
 *_autosave-*
