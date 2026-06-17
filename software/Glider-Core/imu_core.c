@@ -173,7 +173,7 @@ static void parse_raw_accel_frame(const uint8_t *frame_data, uint16_t data_lengt
     if (data_length < 19)  /* 18 data bytes + 1 checksum */
         return;
 
-    float accel_ratio = 16.0f / 32767.0f;
+    float accel_ratio = 16.0f * 9.80665f / 32767.0f;//针对EKF修改，算法的输入是m/s^2
     imu_cache.ax = to_int16(&frame_data[0]) * accel_ratio;
     imu_cache.ay = to_int16(&frame_data[2]) * accel_ratio;
     imu_cache.az = to_int16(&frame_data[4]) * accel_ratio;

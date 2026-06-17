@@ -1,6 +1,7 @@
 #include "glider_core.h"
 
 #include "cmsis_os.h"
+#include "ethernet_uart_driver.h"
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
 #include "pressure_sensor_driver.h"
@@ -1233,6 +1234,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
   PressureSensorDriver_OnRxComplete(huart);
   SbusDriver_OnRxComplete(huart);
+  EthernetUartDriver_OnRxComplete(huart);
 
   /* Forward to IMU module if it's UART4 */
   IMU_OnUART_RxComplete(huart);
@@ -1241,4 +1243,5 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
   PressureSensorDriver_OnTxComplete(huart);
+  EthernetUartDriver_OnTxComplete(huart);
 }

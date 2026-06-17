@@ -1,6 +1,8 @@
 # Embedded build outputs
 /software/build/
 
+# Local debug/user settings
+*.jdebug.user
 
 # KiCad local and temporary files
 *.kicad_prl

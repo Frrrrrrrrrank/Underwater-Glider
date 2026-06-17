@@ -57,13 +57,14 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
-extern TIM_HandleTypeDef htim1;
+extern UART_HandleTypeDef hlpuart1;
 extern UART_HandleTypeDef huart4;
 extern UART_HandleTypeDef huart7;
 extern UART_HandleTypeDef huart8;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
+extern TIM_HandleTypeDef htim1;
 /* USER CODE BEGIN EV */
 extern volatile uint32_t g_dbg_systick_count;
 extern volatile uint32_t g_dbg_fault_code;
@@ -305,6 +306,20 @@ void UART8_IRQHandler(void)
   /* USER CODE BEGIN UART8_IRQn 1 */
 
   /* USER CODE END UART8_IRQn 1 */
+}
+
+/**
+  * @brief This function handles LPUART1 global interrupt.
+  */
+void LPUART1_IRQHandler(void)
+{
+  /* USER CODE BEGIN LPUART1_IRQn 0 */
+
+  /* USER CODE END LPUART1_IRQn 0 */
+  HAL_UART_IRQHandler(&hlpuart1);
+  /* USER CODE BEGIN LPUART1_IRQn 1 */
+
+  /* USER CODE END LPUART1_IRQn 1 */
 }
 
 /* USER CODE BEGIN 1 */
