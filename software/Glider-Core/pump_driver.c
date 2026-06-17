@@ -419,8 +419,10 @@ void PumpDriver_Poll(uint32_t now_ms)
 typedef struct
 {
   uint32_t initialized;
-  uint32_t speed_enabled;      /* 1 = speed triggered (M0 LOW) */
-  uint32_t direction_reversed; /* 1 = direction reversed (CW/CCW LOW) */
+  uint32_t speed_bit0_low;     /* 1 = PC13 speed bit0 pulled low */
+  uint32_t speed_bit1_low;     /* 1 = PC14 speed bit1 pulled low */
+  uint32_t stp_released;       /* 1 = PC15 released high */
+  uint32_t direction_reversed; /* 1 = PE4 direction pulled low */
 } IoControlPumpState;
 
 static IoControlPumpState s_io_pump_state = {0};
@@ -428,18 +430,31 @@ static IoControlPumpState s_io_pump_state = {0};
 void IoControlPump_Init(void)
 {
   s_io_pump_state.initialized = 1U;
-  s_io_pump_state.speed_enabled = 0U;
+  s_io_pump_state.speed_bit0_low = 1U;
+  s_io_pump_state.speed_bit1_low = 1U;
+  s_io_pump_state.stp_released = 1U;
   s_io_pump_state.direction_reversed = 0U;
   
-  /* Ensure GPIO pins are initialized as HIGH by default */
+  /* Open-drain outputs: RESET actively pulls low, SET releases to external pull-up. */
   if (IO_PUMP_SPEED_PORT != NULL)
   {
-    HAL_GPIO_WritePin(IO_PUMP_SPEED_PORT, IO_PUMP_SPEED_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(IO_PUMP_SPEED_PORT, IO_PUMP_SPEED_PIN, GPIO_PIN_RESET);
+  }
+  if (IO_PUMP_SPEED_B1_PORT != NULL)
+  {
+    HAL_GPIO_WritePin(IO_PUMP_SPEED_B1_PORT, IO_PUMP_SPEED_B1_PIN, GPIO_PIN_RESET);
+  }
+  if (IO_PUMP_STP_PORT != NULL)
+  {
+    HAL_GPIO_WritePin(IO_PUMP_STP_PORT, IO_PUMP_STP_PIN, GPIO_PIN_SET);
   }
   if (IO_PUMP_DIR_PORT != NULL)
   {
     HAL_GPIO_WritePin(IO_PUMP_DIR_PORT, IO_PUMP_DIR_PIN, GPIO_PIN_SET);
   }
+
+  g_io_pump_debug.speed_triggered = 1U;
+  g_io_pump_debug.direction_reversed = 0U;
 }
 
 void IoControlPump_SetSpeed(uint8_t enabled)
@@ -449,12 +464,26 @@ void IoControlPump_SetSpeed(uint8_t enabled)
     return;
   }
   
-  s_io_pump_state.speed_enabled = (enabled != 0U) ? 1U : 0U;
+  s_io_pump_state.speed_bit0_low = (enabled != 0U) ? 1U : 0U;
   
   if (IO_PUMP_SPEED_PORT != NULL)
   {
-    GPIO_PinState pin_state = (s_io_pump_state.speed_enabled == 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    GPIO_PinState pin_state = (s_io_pump_state.speed_bit0_low == 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET;
     HAL_GPIO_WritePin(IO_PUMP_SPEED_PORT, IO_PUMP_SPEED_PIN, pin_state);
+  }
+
+  /* Speed bit1 is not controlled by upper computer yet: keep it pulled low. */
+  s_io_pump_state.speed_bit1_low = 1U;
+  if (IO_PUMP_SPEED_B1_PORT != NULL)
+  {
+    HAL_GPIO_WritePin(IO_PUMP_SPEED_B1_PORT, IO_PUMP_SPEED_B1_PIN, GPIO_PIN_RESET);
+  }
+
+  /* STP must stay released/high unless a dedicated stop policy is added. */
+  s_io_pump_state.stp_released = 1U;
+  if (IO_PUMP_STP_PORT != NULL)
+  {
+    HAL_GPIO_WritePin(IO_PUMP_STP_PORT, IO_PUMP_STP_PIN, GPIO_PIN_SET);
   }
 }
 
@@ -496,12 +525,12 @@ void IoControlPump_Poll(uint32_t now_ms)
   
   if (channel_count < 18U || frame_lost != 0U || failsafe != 0U)
   {
-    /* No valid RC signal: failsafe - pull both LOW */
-    IoControlPump_SetSpeed(1U);      /* Pull M0 LOW (safety: disable by pulling low) */
-    IoControlPump_SetDirection(1U);  /* Pull CW/CCW LOW (safety state) */
+    /* No valid RC signal: keep speed bits low and release STP. */
+    IoControlPump_SetSpeed(1U);
+    IoControlPump_SetDirection(0U);
     g_io_pump_debug.right_outer_switch = 0U;
     g_io_pump_debug.left_mid2_switch = 0U;
-    g_io_pump_debug.speed_triggered = 0U;
+    g_io_pump_debug.speed_triggered = 1U;
     g_io_pump_debug.direction_reversed = 0U;
     return;
   }
@@ -516,27 +545,27 @@ void IoControlPump_Poll(uint32_t now_ms)
   g_io_pump_debug.right_outer_switch = right_outer_switch;
   g_io_pump_debug.left_mid2_switch = left_mid2_switch;
 
-  /* Speed control: Right outer switch DOWN (value ~240) pulls M0 LOW (PB10) */
+  /* Speed control: Right outer switch DOWN (value ~240) pulls speed bit0 LOW (PC13). */
   if (right_outer_switch < 500U)  /* Down position */
   {
-    IoControlPump_SetSpeed(1U);  /* Pull M0 LOW */
+    IoControlPump_SetSpeed(1U);
     g_io_pump_debug.speed_triggered = 1U;
   }
   else
   {
-    IoControlPump_SetSpeed(0U);  /* Release M0 to HIGH */
+    IoControlPump_SetSpeed(0U);
     g_io_pump_debug.speed_triggered = 0U;
   }
 
-  /* Direction control: Left-mid-2 switch in MIDDLE position (~1024) pulls CW/CCW LOW (PD14) */
+  /* Direction control: Left-mid-2 switch in MIDDLE position (~1024) pulls DIR LOW (PE4). */
   if (left_mid2_switch > mid_low && left_mid2_switch < mid_high)
   {
-    IoControlPump_SetDirection(1U);  /* Pull CW/CCW LOW - reverse direction */
+    IoControlPump_SetDirection(1U);
     g_io_pump_debug.direction_reversed = 1U;
   }
   else
   {
-    IoControlPump_SetDirection(0U);  /* Release CW/CCW to HIGH - normal direction */
+    IoControlPump_SetDirection(0U);
     g_io_pump_debug.direction_reversed = 0U;
   }
 }

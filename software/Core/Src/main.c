@@ -310,13 +310,6 @@ const osThreadAttr_t Usart2Task_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal3,
 };
-/* Definitions for EthernetTask */
-osThreadId_t ethernetTaskHandle;
-const osThreadAttr_t ethernetTask_attributes = {
-  .name = "ethernetTask",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityNormal2,
-};
 /* USER CODE BEGIN PV */
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
@@ -407,7 +400,6 @@ static void MX_TIM15_Init(void);
 void StartDefaultTask(void *argument);
 void StartUartRxTask(void *argument);
 void StartUartTxTask(void *argument);
-void StartEthernetTask(void *argument);
 void Start_IMU_Task(void *argument);
 void StartServoTask(void *argument);
 void StartUsart3Task(void *argument);
@@ -650,7 +642,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  ethernetTaskHandle = osThreadNew(StartEthernetTask, NULL, &ethernetTask_attributes);
+  (void)osThreadNew(EthernetUartDriver_RunTask, NULL, &Usart2Task_attributes);
   g_dbg_boot_stage = 6U;
   /* USER CODE END RTOS_THREADS */
 
@@ -1684,10 +1676,13 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_4|GPIO_PIN_10|GPIO_PIN_12|GPIO_PIN_13, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, PUMP_DIR_Pin|GPIO_PIN_10|GPIO_PIN_12|GPIO_PIN_13, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, PUMP_SPEED_B0_Pin|PUMP_SPEED_B1_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(PUMP_STP_GPIO_Port, PUMP_STP_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LED_Pin|GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5, GPIO_PIN_RESET);
@@ -1695,16 +1690,16 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_7, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PE4 PE10 PE12 PE13 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_10|GPIO_PIN_12|GPIO_PIN_13;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /*Configure GPIO pin : PUMP_DIR_Pin */
+  GPIO_InitStruct.Pin = PUMP_DIR_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  HAL_GPIO_Init(PUMP_DIR_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC13 PC14 PC15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  /*Configure GPIO pins : PUMP_SPEED_B0_Pin PUMP_SPEED_B1_Pin PUMP_STP_Pin */
+  GPIO_InitStruct.Pin = PUMP_SPEED_B0_Pin|PUMP_SPEED_B1_Pin|PUMP_STP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
@@ -1721,6 +1716,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PE10 PE12 PE13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10|GPIO_PIN_12|GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PD7 */
   GPIO_InitStruct.Pin = GPIO_PIN_7;
@@ -2461,14 +2463,6 @@ void StartUartTxTask(void *argument)
   /* USER CODE END StartUartTxTask */
 }
 
-void StartEthernetTask(void *argument)
-{
-  /* USER CODE BEGIN StartEthernetTask */
-  (void)argument;
-  EthernetUartDriver_RunTask(NULL);
-  /* USER CODE END StartEthernetTask */
-}
-
 /* USER CODE BEGIN Header_Start_IMU_Task */
 /**
 * @brief Function implementing the imuRxTask thread.
@@ -2612,7 +2606,7 @@ void StartServoTask(void *argument)
 
   for(;;)
   {
-    now_tick = osKernelGetTickCount();
+    now_tick = HAL_GetTick();
     channel_count = SbusDriver_GetChannels(channels, SBUS_CHANNEL_COUNT,
                                            &frame_lost, &failsafe, NULL);
 
