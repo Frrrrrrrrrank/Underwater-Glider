@@ -371,6 +371,7 @@ volatile uint16_t g_rc_sw_left_mid_1 = 0U;
 volatile uint16_t g_rc_sw_left_mid_2 = 0U;
 volatile uint16_t g_rc_sw_right_outer = 0U;
 volatile uint16_t g_rc_left_stick_y = SBUS_VALUE_CENTER_OBSERVED;
+volatile uint16_t g_rc_left_stick_x = SBUS_VALUE_CENTER_OBSERVED;
 volatile uint16_t g_rc_right_stick_y = SBUS_VALUE_CENTER_OBSERVED;
 volatile GliderDebugView g_dbg_view = {0};
 volatile GliderDebugQuickView g_dbg_quick = {0};
@@ -2595,7 +2596,7 @@ void StartServoTask(void *argument)
 
   for(;;)
   {
-    now_tick = osKernelGetTickCount();
+    now_tick = HAL_GetTick();
     channel_count = SbusDriver_GetChannels(channels, SBUS_CHANNEL_COUNT,
                                            &frame_lost, &failsafe, NULL);
 
@@ -2645,10 +2646,11 @@ void StartServoTask(void *argument)
     if (mode == RC_CTRL_MODE_OPEN_LOOP_SPEED)
     {
       g_rc_left_stick_y = channels[SBUS_CH_LEFT_STICK_Y];
+      g_rc_left_stick_x = channels[SBUS_CH_LEFT_STICK_X];
       g_rc_right_stick_y = channels[SBUS_CH_RIGHT_STICK_Y];
 
       worm_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_left_stick_y, RC_WORM_MOTOR_MAX_RPM);
-      stepper_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_right_stick_y, RC_STEPPER_MAX_RPM);
+      stepper_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_left_stick_x, RC_STEPPER_MAX_RPM);
 
       if (motor_enabled == 0U)
       {
