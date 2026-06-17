@@ -59,6 +59,14 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define PUMP_DIR_Pin GPIO_PIN_4
+#define PUMP_DIR_GPIO_Port GPIOE
+#define PUMP_SPEED_B0_Pin GPIO_PIN_13
+#define PUMP_SPEED_B0_GPIO_Port GPIOC
+#define PUMP_SPEED_B1_Pin GPIO_PIN_14
+#define PUMP_SPEED_B1_GPIO_Port GPIOC
+#define PUMP_STP_Pin GPIO_PIN_15
+#define PUMP_STP_GPIO_Port GPIOC
 #define IMU_DRY_Pin GPIO_PIN_4
 #define IMU_DRY_GPIO_Port GPIOC
 #define LED_Pin GPIO_PIN_0
