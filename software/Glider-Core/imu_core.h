@@ -116,8 +116,8 @@ typedef struct
  */
 
 /**
- * @brief Initialize IMU module with UART4 handle
- * @param uart_handle UART4 handle from STM32 HAL
+ * @brief Initialize IMU module with the configured IMU UART handle.
+ * @param uart_handle IMU UART handle from STM32 HAL.
  */
 void IMU_Core_Init(UART_HandleTypeDef *uart_handle);
 
@@ -299,5 +299,7 @@ void IMU_Core_OnRawDataUpdate(const IMU_RawData *data);
  * @param huart UART handle
  */
 void IMU_OnUART_RxComplete(UART_HandleTypeDef *huart);
+void IMU_OnUART_Irq(UART_HandleTypeDef *huart);
+void IMU_OnUART_Error(UART_HandleTypeDef *huart);
 
 #endif /* IMU_CORE_H */

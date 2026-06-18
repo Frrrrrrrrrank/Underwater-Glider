@@ -152,15 +152,15 @@ typedef struct
   uint32_t frame_count;           /* Total IMU frames received */
   uint32_t crc_error_count;       /* CRC checksum failures */
   uint32_t rx_overflow_count;     /* Ring buffer overflow count */
-  uint32_t rx_irq_count;          /* UART4 RX IRQ callback count */
+  uint32_t rx_irq_count;          /* IMU UART RX callback count */
   uint32_t rx_byte_count;         /* Raw received byte count */
   uint32_t rx_poll_byte_count;    /* Bytes captured by polling fallback */
   uint32_t rx_rearm_ok_count;     /* RX IT re-arm successful count */
   uint32_t rx_rearm_fail_count;   /* RX IT re-arm failed count */
   uint32_t rx_init_status;        /* Initial RX IT arm status */
-  uint32_t uart4_irq_count;       /* UART4 IRQ entry count */
-  uint32_t uart4_error_count;     /* UART4 HAL error callback count */
-  uint32_t uart4_last_error;      /* UART4 last HAL error code */
+  uint32_t uart4_irq_count;       /* IMU UART IRQ entry count; legacy watch name */
+  uint32_t uart4_error_count;     /* IMU UART HAL error callback count; legacy watch name */
+  uint32_t uart4_last_error;      /* IMU UART last HAL error code; legacy watch name */
   uint32_t uart_rxne_flag;        /* Current RXNE flag state (1=data ready, 0=no data) */
   uint32_t uart_error_flags;      /* Current error flags (bit0=ORE, bit1=NE, bit2=FE, bit3=PE) */
   uint32_t recent_rx_len;         /* Number of valid bytes in recent_rx_bytes */
@@ -347,11 +347,11 @@ volatile uint32_t g_dbg_bdpwi_field1 = 0U;
 volatile uint32_t g_dbg_bdpwi_field2 = 0U;
 volatile uint32_t g_dbg_bdpwi_field1_valid = 0U;
 volatile uint32_t g_dbg_bdpwi_field2_valid = 0U;
-volatile uint32_t g_dbg_uart4_irq_count = 0U;
+volatile uint32_t g_dbg_uart4_irq_count = 0U;  /* Legacy watch name; now tracks UART5 IMU IRQ. */
 volatile uint32_t g_dbg_uart3_irq_count = 0U;
 volatile uint32_t g_dbg_uart3_rxne_count = 0U;
-volatile uint32_t g_dbg_uart4_error_count = 0U;
-volatile uint32_t g_dbg_uart4_last_error = 0U;
+volatile uint32_t g_dbg_uart4_error_count = 0U;  /* Legacy watch name; now tracks UART5 IMU errors. */
+volatile uint32_t g_dbg_uart4_last_error = 0U;   /* Legacy watch name; now tracks UART5 IMU errors. */
 volatile uint32_t g_dbg_uart3_error_count = 0U;
 volatile uint32_t g_dbg_uart3_last_error = 0U;
 volatile uint32_t g_dbg_imu_task_loop_count = 0U;
@@ -566,8 +566,8 @@ int main(void)
   /* Initialize Ethernet UART driver on LPUART1 */
   EthernetUartDriver_Init(&hlpuart1);
   
-  /* Initialize IMU module on UART4 */
-  IMU_Core_Init(&huart4);
+  /* Initialize IMU module on UART5 (PB13 TX, PB12 RX). */
+  IMU_Core_Init(&huart5);
 
   /* Initialize pressure sensor non-blocking RX driver */
   PressureSensorDriver_Init(&huart1);
@@ -2215,7 +2215,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     return;
   }
 
-  if (huart->Instance == UART4)
+  if (huart->Instance == UART5)
   {
     g_dbg_uart4_error_count++;
     g_dbg_uart4_last_error = huart->ErrorCode;
@@ -2228,6 +2228,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
     
     /* Optionally clear the DMA/reception state to allow recovery */
     huart->RxState = HAL_UART_STATE_READY;
+    IMU_OnUART_Error(huart);
   }
   else if (huart->Instance == USART3)
   {

@@ -1236,7 +1236,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   SbusDriver_OnRxComplete(huart);
   EthernetUartDriver_OnRxComplete(huart);
 
-  /* Forward to IMU module if it's UART4 */
+  /* Forward to IMU module if it matches the configured IMU UART. */
   IMU_OnUART_RxComplete(huart);
 }
 

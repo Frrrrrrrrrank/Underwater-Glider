@@ -11,7 +11,7 @@
 |---|---|---|---|---|---|---|
 | `Glider-Core/glider_core.c` | RDSS AT/NMEA communication and short-message state machine | `StartUartRxTask` + `StartUartTxTask` | `UART7` | `PE8 TX`, `PE7 RX` | `115200`, `8N1` | Target platform card ID macro: `381127` |
 | `Glider-Core/glider_rdss_codec.c` | RDSS/NMEA frame parser only | Called by `glider_core` | No direct hardware | N/A | N/A | N/A |
-| `Glider-Core/imu_core.c` | IMU frame receive/parse/cache | `Start_IMU_Task` + `IMU_Core_Init(&huart4)` | `UART4` | `PB9 TX`, `PB8 RX`, `PB15 CTS` | `115200`, `8N1` | No bus address (point-to-point UART) |
+| `Glider-Core/imu_core.c` | IMU frame receive/parse/cache | `Start_IMU_Task` + `IMU_Core_Init(&huart5)` | `UART5` | `PB13 TX`, `PB12 RX` | `115200`, `8N1` | No bus address (point-to-point UART) |
 | `Glider-Core/displacement_sensor.c` | Linear displacement sensor for oil-out volume estimation (MODBUS-RTU) | `StartUsart3Task -> DisplacementSensor_Poll` | `USART3` RS485 / `RS485_Bus3` | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
 | `Glider-Core/pump_driver.c` | Pump RS485 control logic retained for later reuse; GPIO pump control remains active | `IoControlPump_Init` + `IoControlPump_Poll` for GPIO only | GPIO pump control active; RS485 part disabled | `PB10` speed, `PD14` direction | GPIO level control via SBUS switches | N/A |
 | `Glider-Core/motor_driver.c` | Pump actuator motor control (MODBUS-RTU closed-loop stepper) | `StartUsart2Task -> UMotor_StartTask` | `USART2` RS485 | `PA2 TX`, `PA3 RX`, `PA1 DE` | `115200`, `8N1`, RS485 DE high | Default active node ID `0x01` |
@@ -23,7 +23,7 @@
 ### UART/RS485 buses
 - `USART2` RS485 (`PA1/PA2/PA3`): motor bus for `UMotor` nodes (`0x01`~`0x04`), handled by `StartUsart2Task -> UMotor_StartTask`.
 - `USART3` RS485 (`PD12/PD8/PD9`, `RS485_Bus3`, external `J17/J18`): linear displacement sensor bus, handled by `StartUsart3Task -> DisplacementSensor_Poll`.
-- `UART4` (`PB9/PB8`): IMU module.
+- `UART5` (`PB13/PB12`): IMU module.
 - `UART7` (`PE8/PE7`): RDSS terminal module (`glider_core`).
 
 ### Configured but currently not used by Glider-Core modules
@@ -42,7 +42,7 @@ Intended bus settings for this allocation:
 - `USART2` motor bus: `115200`, `8N1`, RS485 DE high.
 - `USART3` displacement-sensor bus (`Bus3`): `115200`, `8N1`, RS485 DE high.
 - `USART1`: RS485-capable spare bus, no custom driver mounted by default.
-- `UART4`, `UART5`, `UART7`, `UART8`: normal UART links as listed above.
+- `UART4`, `UART7`, `UART8`: normal UART links as listed above.
 
 ## 4) Device Addressing and Protocol Details
 
@@ -87,7 +87,7 @@ Intended bus settings for this allocation:
 - Target platform card ID macro: `GLIDER_TARGET_CARD_ID = "381127"`.
 - Local card ID is queried at runtime (`$CCICA,0,00*7B`) and stored dynamically.
 
-### 4.5 IMU (`imu_core` on UART4)
+### 4.5 IMU (`imu_core` on UART5)
 - No numeric bus address in current protocol implementation.
 - Frame headers: `0x7E 0x23`.
 - Function codes used by parser include `0x04`, `0x16`, `0x26`, `0x32`, `0x01`, `0x81`.
@@ -148,7 +148,7 @@ Intended bus settings for this allocation:
 - `PumpDriver_*` RS485 code is intentionally preserved but should remain disabled while `Bus3` is assigned to the displacement sensor; `IoControlPump_*` remains active for GPIO pump control.
 - `main.h` defines `IMU_DRY_Pin` on `PC4`, while `MX_GPIO_Init` configures `IMU_DRY_Pin` plus `PC7` as inputs.
 - `SDMMC1` init function exists but `MX_SDMMC1_MMC_Init()` call is commented out in startup path.
-- `USART1`/`UART5`/`UART8` are initialized but not bound to current custom drivers.
+- `USART1`/`UART4`/`UART8` are initialized but not bound to current custom drivers.
 
 ## 9) Source Files Used for This Inventory
 

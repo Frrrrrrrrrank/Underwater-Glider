@@ -23,6 +23,8 @@ static volatile uint8_t imu_recent_rx[IMU_RX_RECENT_DEBUG_SIZE];
 static volatile uint8_t imu_recent_rx_pos = 0;
 static volatile uint8_t imu_recent_rx_count = 0;
 
+#define IMU_RX_IRQ_BUDGET_BYTES 64U
+
 /* ============================================================
  * IMU Data Cache (Static storage for sensor readings)
  * ============================================================
@@ -414,8 +416,6 @@ static void process_imu_frames(void)
 
 void IMU_Core_Init(UART_HandleTypeDef *uart_handle)
 {
-    HAL_StatusTypeDef arm_status;
-
     imu_uart = uart_handle;
     imu_rx_head = 0;
     imu_rx_tail = 0;
@@ -431,8 +431,27 @@ void IMU_Core_Init(UART_HandleTypeDef *uart_handle)
     /* Initialize data cache */
     memset(&imu_cache, 0, sizeof(imu_cache));
 
-    /* Use polling-based RX only, no interrupt mode.
-       This avoids state machine conflicts from Overrun errors. */
+    if (imu_uart != NULL)
+    {
+        __HAL_UART_DISABLE_IT(imu_uart, UART_IT_RXNE);
+        __HAL_UART_DISABLE_IT(imu_uart, UART_IT_ERR);
+        __HAL_UART_DISABLE_IT(imu_uart, UART_IT_PE);
+
+        __HAL_UART_CLEAR_OREFLAG(imu_uart);
+        __HAL_UART_CLEAR_NEFLAG(imu_uart);
+        __HAL_UART_CLEAR_FEFLAG(imu_uart);
+        __HAL_UART_CLEAR_PEFLAG(imu_uart);
+        imu_uart->ErrorCode = HAL_UART_ERROR_NONE;
+        imu_uart->RxState = HAL_UART_STATE_READY;
+        imu_rx_init_status = (uint32_t)HAL_OK;
+
+        if (imu_uart->Instance == UART5)
+        {
+            HAL_NVIC_SetPriority(UART5_IRQn, 10, 0);
+            HAL_NVIC_EnableIRQ(UART5_IRQn);
+        }
+        __HAL_UART_ENABLE_IT(imu_uart, UART_IT_RXNE);
+    }
 }
 
 /* ============================================================
@@ -442,48 +461,43 @@ void IMU_Core_Init(UART_HandleTypeDef *uart_handle)
 
 void IMU_Core_RunRxTask(void)
 {
-    uint32_t guard = 0;
+    uint32_t guard = 0U;
 
-    /* Process all available frames in the ring buffer (single step) */
-    process_imu_frames();
-
-    /* Fallback polling path: capture RX bytes even when IRQ callback doesn't fire. */
     if (imu_uart != NULL)
     {
-        /* Clear any lingering error flags to allow reception to continue */
+        if (imu_uart->Instance != UART5)
+        {
+            while (((imu_uart->Instance->ISR & USART_ISR_RXNE_RXFNE) != 0U) && (guard < IMU_RX_BUFFER_SIZE))
+            {
+                uint8_t polled_byte = (uint8_t)(imu_uart->Instance->RDR & 0xFFU);
+                ring_push(polled_byte);
+                imu_rx_byte_count++;
+                imu_rx_poll_byte_count++;
+                guard++;
+            }
+        }
+
         if ((imu_uart->Instance->ISR & USART_ISR_ORE) != 0U)
         {
             __HAL_UART_CLEAR_OREFLAG(imu_uart);
-            /* Dummy read to clear the stuck byte in RDR */
-            (void)(imu_uart->Instance->RDR);
+            imu_uart->ErrorCode = HAL_UART_ERROR_NONE;
             imu_uart->RxState = HAL_UART_STATE_READY;
         }
         if ((imu_uart->Instance->ISR & USART_ISR_NE) != 0U)
-            __HAL_UART_CLEAR_NEFLAG(imu_uart);
-        if ((imu_uart->Instance->ISR & USART_ISR_FE) != 0U)
-            __HAL_UART_CLEAR_FEFLAG(imu_uart);
-        if ((imu_uart->Instance->ISR & USART_ISR_PE) != 0U)
-            __HAL_UART_CLEAR_PEFLAG(imu_uart);
-        
-        /* Poll for available RX bytes (ISR bit5 = RXNE/RXFNE) */
-        while (((imu_uart->Instance->ISR & (1UL << 5)) != 0U) && (guard < IMU_RX_BUFFER_SIZE))
         {
-            uint8_t polled_byte = (uint8_t)(imu_uart->Instance->RDR & 0xFFU);
-            ring_push(polled_byte);
-            imu_rx_byte_count++;
-            imu_rx_poll_byte_count++;
-            guard++;
+            __HAL_UART_CLEAR_NEFLAG(imu_uart);
+        }
+        if ((imu_uart->Instance->ISR & USART_ISR_FE) != 0U)
+        {
+            __HAL_UART_CLEAR_FEFLAG(imu_uart);
+        }
+        if ((imu_uart->Instance->ISR & USART_ISR_PE) != 0U)
+        {
+            __HAL_UART_CLEAR_PEFLAG(imu_uart);
         }
     }
 
-    /* Parse any bytes captured by polling path. */
     process_imu_frames();
-
-    /* Do NOT use watchdog re-arm - it conflicts with polling path and causes state confusion.
-       Polling path is sufficient for continuous RX without IT. */
-
-    /* Yield briefly; keep RX polling cadence high to avoid ORE at 115200. */
-    osDelay(1);
 }
 
 /* ============================================================
@@ -765,13 +779,85 @@ void IMU_OnUART_RxComplete(UART_HandleTypeDef *huart)
     if (huart == NULL)
         return;
 
-    /* Check if this is UART4 */
     if (imu_uart != NULL && huart->Instance == imu_uart->Instance)
     {
-        imu_rx_irq_count++;
-        ring_push(imu_rx_byte);
+        if (imu_uart->Instance != UART5)
+        {
+            imu_rx_irq_count++;
+            ring_push(imu_rx_byte);
+            imu_rx_byte_count++;
+            __HAL_UART_DISABLE_IT(imu_uart, UART_IT_RXNE);
+            __HAL_UART_DISABLE_IT(imu_uart, UART_IT_ERR);
+            __HAL_UART_DISABLE_IT(imu_uart, UART_IT_PE);
+            imu_uart->RxState = HAL_UART_STATE_READY;
+        }
+    }
+}
+
+void IMU_OnUART_Irq(UART_HandleTypeDef *huart)
+{
+    uint32_t guard = 0U;
+
+    if (huart == NULL)
+        return;
+
+    if (imu_uart == NULL || huart->Instance != imu_uart->Instance)
+        return;
+
+    imu_rx_irq_count++;
+
+    while (((huart->Instance->ISR & USART_ISR_RXNE_RXFNE) != 0U) && (guard < IMU_RX_IRQ_BUDGET_BYTES))
+    {
+        uint8_t irq_byte = (uint8_t)(huart->Instance->RDR & 0xFFU);
+        ring_push(irq_byte);
         imu_rx_byte_count++;
-        /* NOTE: Do NOT re-arm HAL_UART_Receive_IT here in interrupt context.
-         * It causes state machine conflicts. Polling path handles continuous RX. */
+        guard++;
+    }
+
+    if ((huart->Instance->ISR & USART_ISR_ORE) != 0U)
+    {
+        __HAL_UART_CLEAR_OREFLAG(huart);
+    }
+    if ((huart->Instance->ISR & USART_ISR_NE) != 0U)
+    {
+        __HAL_UART_CLEAR_NEFLAG(huart);
+    }
+    if ((huart->Instance->ISR & USART_ISR_FE) != 0U)
+    {
+        __HAL_UART_CLEAR_FEFLAG(huart);
+    }
+    if ((huart->Instance->ISR & USART_ISR_PE) != 0U)
+    {
+        __HAL_UART_CLEAR_PEFLAG(huart);
+    }
+
+    huart->ErrorCode = HAL_UART_ERROR_NONE;
+    huart->RxState = HAL_UART_STATE_READY;
+}
+
+void IMU_OnUART_Error(UART_HandleTypeDef *huart)
+{
+    if (huart == NULL)
+        return;
+
+    if (imu_uart != NULL && huart->Instance == imu_uart->Instance)
+    {
+        if (imu_uart->Instance != UART5)
+        {
+            __HAL_UART_DISABLE_IT(imu_uart, UART_IT_RXNE);
+            __HAL_UART_DISABLE_IT(imu_uart, UART_IT_ERR);
+            __HAL_UART_DISABLE_IT(imu_uart, UART_IT_PE);
+        }
+
+        __HAL_UART_CLEAR_OREFLAG(imu_uart);
+        __HAL_UART_CLEAR_NEFLAG(imu_uart);
+        __HAL_UART_CLEAR_FEFLAG(imu_uart);
+        __HAL_UART_CLEAR_PEFLAG(imu_uart);
+        if ((imu_uart->Instance->ISR & USART_ISR_RXNE_RXFNE) != 0U)
+        {
+            (void)(imu_uart->Instance->RDR);
+        }
+        imu_uart->ErrorCode = HAL_UART_ERROR_NONE;
+        imu_uart->RxState = HAL_UART_STATE_READY;
     }
 }
