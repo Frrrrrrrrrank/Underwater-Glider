@@ -96,7 +96,7 @@ uint8_t PumpDriver_ReadSpeed(int32_t *out_speed_rpm); /* 输出单位: RPM */
 /* IO 控制接口 */
 void IoControlPump_Init(void);
 void IoControlPump_Poll(uint32_t now_ms);
-void IoControlPump_SetSpeed(uint8_t enabled);  /* 1=拉低PB10, 0=拉高PB10 */
-void IoControlPump_SetDirection(uint8_t reversed);  /* 1=拉低PD14, 0=拉高PD14 */
+void IoControlPump_SetSpeed(uint8_t enabled);      /* 1=drive PC13 high, 0=drive PC13 low */
+void IoControlPump_SetDirection(uint8_t reversed); /* 1=drive PE4 low, 0=drive PE4 high */
 
 #endif

@@ -419,10 +419,10 @@ void PumpDriver_Poll(uint32_t now_ms)
 typedef struct
 {
   uint32_t initialized;
-  uint32_t speed_bit0_low;     /* 1 = PC13 speed bit0 pulled low */
-  uint32_t speed_bit1_low;     /* 1 = PC14 speed bit1 pulled low */
-  uint32_t stp_released;       /* 1 = PC15 released high */
-  uint32_t direction_reversed; /* 1 = PE4 direction pulled low */
+  uint32_t speed_bit0_high;    /* 1 = PC13 speed bit0 driven high/run command */
+  uint32_t speed_bit1_low;     /* 1 = PC14 speed bit1 driven low */
+  uint32_t stp_high;           /* 1 = PC15 driven high */
+  uint32_t direction_reversed; /* 1 = PE4 direction driven low */
 } IoControlPumpState;
 
 static IoControlPumpState s_io_pump_state = {0};
@@ -430,12 +430,12 @@ static IoControlPumpState s_io_pump_state = {0};
 void IoControlPump_Init(void)
 {
   s_io_pump_state.initialized = 1U;
-  s_io_pump_state.speed_bit0_low = 1U;
+  s_io_pump_state.speed_bit0_high = 0U;
   s_io_pump_state.speed_bit1_low = 1U;
-  s_io_pump_state.stp_released = 1U;
+  s_io_pump_state.stp_high = 1U;
   s_io_pump_state.direction_reversed = 0U;
   
-  /* Open-drain outputs: RESET actively pulls low, SET releases to external pull-up. */
+  /* Keep pump stopped by default: B0 low, B1 low, STP high. */
   if (IO_PUMP_SPEED_PORT != NULL)
   {
     HAL_GPIO_WritePin(IO_PUMP_SPEED_PORT, IO_PUMP_SPEED_PIN, GPIO_PIN_RESET);
@@ -453,7 +453,7 @@ void IoControlPump_Init(void)
     HAL_GPIO_WritePin(IO_PUMP_DIR_PORT, IO_PUMP_DIR_PIN, GPIO_PIN_SET);
   }
 
-  g_io_pump_debug.speed_triggered = 1U;
+  g_io_pump_debug.speed_triggered = 0U;
   g_io_pump_debug.direction_reversed = 0U;
 }
 
@@ -464,23 +464,23 @@ void IoControlPump_SetSpeed(uint8_t enabled)
     return;
   }
   
-  s_io_pump_state.speed_bit0_low = (enabled != 0U) ? 1U : 0U;
+  s_io_pump_state.speed_bit0_high = (enabled != 0U) ? 1U : 0U;
   
   if (IO_PUMP_SPEED_PORT != NULL)
   {
-    GPIO_PinState pin_state = (s_io_pump_state.speed_bit0_low == 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    GPIO_PinState pin_state = (s_io_pump_state.speed_bit0_high != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET;
     HAL_GPIO_WritePin(IO_PUMP_SPEED_PORT, IO_PUMP_SPEED_PIN, pin_state);
   }
 
-  /* Speed bit1 is not controlled by upper computer yet: keep it pulled low. */
+  /* Speed bit1 is not controlled by upper computer yet: keep it driven low. */
   s_io_pump_state.speed_bit1_low = 1U;
   if (IO_PUMP_SPEED_B1_PORT != NULL)
   {
     HAL_GPIO_WritePin(IO_PUMP_SPEED_B1_PORT, IO_PUMP_SPEED_B1_PIN, GPIO_PIN_RESET);
   }
 
-  /* STP must stay released/high unless a dedicated stop policy is added. */
-  s_io_pump_state.stp_released = 1U;
+  /* STP must stay high unless a dedicated stop policy is added. */
+  s_io_pump_state.stp_high = 1U;
   if (IO_PUMP_STP_PORT != NULL)
   {
     HAL_GPIO_WritePin(IO_PUMP_STP_PORT, IO_PUMP_STP_PIN, GPIO_PIN_SET);
@@ -512,6 +512,7 @@ void IoControlPump_Poll(uint32_t now_ms)
   uint32_t channel_count = 0U;
   uint16_t right_outer_switch = 0U;
   uint16_t left_mid2_switch = 0U;
+  const uint32_t run_threshold = 1400U;
   const uint32_t mid_low = 800U;         /* Mid position lower bound */
   const uint32_t mid_high = 1200U;       /* Mid position upper bound */
   
@@ -525,12 +526,12 @@ void IoControlPump_Poll(uint32_t now_ms)
   
   if (channel_count < 18U || frame_lost != 0U || failsafe != 0U)
   {
-    /* No valid RC signal: keep speed bits low and release STP. */
-    IoControlPump_SetSpeed(1U);
+    /* No valid RC signal: keep speed bits low/stopped and STP high. */
+    IoControlPump_SetSpeed(0U);
     IoControlPump_SetDirection(0U);
     g_io_pump_debug.right_outer_switch = 0U;
     g_io_pump_debug.left_mid2_switch = 0U;
-    g_io_pump_debug.speed_triggered = 1U;
+    g_io_pump_debug.speed_triggered = 0U;
     g_io_pump_debug.direction_reversed = 0U;
     return;
   }
@@ -545,8 +546,8 @@ void IoControlPump_Poll(uint32_t now_ms)
   g_io_pump_debug.right_outer_switch = right_outer_switch;
   g_io_pump_debug.left_mid2_switch = left_mid2_switch;
 
-  /* Speed control: Right outer switch DOWN (value ~240) pulls speed bit0 LOW (PC13). */
-  if (right_outer_switch < 500U)  /* Down position */
+  /* Speed control: right outer switch RUN side drives speed bit0 HIGH (PC13). */
+  if (right_outer_switch > run_threshold)
   {
     IoControlPump_SetSpeed(1U);
     g_io_pump_debug.speed_triggered = 1U;
@@ -557,7 +558,7 @@ void IoControlPump_Poll(uint32_t now_ms)
     g_io_pump_debug.speed_triggered = 0U;
   }
 
-  /* Direction control: Left-mid-2 switch in MIDDLE position (~1024) pulls DIR LOW (PE4). */
+  /* Direction control: left-mid-2 switch in MIDDLE position (~1024) drives DIR low (PE4). */
   if (left_mid2_switch > mid_low && left_mid2_switch < mid_high)
   {
     IoControlPump_SetDirection(1U);
