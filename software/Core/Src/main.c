@@ -36,6 +36,7 @@
 #include "ethernet_uart_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "disk_driver.h"
 
 /* USER CODE END Includes */
 
