@@ -311,6 +311,12 @@ const osThreadAttr_t Usart2Task_attributes = {
   .priority = (osPriority_t) osPriorityNormal3,
 };
 /* USER CODE BEGIN PV */
+osThreadId_t EthernetTaskHandle;
+const osThreadAttr_t EthernetTask_attributes = {
+  .name = "EthernetTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityNormal3,
+};
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
 volatile uint32_t g_dbg_rx_line_count = 0U;
@@ -642,7 +648,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  (void)osThreadNew(EthernetUartDriver_RunTask, NULL, &Usart2Task_attributes);
+  EthernetTaskHandle = osThreadNew(EthernetUartDriver_RunTask, NULL, &EthernetTask_attributes);
   g_dbg_boot_stage = 6U;
   /* USER CODE END RTOS_THREADS */
 
