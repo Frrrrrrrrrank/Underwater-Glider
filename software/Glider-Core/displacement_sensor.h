@@ -46,6 +46,22 @@ typedef struct
   uint32_t last_seen_tick;
 } DisplacementSensorDiag;
 
+typedef struct
+{
+  UART_HandleTypeDef *huart;
+  uint32_t initialized;
+  uint32_t startup_tick;
+  uint32_t comm_ok;
+  uint32_t last_error;
+  uint32_t tx_count;
+  uint32_t rx_count;
+  uint32_t timeout_count;
+  uint32_t crc_error_count;
+  uint32_t last_poll_tick;
+  uint8_t rx_buffer[40];
+  uint16_t rx_data_len;
+} DisplacementSensorInternal;
+
 extern volatile DisplacementSensorData g_displacement_sensor;
 extern volatile DisplacementSensorDiag g_displacement_diag;
 

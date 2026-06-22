@@ -19,21 +19,7 @@ volatile DisplacementSensorDiag g_displacement_diag = {
   0U, 0U, 0U, 0U, 0U, 0U, 0U, {0}, 0U, {0}, 0U, 0U, 0U
 };
 
-typedef struct
-{
-  UART_HandleTypeDef *huart;
-  uint32_t initialized;
-  uint32_t startup_tick;
-  uint32_t comm_ok;
-  uint32_t last_error;
-  uint32_t tx_count;
-  uint32_t rx_count;
-  uint32_t timeout_count;
-  uint32_t crc_error_count;
-  uint32_t last_poll_tick;
-  uint8_t rx_buffer[40];
-  uint16_t rx_data_len;
-} DisplacementSensorInternal;
+
 
 static DisplacementSensorInternal s_sensor = {
   NULL, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, 0U, {0}, 0U

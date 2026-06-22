@@ -2,6 +2,7 @@
 #include "sbus_driver.h"
 #include "cmsis_os.h"
 #include "stm32h7xx_hal.h"
+#include "displacement_sensor.h"
 
 #include <string.h>
 
@@ -563,11 +564,24 @@ void IoControlPump_Poll(uint32_t now_ms)
   {
     IoControlPump_SetDirection(1U);
     g_io_pump_debug.direction_reversed = 1U;
+    if(g_displacement_sensor.displacement_mm < 48.0f)
+    {
+      /* If currently extended, reverse direction to retract. */
+      IoControlPump_SetSpeed(0U);
+      g_io_pump_debug.speed_triggered = 0U;
+    }
+   
   }
   else
   {
     IoControlPump_SetDirection(0U);
     g_io_pump_debug.direction_reversed = 0U;
+     if(g_displacement_sensor.displacement_mm > 137.0f)
+    {
+      /* If currently extended, reverse direction to retract. */
+      IoControlPump_SetSpeed(0U);
+      g_io_pump_debug.speed_triggered = 0U;
+    }
   }
 }
 

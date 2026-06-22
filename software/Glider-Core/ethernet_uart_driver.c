@@ -248,6 +248,7 @@ void EthernetUartDriver_RunTask(void *argument)
     }
 
     g_ethernet_uart_readout.ring_available_bytes = g_ethernet_uart_diag.ring_available_bytes;
+    
     osDelay(ETHERNET_UART_TASK_PERIOD_MS);
   }
 }
