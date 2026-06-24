@@ -2638,7 +2638,6 @@ void Start_IMU_Task(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartServoTask */
-int32_t test_speed = 0;
 void StartServoTask(void *argument)
 {
   /* USER CODE BEGIN StartServoTask */
@@ -2771,7 +2770,6 @@ void StartServoTask(void *argument)
           UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, 0);
           worm_cmd_rpm = 0;
       }
-     test_speed = worm_cmd_rpm; 
       
       if (g_ethernet_uart_readout_pack.rollmotor_enable == 1U)
       {

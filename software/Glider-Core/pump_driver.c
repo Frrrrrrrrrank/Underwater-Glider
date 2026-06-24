@@ -625,8 +625,6 @@ void IoControlPump_Poll(uint32_t now_ms)
       g_io_pump_debug.speed_triggered = 0U;
     }
   }
-
-
   }
 }
 

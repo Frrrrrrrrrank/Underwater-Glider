@@ -85,6 +85,7 @@ extern volatile uint8_t g_ethernet_rx_message_flag;
 void EthernetUartDriver_Init(UART_HandleTypeDef *huart);
 void EthernetUartDriver_RunTask(void *argument);
 void EthernetUartDriver_SendText(const char *text);
+void EthernetUartDriver_SendSystemSnapshot(void);
 void EthernetUartDriver_ClearRxRing(void);
 bool EthernetUartDriver_ConvertFront19BytesToPack(EthernetUartReadoutPack *out_pack);
 void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart);
