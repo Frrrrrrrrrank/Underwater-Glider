@@ -3,6 +3,7 @@
 
 #include "main.h"
 #include <stdint.h>
+#include <stdbool.h>
 
 #define ETHERNET_UART_RX_RING_SIZE 256U
 #define ETHERNET_UART_RX_LINE_MAX 96U
@@ -59,7 +60,24 @@ typedef struct
   EthernetUartReadout readout;
 } EthernetUartState;
 
+typedef struct
+{
+  uint8_t pitchmotor_enable;
+  uint32_t pitchmotor_speed_rpm;
+  uint8_t rollmotor_enable;
+  uint32_t rollmotor_speed_rpm;
+  uint8_t thrustmotor_direction;
+  uint32_t thrustmotor_speed_rpm;
+  uint8_t pump_direction;
+  uint8_t pump_on_off;
+  uint8_t ask_for_status;
+  uint8_t eth_control_flag;
+
+} EthernetUartReadoutPack;
+
 extern volatile EthernetUartState g_ethernet_uart_state;
+extern volatile EthernetUartReadoutPack g_ethernet_uart_readout_pack;
+extern volatile uint8_t g_ethernet_rx_message_flag;
 
 #define g_ethernet_uart_diag g_ethernet_uart_state.diag
 #define g_ethernet_uart_readout g_ethernet_uart_state.readout
@@ -67,6 +85,9 @@ extern volatile EthernetUartState g_ethernet_uart_state;
 void EthernetUartDriver_Init(UART_HandleTypeDef *huart);
 void EthernetUartDriver_RunTask(void *argument);
 void EthernetUartDriver_SendText(const char *text);
+void EthernetUartDriver_SendSystemSnapshot(void);
+void EthernetUartDriver_ClearRxRing(void);
+bool EthernetUartDriver_ConvertFront19BytesToPack(EthernetUartReadoutPack *out_pack);
 void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart);
 void EthernetUartDriver_OnTxComplete(UART_HandleTypeDef *huart);
 void EthernetUartDriver_OnError(UART_HandleTypeDef *huart);
