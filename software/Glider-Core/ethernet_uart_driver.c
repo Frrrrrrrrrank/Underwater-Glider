@@ -480,6 +480,7 @@ void EthernetUartDriver_RunTask(void *argument)
     {
       g_ethernet_uart_diag.heartbeat_count++;
       g_ethernet_uart_diag.last_tx_tick = now;
+      //EthernetUartDriver_SendText("AT\r\n");
     }
 
     g_ethernet_uart_readout.ring_available_bytes = g_ethernet_uart_diag.ring_available_bytes;
