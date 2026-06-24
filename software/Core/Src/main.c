@@ -447,7 +447,8 @@ void StartUsart2Task(void *argument);
 typedef enum
 {
   RC_CTRL_MODE_OFF = 0U,
-  RC_CTRL_MODE_OPEN_LOOP_SPEED = 1U
+  RC_CTRL_MODE_OPEN_LOOP_SPEED = 1U,
+  RC_CTRL_MODE_ETH = 2U
 } RcControlMode;
 
 static uint32_t RcControl_IsSwitchUp(uint16_t raw)
@@ -2637,6 +2638,7 @@ void Start_IMU_Task(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartServoTask */
+int32_t test_speed = 0;
 void StartServoTask(void *argument)
 {
   /* USER CODE BEGIN StartServoTask */
@@ -2664,6 +2666,7 @@ void StartServoTask(void *argument)
 
   for(;;)
   {
+    if (g_ethernet_rx_message_flag == 0U){
     now_tick = HAL_GetTick();
     channel_count = SbusDriver_GetChannels(channels, SBUS_CHANNEL_COUNT,
                                            &frame_lost, &failsafe, NULL);
@@ -2742,13 +2745,49 @@ void StartServoTask(void *argument)
 
       Stepper_SetContinuousSignedRpm(0);
     }
+    }
+    else
+    {
+      mode = RC_CTRL_MODE_ETH;
+      worm_cmd_rpm = RcControl_ClampSigned(g_ethernet_uart_readout_pack.pitchmotor_speed_rpm,RC_WORM_MOTOR_MAX_RPM);
+      stepper_cmd_rpm = RcControl_ClampSigned(g_ethernet_uart_readout_pack.rollmotor_speed_rpm,RC_STEPPER_MAX_RPM);
+      
+      if (g_ethernet_uart_readout_pack.pitchmotor_enable == 1U)
+      {   
+        if (motor_enabled == 0U)
+        {
+          UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 1U);
+          motor_enabled = 1U;
+        }
+        UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, worm_cmd_rpm);
+      }
+      else
+      {   
+        if (motor_enabled == 1U)
+        {
+          UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 0U);
+          motor_enabled = 0U;
+        }
+          UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, 0);
+          worm_cmd_rpm = 0;
+      }
+     test_speed = worm_cmd_rpm; 
+      
+      if (g_ethernet_uart_readout_pack.rollmotor_enable == 1U)
+      {
+        Stepper_SetContinuousSignedRpm(stepper_cmd_rpm);
+      }
+      else
+      {
+        Stepper_SetContinuousSignedRpm(0);
+        stepper_cmd_rpm = 0;
+      }
+    }
 
     g_rc_ctrl_mode = mode;
     g_rc_ctrl_off_reason = off_reason;
     g_rc_worm_cmd_rpm = worm_cmd_rpm;
     g_rc_stepper_cmd_rpm = stepper_cmd_rpm;
-
-
 
     osDelay(RC_CONTROL_PERIOD_MS);
   }

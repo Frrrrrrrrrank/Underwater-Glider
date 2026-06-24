@@ -5,10 +5,12 @@
 #include <stdbool.h>
 
 volatile EthernetUartState g_ethernet_uart_state = {0};
+volatile EthernetUartReadoutPack g_ethernet_uart_readout_pack = {0};
+volatile uint8_t g_ethernet_rx_message_flag = 0U;
 
 static UART_HandleTypeDef *s_uart = NULL;
 static volatile uint8_t s_rx_byte = 0U;
-static volatile uint8_t s_rx_ring[ETHERNET_UART_RX_RING_SIZE];
+static volatile uint8_t s_eth_rx_ring[ETHERNET_UART_RX_RING_SIZE];
 static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static volatile uint32_t s_tx_busy = 0U;
@@ -20,6 +22,7 @@ static bool EthernetUartDriver_RingPop(uint8_t *byte);
 static void EthernetUartDriver_ProcessReceivedData(void);
 static void EthernetUartDriver_ProcessLine(const char *line);
 static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_t length);
+static uint32_t EthernetUartDriver_ReadLeU32(const uint8_t *bytes);
 
 static void EthernetUartDriver_RearmReceive(void)
 {
@@ -54,6 +57,7 @@ static void EthernetUartDriver_RearmReceive(void)
   g_ethernet_uart_diag.last_error = 1U;
 }
 
+//这里记录数据
 static void EthernetUartDriver_RingPush(uint8_t byte)
 {
   uint16_t next = (uint16_t)(s_rx_head + 1U);
@@ -68,7 +72,7 @@ static void EthernetUartDriver_RingPush(uint8_t byte)
     return;
   }
 
-  s_rx_ring[s_rx_head] = byte;
+  s_eth_rx_ring[s_rx_head] = byte;
   s_rx_head = next;
   g_ethernet_uart_diag.rx_byte_count++;
   g_ethernet_uart_diag.ring_available_bytes =
@@ -77,6 +81,7 @@ static void EthernetUartDriver_RingPush(uint8_t byte)
           : (uint32_t)(ETHERNET_UART_RX_RING_SIZE - s_rx_tail + s_rx_head);
 }
 
+//这里读出数据
 static bool EthernetUartDriver_RingPop(uint8_t *byte)
 {
   if (s_rx_head == s_rx_tail)
@@ -84,7 +89,7 @@ static bool EthernetUartDriver_RingPop(uint8_t *byte)
     return false;
   }
 
-  *byte = s_rx_ring[s_rx_tail];
+  *byte = s_eth_rx_ring[s_rx_tail];
   s_rx_tail++;
   if (s_rx_tail >= ETHERNET_UART_RX_RING_SIZE)
   {
@@ -187,6 +192,14 @@ static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_
   return status;
 }
 
+static uint32_t EthernetUartDriver_ReadLeU32(const uint8_t *bytes)
+{
+  return ((uint32_t)bytes[0]) |
+         ((uint32_t)bytes[1] << 8U) |
+         ((uint32_t)bytes[2] << 16U) |
+         ((uint32_t)bytes[3] << 24U);
+}
+
 void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
 {
   if (huart == NULL)
@@ -269,15 +282,94 @@ void EthernetUartDriver_SendText(const char *text)
   (void)EthernetUartDriver_SendRaw((const uint8_t *)text, length);
 }
 
+void EthernetUartDriver_ClearRxRing(void)
+{
+  uint32_t i;
+
+  __disable_irq();
+  s_rx_head = 0U;
+  s_rx_tail = 0U;
+  s_rx_byte = 0U;
+  for (i = 0U; i < ETHERNET_UART_RX_RING_SIZE; i++)
+  {
+    s_eth_rx_ring[i] = 0U;
+  }
+  __enable_irq();
+
+  g_ethernet_uart_diag.ring_available_bytes = 0U;
+  g_ethernet_uart_readout.ring_available_bytes = 0U;
+}
+
+bool EthernetUartDriver_ConvertFront19BytesToPack(EthernetUartReadoutPack *out_pack)
+{
+  uint8_t raw[19];
+  uint16_t index;
+  uint16_t i;
+  uint32_t available;
+  EthernetUartReadoutPack parsed;
+
+  __disable_irq();
+  available =
+      (s_rx_head >= s_rx_tail)
+          ? (uint32_t)(s_rx_head - s_rx_tail)
+          : (uint32_t)(ETHERNET_UART_RX_RING_SIZE - s_rx_tail + s_rx_head);
+
+  if (available < 19U)
+  {
+    __enable_irq();
+    return false;
+  }
+
+  index = s_rx_tail;
+  for (i = 0U; i < 19U; i++)
+  {
+    raw[i] = s_eth_rx_ring[index];
+    index++;
+    if (index >= ETHERNET_UART_RX_RING_SIZE)
+    {
+      index = 0U;
+    }
+  }
+  __enable_irq();
+
+  parsed.pitchmotor_enable = raw[0];
+  parsed.pitchmotor_speed_rpm = EthernetUartDriver_ReadLeU32(&raw[1]);
+  parsed.rollmotor_enable = raw[5];
+  parsed.rollmotor_speed_rpm = EthernetUartDriver_ReadLeU32(&raw[6]);
+  parsed.thrustmotor_direction = raw[10];
+  parsed.thrustmotor_speed_rpm = EthernetUartDriver_ReadLeU32(&raw[11]);
+  parsed.pump_direction = raw[15];
+  parsed.pump_on_off = raw[16];
+  parsed.ask_for_status = raw[17];
+  parsed.eth_control_flag = raw[18];
+
+  g_ethernet_uart_readout_pack = parsed;
+  if (out_pack != NULL)
+  {
+    *out_pack = parsed;
+  }
+
+  EthernetUartDriver_ClearRxRing();
+  return true;
+}
+
 void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart)
 {
   if (huart == NULL || s_uart == NULL || huart->Instance != s_uart->Instance)
   {
     return;
   }
-
   g_ethernet_uart_diag.rx_irq_count++;
   EthernetUartDriver_RingPush(s_rx_byte);
+  EthernetUartDriver_ConvertFront19BytesToPack(&g_ethernet_uart_readout_pack);
+  if (g_ethernet_uart_readout_pack.eth_control_flag == 1U)
+  {
+    g_ethernet_rx_message_flag = 1U;
+  }
+  else
+  {
+    g_ethernet_rx_message_flag = 0U;
+  }
   EthernetUartDriver_RearmReceive();
 }
 
