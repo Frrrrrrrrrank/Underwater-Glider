@@ -51,6 +51,9 @@ Glider-Core/stepper_driver.c \
 Glider-Core/pressure_sensor_driver.c \
 Glider-Core/sbus_driver.c \
 Glider-Core/buzzer_driver.c \
+Glider-App/estimation/ekf_bridge.c \
+Glider-App/tasks/ekf_task.c \
+Glider-App/common/glider_time.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc.c \
@@ -97,6 +100,11 @@ Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.c \
 Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c \
 Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c
 
+# C++ sources，ESKF 核心以及嵌入式 wrapper，
+CPP_SOURCES =  \
+Glider-App/estimation/ug_estimation/src/core/eskf.cpp \
+Glider-App/estimation/ug_estimation/src/embedded/ug_ekf_glider.cpp
+
 # ASM sources
 ASM_SOURCES =  \
 startup_stm32h743xx.s
@@ -113,11 +121,13 @@ PREFIX = arm-none-eabi-
 # either it can be added to the PATH environment variable.
 ifdef GCC_PATH
 CC = $(GCC_PATH)/$(PREFIX)gcc
+CXX = $(GCC_PATH)/$(PREFIX)g++
 AS = $(GCC_PATH)/$(PREFIX)gcc -x assembler-with-cpp
 CP = $(GCC_PATH)/$(PREFIX)objcopy
 SZ = $(GCC_PATH)/$(PREFIX)size
 else
 CC = $(PREFIX)gcc
+CXX = $(PREFIX)g++
 AS = $(PREFIX)gcc -x assembler-with-cpp
 CP = $(PREFIX)objcopy
 SZ = $(PREFIX)size
@@ -164,7 +174,12 @@ C_INCLUDES =  \
 -IDrivers/CMSIS/Include \
 -IMiddlewares/Third_Party/FreeRTOS/Source/include \
 -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 \
--IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F
+-IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F \
+-IGlider-App/estimation \
+-IGlider-App/estimation/ug_estimation/include \
+-IGlider-App/tasks \
+-IGlider-App/common \
+-IMiddlewares/Third_Party/Eigen
 
 
 # compile gcc flags
@@ -179,6 +194,20 @@ endif
 
 # Generate dependency information
 CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
+
+#######################################
+# CXXFLAGS（C++：ESKF 核心 + Eigen）
+#######################################
+# 复用 C 的 mcu / 宏 / include，再加 C++ 专属选项
+CXXFLAGS += $(MCU) $(C_DEFS) $(C_INCLUDES) $(OPT) -Wall -fdata-sections -ffunction-sections
+CXXFLAGS += -std=gnu++14 -DUG_EKF_USE_FP32 -DEIGEN_NO_MALLOC -DEIGEN_DONT_VECTORIZE \
+            -fno-exceptions -fno-rtti -fno-threadsafe-statics -fno-use-cxa-atexit
+ifeq ($(DEBUG), 1)
+CXXFLAGS += -g -gdwarf-2
+endif
+CXXFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
+# 注意：不要加 -ffast-math / -ffinite-math-only（会让 std::isfinite 恒真，废掉 NaN/FAULT 检测）
+# bring-up 阶段不加 -DEIGEN_NO_DEBUG（保留 Eigen assert 抓 malloc/误用），稳定后再加
 
 
 #######################################
@@ -202,6 +231,9 @@ all: $(BUILD_DIR)/$(TARGET).elf $(BUILD_DIR)/$(TARGET).hex $(BUILD_DIR)/$(TARGET
 # list of objects
 OBJECTS = $(addprefix $(BUILD_DIR)/,$(notdir $(C_SOURCES:.c=.o)))
 vpath %.c $(sort $(dir $(C_SOURCES)))
+# C++ 目标文件
+OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(CPP_SOURCES:.cpp=.o)))
+vpath %.cpp $(sort $(dir $(CPP_SOURCES)))
 # list of ASM program objects
 OBJECTS += $(addprefix $(BUILD_DIR)/,$(notdir $(ASM_SOURCES:.s=.o)))
 vpath %.s $(sort $(dir $(ASM_SOURCES)))
@@ -211,13 +243,16 @@ vpath %.S $(sort $(dir $(ASMM_SOURCES)))
 $(BUILD_DIR)/%.o: %.c Makefile | $(BUILD_DIR) 
 	$(CC) -c $(CFLAGS) -Wa,-a,-ad,-alms=$(BUILD_DIR)/$(notdir $(<:.c=.lst)) $< -o $@
 
+$(BUILD_DIR)/%.o: %.cpp Makefile | $(BUILD_DIR)
+	$(CXX) -c $(CXXFLAGS) $< -o $@
+
 $(BUILD_DIR)/%.o: %.s Makefile | $(BUILD_DIR)
 	$(AS) -c $(CFLAGS) $< -o $@
 $(BUILD_DIR)/%.o: %.S Makefile | $(BUILD_DIR)
 	$(AS) -c $(CFLAGS) $< -o $@
 
 $(BUILD_DIR)/$(TARGET).elf: $(OBJECTS) Makefile
-	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
+	$(CXX) $(OBJECTS) $(LDFLAGS) -o $@
 	$(SZ) $@
 
 $(BUILD_DIR)/%.hex: $(BUILD_DIR)/%.elf | $(BUILD_DIR)

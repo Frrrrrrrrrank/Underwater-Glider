@@ -36,6 +36,8 @@
 #include "ethernet_uart_driver.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "ekf_task.h"//EKF相关头文件声明
+#include "glider_time.h"
 
 /* USER CODE END Includes */
 
@@ -311,6 +313,15 @@ const osThreadAttr_t Usart2Task_attributes = {
   .priority = (osPriority_t) osPriorityNormal3,
 };
 /* USER CODE BEGIN PV */
+/* EKF 任务句柄与属性，单一所有者，仅此任务访问滤波器单例 g_ekf */
+osThreadId_t ekfTaskHandle;
+const osThreadAttr_t ekfTask_attributes = {
+  .name = "ekfTask",
+  /* 栈 16KB（4096 B ×4），上板后看 g_ekf_stack_high_water_words 再收敛 */
+  .stack_size = 4096 * 4,
+  /* 优先级与 IMU 同级，低于舵机任务 */
+  .priority = (osPriority_t) osPriorityNormal2,
+};
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
 volatile uint32_t g_dbg_rx_line_count = 0U;
@@ -643,7 +654,9 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   (void)osThreadNew(EthernetUartDriver_RunTask, NULL, &Usart2Task_attributes);
-  g_dbg_boot_stage = 6U;
+  /* 创建 EKF 任务，基于事件触发，IMU 输入后被唤醒 */
+  ekfTaskHandle = osThreadNew(StartEkfTask, NULL, &ekfTask_attributes);
+  g_dbg_boot_stage = 6U;//EKF Task 阶段标志位
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -2518,6 +2531,10 @@ void Start_IMU_Task(void *argument)
       g_imu_debug.my = raw.mag.my;
       g_imu_debug.mz = raw.mag.mz;
       g_imu_debug.raw_updated = raw.updated;
+
+    /* 输入给ESKF，唯一 IMU 数据源，时间戳用统一单调时钟，唤醒 EKF 任务 */
+    // 写IMU快照，防止读写冲突，唤醒EKFTask，定义在ekf_task
+      EkfTask_PublishImuRaw(&raw, GliderTime_NowUs());
     }
 
     /* Read Euler angles if available */
