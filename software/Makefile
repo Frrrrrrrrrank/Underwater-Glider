@@ -53,6 +53,7 @@ Glider-Core/sbus_driver.c \
 Glider-Core/buzzer_driver.c \
 Glider-Core/disk_driver.c \
 Glider-Core/limit_switch.c \
+Glider-Core/thruster_driver.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc.c \

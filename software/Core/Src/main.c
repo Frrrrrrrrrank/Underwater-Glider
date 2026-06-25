@@ -40,6 +40,7 @@
 #include "task.h"
 #include "disk_driver.h"
 #include "limit_switch.h"
+#include "thruster_driver.h"
 
 /* USER CODE END Includes */
 
@@ -588,6 +589,12 @@ int main(void)
 
   /* Initialize pressure sensor non-blocking RX driver */
   PressureSensorDriver_Init(&huart1);
+
+  /* Initialize thruster PWM driver on TIM15 CH1/CH2 (PE5/PE6). */
+  if (ThrusterDriver_Init(&htim15) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
   /* Initialize SBUS non-blocking RX driver on UART8 */
   SbusDriver_Init(&huart8);
@@ -2638,6 +2645,7 @@ void Start_IMU_Task(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartServoTask */
+uint16_t test_thru = 0U;
 void StartServoTask(void *argument)
 {
   /* USER CODE BEGIN StartServoTask */
@@ -2655,6 +2663,10 @@ void StartServoTask(void *argument)
   uint16_t sw_right_outer;
   int32_t worm_cmd_rpm;
   int32_t stepper_cmd_rpm;
+  uint8_t thrust_speed_cmd = 0U;
+  uint8_t thrust_direction_cmd = 0U;
+  uint8_t thrust_first_nonzero_done = 0U;
+  uint16_t thrust_pulse_us;
 
   (void)argument;
 
@@ -2779,6 +2791,21 @@ void StartServoTask(void *argument)
       {
         Stepper_SetContinuousSignedRpm(0);
         stepper_cmd_rpm = 0;
+      }
+
+      thrust_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor_speed_rpm;
+      thrust_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction;
+
+      if ((thrust_first_nonzero_done == 0U) && (thrust_speed_cmd != 0U))
+      {
+        (void)ThrusterDriver_SetDualPulseUs(THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
+        thrust_first_nonzero_done = 1U;
+      }
+      else
+      {
+        thrust_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust_direction_cmd, thrust_speed_cmd);
+        test_thru = 3000-thrust_pulse_us;
+        (void)ThrusterDriver_SetDualPulseUs(thrust_pulse_us, test_thru);
       }
     }
 

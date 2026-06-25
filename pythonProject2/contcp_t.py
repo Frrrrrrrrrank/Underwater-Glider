@@ -4,6 +4,7 @@ import threading
 import time
 import sys
 import ctypes
+import json
 
 # ==================== 全局标志 ====================
 running = True          # 控制线程退出
@@ -483,26 +484,78 @@ class SnapshotAssembler:
         self._hex_chars = len(remain_hex)
         return snap
 
+
+def _char_array_to_str(arr):
+    raw = bytes(arr)
+    nul_idx = raw.find(b'\x00')
+    if nul_idx >= 0:
+        raw = raw[:nul_idx]
+    return raw.decode('utf-8', errors='replace')
+
+
+def _ctypes_to_py(value, max_depth=6, array_limit=16, _depth=0):
+    if _depth >= max_depth:
+        return '...'
+
+    if isinstance(value, ctypes.Structure):
+        out = {}
+        for field_name, _ in value._fields_:
+            out[field_name] = _ctypes_to_py(
+                getattr(value, field_name),
+                max_depth=max_depth,
+                array_limit=array_limit,
+                _depth=_depth + 1,
+            )
+        return out
+
+    if isinstance(value, ctypes.Array):
+        if getattr(value, '_type_', None) is ctypes.c_char:
+            return _char_array_to_str(value)
+
+        length = len(value)
+        show_len = min(length, array_limit)
+        out = [_ctypes_to_py(value[i], max_depth=max_depth, array_limit=array_limit, _depth=_depth + 1)
+               for i in range(show_len)]
+        if length > show_len:
+            out.append(f'...(+{length - show_len} items)')
+        return out
+
+    if isinstance(value, (bytes, bytearray)):
+        return value.hex().upper()
+
+    return value
+
+
+def print_snapshot_struct(snap):
+    """把 EthernetUartSystemSnapshot 以可读结构化形式输出到命令行。"""
+    snap_dict = _ctypes_to_py(snap)
+    print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
+
 # ==================== 控制包发送函数 ====================
-def send_control_packet(conn, pitchmotor_direction, pitchmotor_speed_rpm,
-                        rollmotor_direction, rollmotor_speed_rpm,
+def send_control_packet(conn, pitchmotor_enable, pitchmotor_speed_rpm,
+                        rollmotor_enable, rollmotor_speed_rpm,
                         thrustmotor_direction, thrustmotor_speed_rpm,
+                        thrustmotor1se_speed_rpm, thrustmotor2se_speed_rpm,
+                        backup_for_thrust,
                         pump_direction, pump_on_off,
-                        ask_for_status, clear_rx_ring):
-    """打包并发送控制包"""
-    pack_format = '<B I B I B I B B B B'   # 小端紧凑打包
+                        ask_for_status, eth_control_flag):
+    """按 EthernetUartReadoutPack 结构打包并发送控制包（19字节）。"""
+    pack_format = '<B I B I B B B B B B B B B'   # 小端紧凑打包
     try:
         packet = struct.pack(pack_format,
-                             pitchmotor_direction & 0xFF,
+                             pitchmotor_enable & 0xFF,
                              pitchmotor_speed_rpm & 0xFFFFFFFF,
-                             rollmotor_direction & 0xFF,
+                             rollmotor_enable & 0xFF,
                              rollmotor_speed_rpm & 0xFFFFFFFF,
                              thrustmotor_direction & 0xFF,
-                             thrustmotor_speed_rpm & 0xFFFFFFFF,
+                             thrustmotor_speed_rpm & 0xFF,
+                             thrustmotor1se_speed_rpm & 0xFF,
+                             thrustmotor2se_speed_rpm & 0xFF,
+                             backup_for_thrust & 0xFF,
                              pump_direction & 0xFF,
                              pump_on_off & 0xFF,
                              ask_for_status & 0xFF,
-                             clear_rx_ring & 0xFF)
+                             eth_control_flag & 0xFF)
         conn.sendall(packet)
         print(f"[控制包] 已发送，长度 {len(packet)} 字节")
         return True
@@ -515,16 +568,19 @@ def input_control_packet(conn):
     """引导用户输入控制包各字段并发送"""
     print("\n========== 输入控制包字段 ==========")
     fields = [
-        ('pitchmotor_direction', 'uint8 (0-255)'),
+        ('pitchmotor_enable', 'uint8 (0-255)'),
         ('pitchmotor_speed_rpm', 'uint32 (0-4294967295)'),
-        ('rollmotor_direction', 'uint8 (0-255)'),
+        ('rollmotor_enable', 'uint8 (0-255)'),
         ('rollmotor_speed_rpm', 'uint32 (0-4294967295)'),
         ('thrustmotor_direction', 'uint8 (0-255)'),
-        ('thrustmotor_speed_rpm', 'uint32 (0-4294967295)'),
+        ('thrustmotor_speed_rpm', 'uint8 (0-255)'),
+        ('thrustmotor1se_speed_rpm', 'uint8 (0-255)'),
+        ('thrustmotor2se_speed_rpm', 'uint8 (0-255)'),
+        ('backup_for_thrust', 'uint8 (0-255)'),
         ('pump_direction', 'uint8 (0-255)'),
         ('pump_on_off', 'uint8 (0-255)'),
         ('ask_for_status', 'uint8 (0-255)'),
-        ('clear_rx_ring', 'uint8 (0-255)')
+        ('eth_control_flag', 'uint8 (0-255)')
     ]
     values = []
     for name, hint in fields:
@@ -546,6 +602,25 @@ def receive_thread(conn):
     """负责不断接收并打印来自客户端的数据"""
     global running
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
+    line_buffer = ""
+
+    def handle_line(raw_line):
+        line = raw_line.strip()
+        if not line:
+            return
+
+        if line == "AT":
+            print("\n[客户端] AT")
+            return
+
+        snap = assembler.feed_line(line)
+        if snap is not None:
+            print(f"\n[客户端] 已还原 EthernetUartSystemSnapshot，大小={ctypes.sizeof(snap)} 字节")
+            print_snapshot_struct(snap)
+            return
+
+        print(f"\n[客户端] {line}")
+
     while running:
         try:
             # 设置超时，以便能定期检查 running 标志
@@ -554,23 +629,21 @@ def receive_thread(conn):
             if not data:
                 print("[信息] 客户端已断开连接。")
                 break
-            # 尝试解码为文本，如果是二进制则显示十六进制
-            try:
-                text = data.decode('utf-8', errors='replace')
-                lines = text.replace('\r', '\n').split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
 
-                    snap = assembler.feed_line(line)
-                    if snap is not None:
-                        print(f"\n[客户端] 已还原 EthernetUartSystemSnapshot，大小={ctypes.sizeof(snap)} 字节")
-                        continue
-
-                    print(f"\n[客户端] {line}")
-            except UnicodeDecodeError:
+            # STM32 发的是 ASCII 文本（AT 或快照十六进制行），这里做流式按行拼接。
+            text = data.decode('ascii', errors='ignore')
+            if not text:
                 print(f"\n[客户端] (二进制) {data.hex()}")
+                continue
+
+            line_buffer += text
+            while True:
+                newline_idx = line_buffer.find('\n')
+                if newline_idx < 0:
+                    break
+                one_line = line_buffer[:newline_idx].rstrip('\r')
+                line_buffer = line_buffer[newline_idx + 1:]
+                handle_line(one_line)
         except socket.timeout:
             # 超时后继续循环，以便检查 running 标志
             continue
