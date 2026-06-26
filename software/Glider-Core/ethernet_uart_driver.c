@@ -183,18 +183,30 @@ typedef struct
 
 typedef struct
 {
-  DisplacementSensorData displacement_sensor;
-  DisplacementSensorDiag displacement_diag;
-  GliderDebugView dbg_view;
-  GliderDebugQuickView dbg_quick;
-  IMUDebugView imu_debug;
-  uint8_t limit_switch_states[4];
-  UMotor umotor;
-  PressureSensorState pressure_sensor_state;
-  IoControlPumpDebugInfo io_pump_debug;
-  PumpMotorUart3Diag pump_motor_uart3_diag;
-  PumpDriverStatus pump_driver_status;
-  ServoDebugView servo_debug;
+  uint32_t alive_counter;
+  int32_t gnrmc_latitude_e6;
+  int32_t gnrmc_longitude_e6;
+  uint32_t alarm_bits;
+  int16_t displacement_mm_x10;
+  int16_t imu_roll_x10;
+  int16_t imu_pitch_x10;
+  int16_t imu_yaw_x10;
+  int16_t imu_height_dm;
+  int16_t imu_temp_c_x10;
+  uint16_t pressure_bar_x100;
+  int16_t pressure_temp_c_x10;
+  int16_t pump_feedback_rpm;
+  int16_t umotor0_feedback_rpm;
+  int16_t umotor1_feedback_rpm;
+  uint16_t servo_pulse_us;
+  uint8_t limit_switch_bits;
+  uint8_t displacement_valid;
+  uint8_t gnrmc_valid;
+  uint8_t pressure_valid;
+  uint8_t servo_mode;
+  uint8_t pump_speed_triggered;
+  uint8_t pump_direction_reversed;
+  uint8_t reserved[2];
 } EthernetUartSystemSnapshot;
 
 extern volatile GliderDebugView g_dbg_view;
@@ -225,25 +237,170 @@ static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_
 static uint32_t EthernetUartDriver_ReadLeU32(const uint8_t *bytes);
 static void EthernetUartDriver_UpdateSystemSnapshot(void);
 
+static int16_t EthernetUartDriver_ClampI16(int32_t value)
+{
+  if (value > 32767)
+  {
+    return 32767;
+  }
+  if (value < -32768)
+  {
+    return -32768;
+  }
+  return (int16_t)value;
+}
+
+static int16_t EthernetUartDriver_ScaleFloatToI16(float value, float scale)
+{
+  float scaled = value * scale;
+  if (scaled >= 0.0f)
+  {
+    scaled += 0.5f;
+  }
+  else
+  {
+    scaled -= 0.5f;
+  }
+  return EthernetUartDriver_ClampI16((int32_t)scaled);
+}
+
+static int32_t EthernetUartDriver_ScaleFloatToI32(float value, float scale)
+{
+  float scaled = value * scale;
+  if (scaled >= 0.0f)
+  {
+    scaled += 0.5f;
+  }
+  else
+  {
+    scaled -= 0.5f;
+  }
+  return (int32_t)scaled;
+}
+
 static void EthernetUartDriver_UpdateSystemSnapshot(void)
 {
+  uint32_t alarm = 0U;
+  uint8_t limit_bits = 0U;
   uint32_t i;
 
-  g_ethernet_system_snapshot.displacement_sensor = g_displacement_sensor;
-  g_ethernet_system_snapshot.displacement_diag = g_displacement_diag;
-  g_ethernet_system_snapshot.dbg_view = g_dbg_view;
-  g_ethernet_system_snapshot.dbg_quick = g_dbg_quick;
-  g_ethernet_system_snapshot.imu_debug = g_imu_debug;
   for (i = 0U; i < 4U; i++)
   {
-    g_ethernet_system_snapshot.limit_switch_states[i] = g_limit_switch_states[i];
+    if (g_limit_switch_states[i] != 0U)
+    {
+      limit_bits |= (uint8_t)(1U << i);
+    }
   }
-  g_ethernet_system_snapshot.umotor = g_umotor;
-  g_ethernet_system_snapshot.pressure_sensor_state = g_pressure_sensor_state;
-  g_ethernet_system_snapshot.io_pump_debug = g_io_pump_debug;
-  g_ethernet_system_snapshot.pump_motor_uart3_diag = g_pump_motor_uart3_diag;
-  g_ethernet_system_snapshot.pump_driver_status = g_pump_driver_status;
-  g_ethernet_system_snapshot.servo_debug = g_servo_debug;
+
+  if (g_displacement_diag.last_error != 0U)
+  {
+    alarm |= (1UL << 0);
+  }
+  if (g_displacement_diag.timeout_count != 0U)
+  {
+    alarm |= (1UL << 1);
+  }
+  if (g_displacement_diag.crc_error_count != 0U)
+  {
+    alarm |= (1UL << 2);
+  }
+  if (g_imu_debug.crc_error_count != 0U)
+  {
+    alarm |= (1UL << 3);
+  }
+  if (g_imu_debug.rx_overflow_count != 0U)
+  {
+    alarm |= (1UL << 4);
+  }
+  if (g_imu_debug.uart4_error_count != 0U)
+  {
+    alarm |= (1UL << 5);
+  }
+  if (g_pressure_sensor_state.diag.last_error != 0U)
+  {
+    alarm |= (1UL << 6);
+  }
+  if (g_pressure_sensor_state.diag.timeout_count != 0U)
+  {
+    alarm |= (1UL << 7);
+  }
+  if (g_pressure_sensor_state.diag.crc_error_count != 0U)
+  {
+    alarm |= (1UL << 8);
+  }
+  if (g_pressure_sensor_state.diag.exception_count != 0U)
+  {
+    alarm |= (1UL << 9);
+  }
+  if ((g_pump_motor_uart3_diag.last_error != 0U) || (g_pump_motor_uart3_diag.alarm_code != 0U))
+  {
+    alarm |= (1UL << 10);
+  }
+  if ((g_pump_driver_status.motor.alarm_code != 0U) || (g_pump_driver_status.motor.last_error != 0U))
+  {
+    alarm |= (1UL << 11);
+  }
+  if (g_umotor.bus_diag.last_error != 0U)
+  {
+    alarm |= (1UL << 12);
+  }
+  if ((g_umotor.nodes[0].debug.reg_0007_error_code != 0U) ||
+      (g_umotor.nodes[0].debug.reg_0194_latest_fault != 0U) ||
+      (g_umotor.nodes[1].debug.reg_0007_error_code != 0U) ||
+      (g_umotor.nodes[1].debug.reg_0194_latest_fault != 0U))
+  {
+    alarm |= (1UL << 13);
+  }
+  if ((g_dbg_view.gnrmc_status_valid == 0U) ||
+      (g_dbg_view.gnrmc_latitude_valid == 0U) ||
+      (g_dbg_view.gnrmc_longitude_valid == 0U))
+  {
+    alarm |= (1UL << 14);
+  }
+  if (limit_bits != 0U)
+  {
+    alarm |= (1UL << 15);
+  }
+
+  g_ethernet_system_snapshot.alive_counter = g_dbg_view.alive_counter;
+  g_ethernet_system_snapshot.gnrmc_latitude_e6 =
+      EthernetUartDriver_ScaleFloatToI32(g_dbg_view.gnrmc_latitude_deg, 1000000.0f);
+  g_ethernet_system_snapshot.gnrmc_longitude_e6 =
+      EthernetUartDriver_ScaleFloatToI32(g_dbg_view.gnrmc_longitude_deg, 1000000.0f);
+  g_ethernet_system_snapshot.alarm_bits = alarm;
+
+  g_ethernet_system_snapshot.displacement_mm_x10 =
+      EthernetUartDriver_ScaleFloatToI16(g_displacement_sensor.displacement_mm, 10.0f);
+  g_ethernet_system_snapshot.imu_roll_x10 = EthernetUartDriver_ScaleFloatToI16(g_imu_debug.roll, 10.0f);
+  g_ethernet_system_snapshot.imu_pitch_x10 = EthernetUartDriver_ScaleFloatToI16(g_imu_debug.pitch, 10.0f);
+  g_ethernet_system_snapshot.imu_yaw_x10 = EthernetUartDriver_ScaleFloatToI16(g_imu_debug.yaw, 10.0f);
+  g_ethernet_system_snapshot.imu_height_dm = EthernetUartDriver_ScaleFloatToI16(g_imu_debug.height, 10.0f);
+  g_ethernet_system_snapshot.imu_temp_c_x10 =
+      EthernetUartDriver_ScaleFloatToI16(g_imu_debug.temperature, 10.0f);
+  g_ethernet_system_snapshot.pressure_bar_x100 =
+      (uint16_t)EthernetUartDriver_ClampI16((int32_t)(g_pressure_sensor_state.readout.pressure_bar * 100.0f));
+  g_ethernet_system_snapshot.pressure_temp_c_x10 =
+      EthernetUartDriver_ScaleFloatToI16(g_pressure_sensor_state.readout.temperature_c, 10.0f);
+  g_ethernet_system_snapshot.pump_feedback_rpm =
+      EthernetUartDriver_ClampI16(g_pump_driver_status.motor.feedback_speed_rpm);
+  g_ethernet_system_snapshot.umotor0_feedback_rpm =
+      EthernetUartDriver_ClampI16(g_umotor.nodes[0].feedback_speed_rpm);
+  g_ethernet_system_snapshot.umotor1_feedback_rpm =
+      EthernetUartDriver_ClampI16(g_umotor.nodes[1].feedback_speed_rpm);
+  g_ethernet_system_snapshot.servo_pulse_us = g_servo_debug.current_pulse_us;
+
+  g_ethernet_system_snapshot.limit_switch_bits = limit_bits;
+  g_ethernet_system_snapshot.displacement_valid = (uint8_t)(g_displacement_sensor.valid != 0U);
+  g_ethernet_system_snapshot.gnrmc_valid =
+      (uint8_t)((g_dbg_view.gnrmc_status_valid != 0U) &&
+                (g_dbg_view.gnrmc_latitude_valid != 0U) &&
+                (g_dbg_view.gnrmc_longitude_valid != 0U));
+  g_ethernet_system_snapshot.pressure_valid = (uint8_t)(g_pressure_sensor_state.readout.pressure_valid != 0U);
+  g_ethernet_system_snapshot.servo_mode = (uint8_t)(g_servo_debug.mode & 0xFFU);
+  g_ethernet_system_snapshot.pump_speed_triggered = g_io_pump_debug.speed_triggered;
+  g_ethernet_system_snapshot.pump_direction_reversed = g_io_pump_debug.direction_reversed;
+  g_ethernet_system_snapshot.reserved[0] = 0U;
+  g_ethernet_system_snapshot.reserved[1] = 0U;
 }
 
 static void EthernetUartDriver_RearmReceive(void)
