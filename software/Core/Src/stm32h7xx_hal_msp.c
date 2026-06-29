@@ -103,7 +103,7 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
     PeriphClkInitStruct.PLL2.PLL2N = 12;
     PeriphClkInitStruct.PLL2.PLL2P = 2;
     PeriphClkInitStruct.PLL2.PLL2Q = 2;
-    PeriphClkInitStruct.PLL2.PLL2R = 2;
+    PeriphClkInitStruct.PLL2.PLL2R = 3;
     PeriphClkInitStruct.PLL2.PLL2RGE = RCC_PLL2VCIRANGE_3;
     PeriphClkInitStruct.PLL2.PLL2VCOSEL = RCC_PLL2VCOMEDIUM;
     PeriphClkInitStruct.PLL2.PLL2FRACN = 0;
@@ -435,20 +435,16 @@ void HAL_UART_MspInit(UART_HandleTypeDef* huart)
     PB12     ------> UART5_RX
     PB13     ------> UART5_TX
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_12;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_PULLUP;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    GPIO_InitStruct.Alternate = GPIO_AF14_UART5;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = GPIO_PIN_13;
+    GPIO_InitStruct.Pin = GPIO_PIN_12|GPIO_PIN_13;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF14_UART5;
     HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+    /* UART5 interrupt Init */
+    HAL_NVIC_SetPriority(UART5_IRQn, 10, 0);
+    HAL_NVIC_EnableIRQ(UART5_IRQn);
   /* USER CODE BEGIN UART5_MspInit 1 */
 
   /* USER CODE END UART5_MspInit 1 */
@@ -821,16 +817,16 @@ void HAL_UART_MspDeInit(UART_HandleTypeDef* huart)
 }
 
 /**
-* @brief MMC MSP Initialization
+* @brief SD MSP Initialization
 * This function configures the hardware resources used in this example
-* @param hmmc: MMC handle pointer
+* @param hsd: SD handle pointer
 * @retval None
 */
-void HAL_MMC_MspInit(MMC_HandleTypeDef* hmmc)
+void HAL_SD_MspInit(SD_HandleTypeDef* hsd)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
-  if(hmmc->Instance==SDMMC1)
+  if(hsd->Instance==SDMMC1)
   {
   /* USER CODE BEGIN SDMMC1_MspInit 0 */
 
@@ -873,6 +869,9 @@ void HAL_MMC_MspInit(MMC_HandleTypeDef* hmmc)
     GPIO_InitStruct.Alternate = GPIO_AF12_SDIO1;
     HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+    /* SDMMC1 interrupt Init */
+    HAL_NVIC_SetPriority(SDMMC1_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(SDMMC1_IRQn);
   /* USER CODE BEGIN SDMMC1_MspInit 1 */
 
   /* USER CODE END SDMMC1_MspInit 1 */
@@ -882,14 +881,14 @@ void HAL_MMC_MspInit(MMC_HandleTypeDef* hmmc)
 }
 
 /**
-* @brief MMC MSP De-Initialization
+* @brief SD MSP De-Initialization
 * This function freeze the hardware resources used in this example
-* @param hmmc: MMC handle pointer
+* @param hsd: SD handle pointer
 * @retval None
 */
-void HAL_MMC_MspDeInit(MMC_HandleTypeDef* hmmc)
+void HAL_SD_MspDeInit(SD_HandleTypeDef* hsd)
 {
-  if(hmmc->Instance==SDMMC1)
+  if(hsd->Instance==SDMMC1)
   {
   /* USER CODE BEGIN SDMMC1_MspDeInit 0 */
 
@@ -910,6 +909,8 @@ void HAL_MMC_MspDeInit(MMC_HandleTypeDef* hmmc)
 
     HAL_GPIO_DeInit(GPIOD, GPIO_PIN_2);
 
+    /* SDMMC1 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(SDMMC1_IRQn);
   /* USER CODE BEGIN SDMMC1_MspDeInit 1 */
 
   /* USER CODE END SDMMC1_MspDeInit 1 */

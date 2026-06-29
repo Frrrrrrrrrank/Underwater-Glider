@@ -11,6 +11,7 @@
 #include <string.h>
 
 extern UART_HandleTypeDef huart2;
+extern uint8_t g_limit_switch_states[4];
 
 #define MOTOR_RS485_UART (&huart2)
 
@@ -656,6 +657,16 @@ void UMotor_SetTargetSpeedById(uint8_t node_id, int32_t target_speed_rpm)
   {
     target_speed_rpm = -32768;
   }
+
+  if (g_limit_switch_states[1] == 0 && target_speed_rpm > 0)
+  {
+    target_speed_rpm = 0;
+  }
+   if (g_limit_switch_states[3] == 0 && target_speed_rpm < 0)
+  {
+    target_speed_rpm = 0;
+  }
+
 
   for (i = 0U; i < UMOTOR_NODE_COUNT; i++)
   {

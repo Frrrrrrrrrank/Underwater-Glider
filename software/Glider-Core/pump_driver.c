@@ -2,6 +2,8 @@
 #include "sbus_driver.h"
 #include "cmsis_os.h"
 #include "stm32h7xx_hal.h"
+#include "displacement_sensor.h"
+#include "ethernet_uart_driver.h"
 
 #include <string.h>
 
@@ -520,7 +522,8 @@ void IoControlPump_Poll(uint32_t now_ms)
   {
     return;
   }
-
+  if (g_ethernet_rx_message_flag == 0U)
+  {
   /* Get current SBUS channels */
   channel_count = SbusDriver_GetChannels(channels, 18U, &frame_lost, &failsafe, &last_update_tick);
   
@@ -563,11 +566,65 @@ void IoControlPump_Poll(uint32_t now_ms)
   {
     IoControlPump_SetDirection(1U);
     g_io_pump_debug.direction_reversed = 1U;
+    if(g_displacement_sensor.displacement_mm < 48.0f)
+    {
+      /* If currently extended, reverse direction to retract. */
+      IoControlPump_SetSpeed(0U);
+      g_io_pump_debug.speed_triggered = 0U;
+    }
+   
   }
   else
   {
     IoControlPump_SetDirection(0U);
     g_io_pump_debug.direction_reversed = 0U;
+     if(g_displacement_sensor.displacement_mm > 137.0f)
+    {
+      /* If currently extended, reverse direction to retract. */
+      IoControlPump_SetSpeed(0U);
+      g_io_pump_debug.speed_triggered = 0U;
+    }
+  }
+  }
+  else
+  {
+    g_io_pump_debug.right_outer_switch = 0U;
+    g_io_pump_debug.left_mid2_switch = 0U;
+
+    if (g_ethernet_uart_readout_pack.pump_on_off == 1U)
+  {
+    IoControlPump_SetSpeed(1U);
+    g_io_pump_debug.speed_triggered = 1U;
+  }
+  else
+  {
+    IoControlPump_SetSpeed(0U);
+    g_io_pump_debug.speed_triggered = 0U;
+  }
+
+  if (g_ethernet_uart_readout_pack.pump_direction == 1U)
+  {
+    IoControlPump_SetDirection(1U);
+    g_io_pump_debug.direction_reversed = 1U;
+    if(g_displacement_sensor.displacement_mm < 48.0f)
+    {
+      /* If currently extended, reverse direction to retract. */
+      IoControlPump_SetSpeed(0U);
+      g_io_pump_debug.speed_triggered = 0U;
+    }
+   
+  }
+  else
+  {
+    IoControlPump_SetDirection(0U);
+    g_io_pump_debug.direction_reversed = 0U;
+     if(g_displacement_sensor.displacement_mm > 137.0f)
+    {
+      /* If currently extended, reverse direction to retract. */
+      IoControlPump_SetSpeed(0U);
+      g_io_pump_debug.speed_triggered = 0U;
+    }
+  }
   }
 }
 
