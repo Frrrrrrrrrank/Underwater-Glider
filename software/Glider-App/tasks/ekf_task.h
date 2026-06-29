@@ -28,6 +28,7 @@ void EkfTask_PublishImuRaw(const IMU_RawData *raw, uint64_t t_us);
 extern volatile uint32_t g_ekf_task_loop_count;
 extern volatile uint32_t g_ekf_stack_high_water_words;  /* 任务栈剩余水位 (words) */
 extern volatile float    g_ekf_mag_raw[3];              /* raw mag(uT)，v1 不入 EKF */
+extern volatile float    g_ekf_imu_hz;                  /* 实测 IMU 真实新帧率 (Hz)，每秒刷新 */
 
 #ifdef __cplusplus
 }

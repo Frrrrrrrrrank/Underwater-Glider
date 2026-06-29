@@ -9,6 +9,11 @@
 
 #include <string.h>
 
+/* 本板深度计为【表压】传感器（空气里≈0）：depth = P_gauge/(ρg) = bar*1e5/(ρg)，不减大气压。
+   系数与 wrapper 默认一致；空气中 gauge≈0 故 depth≈0，不受 rho 取值影响。 */
+static const float kWaterRho = 1028.0f;   /* 水密度 kg/m^3 */
+static const float kGravity  = 9.81f;     /* 重力 m/s^2 */
+
 /*  受保护输入缓存（IMU task 写，EKF task 读，单槽 latest-wins）  */
 typedef struct {
   float    gx, gy, gz, ax, ay, az;
@@ -27,7 +32,8 @@ static uint32_t   s_snap_seq = 0;
 volatile uint32_t g_ekf_imu_push_count = 0;
 volatile uint32_t g_ekf_imu_drop_count = 0;
 volatile uint32_t g_ekf_pressure_push_count = 0;
-
+volatile float    g_ekf_depth_meas = 0.0f;   // 换算后的深度测量值(m)，供 Ozone 对比 out.depth_m
+//填数据
 void EkfBridge_Init(void)
 {
   UgEkfConfig cfg;
@@ -40,6 +46,7 @@ void EkfBridge_Init(void)
   s_imu_in_seq = 0;
   s_imu_last_seq = 0;
   s_pressure_last_tick = 0;
+  g_ekf_depth_meas = 0.0f;
   memset(&g_state_estimate, 0, sizeof(g_state_estimate));
   s_snap_seq = 0;
 }
@@ -75,20 +82,24 @@ static int takeImuInput(EkfImuInput *dst)
 
 void EkfBridge_Step(void)//在EKF的task里调用
 {
-  /* 1) IMU：使用输入数据（单槽 latest-wins；积压就降采样，dt 由样本时间戳保证正确）
-   *    while 形式为将来升级 ring buffer 预留；当前单槽下最多迭代一次。 */
+  /* 1) IMU：单槽 latest-wins，每次只取最新一帧，处理完即返回，保证 Step 一定走到 publish，
+   *    不会被高速输入拖住活锁，输入快于 predict 时只丢帧，drop_count 增长 */
+  // 后续可能需要实现ring-buffer
   EkfImuInput in;
-  while (takeImuInput(&in)) {
+  if (takeImuInput(&in)) {
     //EKF的Task，算法层
     UgEkf_PushImu(in.gx, in.gy, in.gz, in.ax, in.ay, in.az, in.t_us);
     g_ekf_imu_push_count++;
   }
 
-  /* 2) 压力：仅在 valid 且 last_update_tick 变化时 push（对齐前 wrapper 内部会忽略）。 */
+  /* 2) 压力：仅在 valid 且 last_update_tick 变化时 push（对齐前 wrapper 内部会忽略）。
+   *    本板深度计是【表压】(空气≈0)：depth = bar*1e5/(ρg)，不减大气压，
+   *    故绕过 UgEkf_PushPressureBar（它按绝对压减 p_atm，会多出 -10m 偏置）。 */
   if (g_pressure_sensor_readout.pressure_valid &&
       g_pressure_sensor_readout.last_update_tick != s_pressure_last_tick) {
     s_pressure_last_tick = g_pressure_sensor_readout.last_update_tick;
-    UgEkf_PushPressureBar(g_pressure_sensor_readout.pressure_bar, GliderTime_NowUs());
+    g_ekf_depth_meas = g_pressure_sensor_readout.pressure_bar * 1.0e5f / (kWaterRho * kGravity);
+    UgEkf_PushDepth(g_ekf_depth_meas, GliderTime_NowUs());
     g_ekf_pressure_push_count++;
   }
 

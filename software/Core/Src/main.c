@@ -2532,9 +2532,15 @@ void Start_IMU_Task(void *argument)
       g_imu_debug.mz = raw.mag.mz;
       g_imu_debug.raw_updated = raw.updated;
 
-    /* 输入给ESKF，唯一 IMU 数据源，时间戳用统一单调时钟，唤醒 EKF 任务 */
-    // 写IMU快照，防止读写冲突，唤醒EKFTask，定义在ekf_task
-      EkfTask_PublishImuRaw(&raw, GliderTime_NowUs());
+    /*输入给ESKF，唯一 IMU 数据源，时间戳用统一单调时钟，唤醒EKF任务*/
+    //写IMU快照，防止读写冲突，唤醒EKFTask，定义在ekf_task
+    /* 仅在真正有新 raw 帧时投喂 ESKF，IMU_Core_GetRawData 的返回值是"曾收到过帧"，
+       不是新帧；raw.updated 才是真正的新帧标志。否则会以 ~1kHz 重复投喂旧帧导致活锁
+       上一版bug在于用于判断的参数错误 */
+      if (raw.updated)
+      {
+        EkfTask_PublishImuRaw(&raw, GliderTime_NowUs());
+      }
     }
 
     /* Read Euler angles if available */

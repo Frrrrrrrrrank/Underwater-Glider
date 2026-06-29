@@ -41,6 +41,7 @@ extern StateEstimate     g_state_estimate;       /* 最新快照镜像 */
 extern volatile uint32_t g_ekf_imu_push_count;
 extern volatile uint32_t g_ekf_imu_drop_count;   /* 输入缓存被覆盖丢弃的帧数 */
 extern volatile uint32_t g_ekf_pressure_push_count;
+extern volatile float    g_ekf_depth_meas;       /* 换算后的深度测量(m)，对比 out.depth_m */
 
 #ifdef __cplusplus
 }
