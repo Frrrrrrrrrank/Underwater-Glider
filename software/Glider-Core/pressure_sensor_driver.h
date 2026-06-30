@@ -5,8 +5,13 @@
 #include <stdint.h>
 
 #define PRESSURE_SENSOR_RX_RING_SIZE 512U
-#define PRESSURE_SENSOR_MODBUS_REQUEST_PERIOD_MS 500U
-#define PRESSURE_SENSOR_MODBUS_RESPONSE_TIMEOUT_MS 120U
+/* 压力计深度更新率：调用 PressureSensorDriver_Poll 的任务为 osDelay(100)=10Hz。
+ * 请求门限取 90ms(略小于 100ms 循环周期)，保证每次循环都触发、稳定 ~10Hz，
+ * 不会因 tick 取整偶尔跳成 5Hz。EKF 侧按 last_update_tick 变化自动 push，无需改动。
+ * 若要再提速到 30Hz，需把 Poll 调用任务的 osDelay 也降到 ≤33ms（或独立压力任务）。 */
+#define PRESSURE_SENSOR_MODBUS_REQUEST_PERIOD_MS 90U
+/* 响应超时必须 < 请求周期；Keller @115200 实际响应仅几 ms，60ms 留 10× 余量 */
+#define PRESSURE_SENSOR_MODBUS_RESPONSE_TIMEOUT_MS 60U
 #define PRESSURE_SENSOR_MODBUS_DEFAULT_ADDR 250U
 
 typedef struct
