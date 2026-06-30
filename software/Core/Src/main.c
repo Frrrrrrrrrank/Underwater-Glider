@@ -175,6 +175,11 @@ typedef struct
   uint32_t last_function_code;    /* Last received function code (0x40, 0x41, etc) */
   uint32_t last_rx_function;      /* Return-state frame field[0] */
   int32_t last_rx_state;          /* Return-state frame field[1] */
+  //Ozone调试变量,用于看IMU设置的频率
+  uint32_t freq_set_attempt_count;/* 输出频率设置命令的发送尝试次数 */
+  uint32_t freq_set_success_count;/* 输出频率设置命令的串口发送成功次数 */
+  uint32_t freq_set_last_status;  /* 最近一次发送频率命令的 HAL 状态 */
+  uint32_t requested_output_hz;   /* 最近一次请求设置的输出频率，单位 Hz */
   
   /* Raw 9-axis data */
   float ax, ay, az;               /* Accelerometer (m/s²) */
@@ -2588,6 +2593,10 @@ void Start_IMU_Task(void *argument)
     g_imu_debug.last_function_code = IMU_Core_GetLastFunctionCode();
     g_imu_debug.last_rx_function = IMU_Core_GetLastRxFunction();
     g_imu_debug.last_rx_state = IMU_Core_GetLastRxState();
+    g_imu_debug.freq_set_attempt_count = IMU_Core_GetFreqSetAttemptCount();
+    g_imu_debug.freq_set_success_count = IMU_Core_GetFreqSetSuccessCount();
+    g_imu_debug.freq_set_last_status = IMU_Core_GetFreqSetLastStatus();
+    g_imu_debug.requested_output_hz = IMU_Core_GetRequestedOutputFreqHz();
 
     /* Read raw 9-axis data if available */
     if (IMU_Core_GetRawData(&raw))

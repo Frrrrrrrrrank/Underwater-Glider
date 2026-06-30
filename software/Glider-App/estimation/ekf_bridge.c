@@ -38,8 +38,14 @@ void EkfBridge_Init(void)
 {
   UgEkfConfig cfg;
   UgEkf_DefaultConfig(&cfg);
-  /* TODO 上控制前填：cfg.mount_R（IMU 实装方向，行主序 3x3）、cfg.r_pressure_frd
-   *      （压力计杠杆臂）、cfg.mag_declination_rad 等。v1 用默认单位阵仅跑通链路。 */
+  /* IMU 原始静止读数 az≈+g，模块坐标按“前-左-上”处理；
+   * 转换到 EKF 使用的“前-右-下”机体坐标系。
+   * 行主序矩阵 diag(+1,-1,-1)：前轴不变，左轴取反变为右轴，上轴取反变为下轴。 */
+  cfg.mount_R[0] =  1.0f; cfg.mount_R[1] =  0.0f; cfg.mount_R[2] =  0.0f;
+  cfg.mount_R[3] =  0.0f; cfg.mount_R[4] = -1.0f; cfg.mount_R[5] =  0.0f;
+  cfg.mount_R[6] =  0.0f; cfg.mount_R[7] =  0.0f; cfg.mount_R[8] = -1.0f;
+  /* TODO 上控制前实测填写 cfg.r_pressure_frd（压力计杠杆臂）、
+   * cfg.mag_declination_rad 等。 */
   UgEkf_Init(&cfg);
 
   memset(&s_imu_in, 0, sizeof(s_imu_in));

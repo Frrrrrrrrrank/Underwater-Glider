@@ -24,6 +24,16 @@ static volatile uint8_t imu_recent_rx_pos = 0;
 static volatile uint8_t imu_recent_rx_count = 0;
 
 #define IMU_RX_IRQ_BUDGET_BYTES 64U
+#define IMU_FREQ_SET_FRAME_LENGTH  7U   /* 设置输出频率命令的完整帧长，单位字节 */
+#define IMU_FREQ_SET_RETRY_MS     200U  /* 两次发送尝试之间的最短间隔，单位毫秒 */
+#define IMU_FREQ_SET_MAX_ATTEMPTS   3U  /* 单次上电最多尝试发送三次 */
+#define IMU_UART_TX_TIMEOUT_MS      20U  /* 阻塞式串口发送的超时时间，单位毫秒 */
+
+static uint32_t imu_freq_set_attempt_count = 0U;             /* 已尝试发送的次数 */
+static uint32_t imu_freq_set_success_count = 0U;             /* HAL 返回发送成功的次数 */
+static uint32_t imu_freq_set_last_status = (uint32_t)HAL_ERROR; /* 最近一次发送的 HAL 状态 */
+static uint32_t imu_freq_set_last_attempt_tick = 0U;         /* 最近一次尝试发送时的系统毫秒计数 */
+static uint32_t imu_requested_output_freq_hz = 0U;           /* 最近一次请求的输出频率 */
 
 /* ============================================================
  * IMU Data Cache (Static storage for sensor readings)
@@ -409,6 +419,84 @@ static void process_imu_frames(void)
     }
 }
 
+//IMU 命令发送,用于设置imu的raw数据频率
+HAL_StatusTypeDef IMU_Core_SetOutputFrequency(uint8_t frequency_hz)
+{
+    uint8_t frame[IMU_FREQ_SET_FRAME_LENGTH]; /* 待发送的完整七字节协议帧 */
+    uint8_t checksum = 0U;                    /* 八位累加校验和 */
+    uint32_t i;                               /* 计算校验和时使用的循环下标 */
+    HAL_StatusTypeDef status;                 /* 保存 HAL 串口发送结果 */
+
+    /* 无论参数是否合法，都记录本次调用，便于在调试器中判断代码是否运行。 */
+    imu_freq_set_attempt_count++;
+    imu_freq_set_last_attempt_tick = HAL_GetTick();
+    imu_requested_output_freq_hz = (uint32_t)frequency_hz;
+
+    /* UART 未初始化或频率超出协议规定的 10～100 Hz 时不发送。 */
+    if (imu_uart == NULL ||
+        frequency_hz < IMU_OUTPUT_FREQ_MIN_HZ ||
+        frequency_hz > IMU_OUTPUT_FREQ_MAX_HZ)
+    {
+        imu_freq_set_last_status = (uint32_t)HAL_ERROR;
+        return HAL_ERROR;
+    }
+
+    /* 按通信协议依次填写帧头、总长度、功能码、频率值和固定参数 0x5F。 */
+    frame[0] = IMU_FRAME_HEAD1;
+    frame[1] = IMU_FRAME_HEAD2;
+    frame[2] = IMU_FREQ_SET_FRAME_LENGTH;
+    frame[3] = IMU_CMD_SET_OUTPUT_FREQ;
+    frame[4] = frequency_hz;
+    frame[5] = 0x5FU;
+
+    /* 从第一个帧头累加到固定参数，只保留最低八位作为校验和。 */
+    for (i = 0U; i < (IMU_FREQ_SET_FRAME_LENGTH - 1U); i++)
+    {
+        checksum = (uint8_t)(checksum + frame[i]);
+    }
+    frame[6] = checksum;
+
+    /* 将完整协议帧通过 IMU 所在 UART 发出。 */
+    status = HAL_UART_Transmit(imu_uart,
+                               frame,
+                               (uint16_t)IMU_FREQ_SET_FRAME_LENGTH,
+                               IMU_UART_TX_TIMEOUT_MS);
+    imu_freq_set_last_status = (uint32_t)status;
+
+    /* HAL_OK 只表示串口字节发送成功；协议无返回，不能据此确认模块已应用频率。 */
+    if (status == HAL_OK)
+    {
+        imu_freq_set_success_count++;
+    }
+
+    return status;
+}
+
+static void try_set_default_output_frequency(void)
+{
+    uint32_t now;
+
+    /* 先收到至少一帧有效数据，确认模块已经启动，再发送配置命令。
+     * 已经发送成功或达到最大尝试次数后，不再重复发送。 */
+    if (imu_cache.frame_count == 0U ||
+        imu_freq_set_success_count != 0U ||
+        imu_freq_set_attempt_count >= IMU_FREQ_SET_MAX_ATTEMPTS)
+    {
+        return;
+    }
+
+    now = HAL_GetTick();
+    /* 上一次发送失败后至少等待 200 ms，避免在任务循环中连续占用 UART。 */
+    if (imu_freq_set_attempt_count != 0U &&
+        (uint32_t)(now - imu_freq_set_last_attempt_tick) < IMU_FREQ_SET_RETRY_MS)
+    {
+        return;
+    }
+
+    /* 本项目默认要求模块以 100 Hz 自动输出。 */
+    (void)IMU_Core_SetOutputFrequency(IMU_OUTPUT_FREQ_TARGET_HZ);
+}
+
 /* ============================================================
  * Module Initialization
  * ============================================================
@@ -427,6 +515,11 @@ void IMU_Core_Init(UART_HandleTypeDef *uart_handle)
     imu_rx_rearm_ok_count = 0;
     imu_rx_rearm_fail_count = 0;
     imu_rx_init_status = (uint32_t)HAL_ERROR;
+    imu_freq_set_attempt_count = 0U;
+    imu_freq_set_success_count = 0U;
+    imu_freq_set_last_status = (uint32_t)HAL_ERROR;
+    imu_freq_set_last_attempt_tick = 0U;
+    imu_requested_output_freq_hz = 0U;
 
     /* Initialize data cache */
     memset(&imu_cache, 0, sizeof(imu_cache));
@@ -498,6 +591,7 @@ void IMU_Core_RunRxTask(void)
     }
 
     process_imu_frames();
+    try_set_default_output_frequency();
 }
 
 /* ============================================================
@@ -679,6 +773,26 @@ uint32_t IMU_Core_GetRxInitStatus(void)
     return imu_rx_init_status;
 }
 
+uint32_t IMU_Core_GetFreqSetAttemptCount(void)
+{
+    return imu_freq_set_attempt_count;
+}
+
+uint32_t IMU_Core_GetFreqSetSuccessCount(void)
+{
+    return imu_freq_set_success_count;
+}
+
+uint32_t IMU_Core_GetFreqSetLastStatus(void)
+{
+    return imu_freq_set_last_status;
+}
+
+uint32_t IMU_Core_GetRequestedOutputFreqHz(void)
+{
+    return imu_requested_output_freq_hz;
+}
+
 uint32_t IMU_Core_GetCrcErrorCount(void)
 {
     return imu_cache.crc_error_count;
@@ -744,6 +858,11 @@ void IMU_Core_ResetStatistics(void)
     imu_rx_rearm_fail_count = 0;
     imu_recent_rx_pos = 0;
     imu_recent_rx_count = 0;
+    imu_freq_set_attempt_count = 0U;
+    imu_freq_set_success_count = 0U;
+    imu_freq_set_last_status = (uint32_t)HAL_ERROR;
+    imu_freq_set_last_attempt_tick = 0U;
+    imu_requested_output_freq_hz = 0U;
 }
 
 /* ============================================================
