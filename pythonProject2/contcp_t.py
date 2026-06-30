@@ -735,14 +735,15 @@ def receive_thread(conn):
     ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
     ekf_csv.flush()
     print(f"[EKF] 遥测记录 -> {ekf_csv_path}")
-    ekf_stat = {"ok": 0, "bad": 0, "last_print": 0.0}
+    ekf_stat = {"ok": 0, "bad": 0, "last_print": 0.0, "last_key": None}
 
     def handle_line(raw_line):
         line = raw_line.strip()
         if not line:
             return
 
-        # —— EKF 遥测行：落 CSV、每 2 秒节流打印一行，不再整行刷屏 ——
+        # —— EKF 遥测行：始终落 CSV；仅在 状态/健康/就绪 变化时打印，平时静默 ——
+        #     （另留 30s 心跳确认链路存活；想完全静默把 HB 设成很大，如 1e9）
         if line.startswith("$UGEKF"):
             if not ekf_checksum_ok(line):
                 ekf_stat["bad"] += 1
@@ -754,10 +755,13 @@ def receive_thread(conn):
             ekf_csv.write(",".join(str(x) for x in ekf_csv_row(row)) + "\n")
             ekf_csv.flush()
             ekf_stat["ok"] += 1
+            fl = row["fl"]
+            key = (row["status"], (fl >> 0) & 1, (fl >> 1) & 1)  # (status, healthy, valid)
             now = time.time()
-            if now - ekf_stat["last_print"] >= 2.0:
+            HB = 30.0  # 心跳间隔(秒)
+            if key != ekf_stat["last_key"] or (now - ekf_stat["last_print"] >= HB):
+                ekf_stat["last_key"] = key
                 ekf_stat["last_print"] = now
-                fl = row["fl"]
                 print("\n[EKF] %s hlth=%d vld=%d roll=%.1f pitch=%.1f yaw=%.1f "
                       "depth=%.3f vD=%.3f ok=%d bad=%d"
                       % (EKF_STATUS_NAMES.get(row["status"], "?"),
