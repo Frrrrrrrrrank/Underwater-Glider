@@ -209,7 +209,15 @@ typedef struct
   uint8_t servo_mode;
   uint8_t pump_speed_triggered;
   uint8_t pump_direction_reversed;
-  uint8_t reserved[2];
+  /*EKF 状态估计（供以太网快照直接观察；x=pN, y=pE 为 NED 水平位置）*/
+  int32_t ekf_pN_cm;     /* x：北向位置 (cm)，Phase1 无水平观测会漂移 */
+  int32_t ekf_pE_cm;     /* y：东向位置 (cm)，同上 */
+  int32_t ekf_depth_mm;  /* 深度 (mm，正=水下) */
+  int16_t ekf_roll_x10;  /* 横滚 (deg×10) */
+  int16_t ekf_pitch_x10; /* 俯仰 (deg×10) */
+  int16_t ekf_yaw_x10;   /* 航向 (deg×10) */
+  uint8_t ekf_status;    /* UgEkfStatus 0..5 */
+  uint8_t ekf_valid;     /* 1 = valid_for_control(RUNNING&healthy) */
 } EthernetUartSystemSnapshot;
 
 extern volatile GliderDebugView g_dbg_view;
@@ -233,6 +241,9 @@ static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static volatile uint32_t s_tx_busy = 0U;
 static uint32_t s_last_command_tick = 0U;
+/* EKF 遥测开关：1=发(默认,上电即记录)，0=停。
+ * PC 用控制包 ask_for_status=2(开)/3(关) 切换；见 OnRxComplete。 */
+static volatile uint8_t s_ekf_telem_enabled = 1U;
 
 static void EthernetUartDriver_RearmReceive(void);
 static void EthernetUartDriver_RingPush(uint8_t byte);
@@ -405,8 +416,27 @@ static void EthernetUartDriver_UpdateSystemSnapshot(void)
   g_ethernet_system_snapshot.servo_mode = (uint8_t)(g_servo_debug.mode & 0xFFU);
   g_ethernet_system_snapshot.pump_speed_triggered = g_io_pump_debug.speed_triggered;
   g_ethernet_system_snapshot.pump_direction_reversed = g_io_pump_debug.direction_reversed;
-  g_ethernet_system_snapshot.reserved[0] = 0U;
-  g_ethernet_system_snapshot.reserved[1] = 0U;
+
+  /* EKF 状态估计：散读全局镜像 g_state_estimate（本函数在 ISR 上下文，
+     不能用 EkfBridge_CopyState 的临界区；偶发撕裂仅影响一帧显示，可接受）。
+     角度 rad→deg×10；位置 m→cm；深度 m→mm。 */
+  {
+    const UgEkfOutput *eo = &g_state_estimate.out;
+    g_ethernet_system_snapshot.ekf_pN_cm =
+        EthernetUartDriver_ScaleFloatToI32(eo->pN, 100.0f);
+    g_ethernet_system_snapshot.ekf_pE_cm =
+        EthernetUartDriver_ScaleFloatToI32(eo->pE, 100.0f);
+    g_ethernet_system_snapshot.ekf_depth_mm =
+        EthernetUartDriver_ScaleFloatToI32(eo->depth_m, 1000.0f);
+    g_ethernet_system_snapshot.ekf_roll_x10 =
+        EthernetUartDriver_ScaleFloatToI16(eo->roll * 57.2957795f, 10.0f);
+    g_ethernet_system_snapshot.ekf_pitch_x10 =
+        EthernetUartDriver_ScaleFloatToI16(eo->pitch * 57.2957795f, 10.0f);
+    g_ethernet_system_snapshot.ekf_yaw_x10 =
+        EthernetUartDriver_ScaleFloatToI16(eo->yaw * 57.2957795f, 10.0f);
+    g_ethernet_system_snapshot.ekf_status = (uint8_t)eo->status;
+    g_ethernet_system_snapshot.ekf_valid = (uint8_t)eo->valid_for_control;
+  }
 }
 
 static void EthernetUartDriver_RearmReceive(void)
@@ -643,8 +673,10 @@ void EthernetUartDriver_RunTask(void *argument)
     }
     else
     {
-      /* AT 配置完成进入透传：周期推送 EKF 状态估计遥测（10Hz） */
-      if ((now - s_last_ekf_tx_tick) >= ETHERNET_UART_EKF_PERIOD_MS)
+      /* AT 配置完成进入透传：开关打开时周期推送 EKF 遥测（10Hz）。
+       * 开关由 PC 控制包 ask_for_status=2(开)/3(关) 切换，默认开。 */
+      if ((s_ekf_telem_enabled != 0U) &&
+          ((now - s_last_ekf_tx_tick) >= ETHERNET_UART_EKF_PERIOD_MS))
       {
         EthernetUartDriver_SendEkfTelemetry();
         s_last_ekf_tx_tick = now;
@@ -994,6 +1026,14 @@ void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart)
   else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 0U))
   {
     EthernetUartDriver_SendText("AT\r\n");
+  }
+  else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 2U))
+  {
+    s_ekf_telem_enabled = 1U;   /* PC 请求：开始发 EKF 遥测 */
+  }
+  else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 3U))
+  {
+    s_ekf_telem_enabled = 0U;   /* PC 请求：停发 EKF 遥测 */
   }
 
   if (g_ethernet_uart_readout_pack.eth_control_flag == 1U)
