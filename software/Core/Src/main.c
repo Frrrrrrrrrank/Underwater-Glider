@@ -2663,10 +2663,13 @@ void StartServoTask(void *argument)
   uint16_t sw_right_outer;
   int32_t worm_cmd_rpm;
   int32_t stepper_cmd_rpm;
-  uint8_t thrust_speed_cmd = 0U;
-  uint8_t thrust_direction_cmd = 0U;
+  uint8_t thrust1_speed_cmd = 0U;
+  uint8_t thrust2_speed_cmd = 0U;
+  uint8_t thrust1_direction_cmd = 0U;
+  uint8_t thrust2_direction_cmd = 0U;
   uint8_t thrust_first_nonzero_done = 0U;
-  uint16_t thrust_pulse_us;
+  uint16_t thrust1_pulse_us;
+  uint16_t thrust2_pulse_us;
 
   (void)argument;
 
@@ -2793,19 +2796,21 @@ void StartServoTask(void *argument)
         stepper_cmd_rpm = 0;
       }
 
-      thrust_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor_speed_rpm;
-      thrust_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction;
+      thrust1_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor1se_speed_rpm;
+      thrust2_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor2se_speed_rpm;
+      thrust1_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction;
+      thrust2_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction2;
 
-      if ((thrust_first_nonzero_done == 0U) && (thrust_speed_cmd != 0U))
+      if ((thrust_first_nonzero_done == 0U) && ((thrust1_speed_cmd != 0U) || (thrust2_speed_cmd != 0U)))
       {
         (void)ThrusterDriver_SetDualPulseUs(THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
         thrust_first_nonzero_done = 1U;
       }
       else
       {
-        thrust_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust_direction_cmd, thrust_speed_cmd);
-        test_thru = 3000-thrust_pulse_us;
-        (void)ThrusterDriver_SetDualPulseUs(thrust_pulse_us, test_thru);
+        thrust1_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust1_direction_cmd, thrust1_speed_cmd);
+        thrust2_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust2_direction_cmd, thrust2_speed_cmd);
+        (void)ThrusterDriver_SetDualPulseUs(thrust1_pulse_us, thrust2_pulse_us);
       }
     }
 

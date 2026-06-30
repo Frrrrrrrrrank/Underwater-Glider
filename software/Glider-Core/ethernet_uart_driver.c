@@ -760,7 +760,7 @@ bool EthernetUartDriver_ConvertFront19BytesToPack(EthernetUartReadoutPack *out_p
   parsed.rollmotor_enable = raw[5];
   parsed.rollmotor_speed_rpm = EthernetUartDriver_ReadLeU32(&raw[6]);
   parsed.thrustmotor_direction = raw[10];
-  parsed.thrustmotor_speed_rpm = raw[11];
+  parsed.thrustmotor_direction2 = raw[11];
   parsed.thrustmotor1se_speed_rpm = raw[12];
   parsed.thrustmotor2se_speed_rpm = raw[13];
   parsed.backup_for_thrust = raw[14];
