@@ -44,8 +44,19 @@ void EkfBridge_Init(void)
   cfg.mount_R[0] =  1.0f; cfg.mount_R[1] =  0.0f; cfg.mount_R[2] =  0.0f;
   cfg.mount_R[3] =  0.0f; cfg.mount_R[4] = -1.0f; cfg.mount_R[5] =  0.0f;
   cfg.mount_R[6] =  0.0f; cfg.mount_R[7] =  0.0f; cfg.mount_R[8] = -1.0f;
-  /* TODO 上控制前实测填写 cfg.r_pressure_frd（压力计杠杆臂）、
-   * cfg.mag_declination_rad 等。 */
+
+  /* 压力计(深度计)相对 IMU 的杠杆臂，FRD(前-右-下)，单位米。
+   * 量测模型 z = e_D·(p_NED + R_NB·r_pressure_FRD)，方向为 IMU→压力计。
+   * 由实测推算（均相对车体原点、FLU 前-左-上，单位 mm）：
+   *   压力计 = (-300, 0, -25)，IMU = (24.29, 19.5, 0)
+   *   差值(压力计-IMU)_FLU = (-324.29, -19.5, -25)
+   *   FLU→FRD (x,-y,-z)    = (-324.29, 19.5, 25) mm = 下方各值(米)
+   * 注：量得不很准，量级 ~cm，对深度影响很小（仅大姿态角时显现）。 */
+  cfg.r_pressure_frd[0] = -0.32429f;  /* 前：压力计在 IMU 后方 324.29mm */
+  cfg.r_pressure_frd[1] =  0.01950f;  /* 右：压力计在 IMU 右侧 19.5mm */
+  cfg.r_pressure_frd[2] =  0.02500f;  /* 下：压力计在 IMU 下方 25mm */
+
+  /* TODO 上控制前实测填写 cfg.mag_declination_rad 等。 */
   UgEkf_Init(&cfg);
 
   memset(&s_imu_in, 0, sizeof(s_imu_in));
