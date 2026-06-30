@@ -149,6 +149,15 @@ void IMU_Core_RunTxTask(void);
  */
 HAL_StatusTypeDef IMU_Core_SetOutputFrequency(uint8_t frequency_hz);
 
+/**
+ * @brief 请求读取 IMU 模块的固件版本。
+ * 协议帧格式：7E 23 07 80 01 00 29。
+ * @return 本次串口发送的 HAL 状态。
+ *
+ * 该命令有版本返回帧，可用于验证“STM32 TX → IMU RX”方向是否真正连通。
+ */
+HAL_StatusTypeDef IMU_Core_RequestVersion(void);
+
 /* ============================================================
  * Data Getter Functions - Access sensor readings
  * ============================================================
@@ -285,6 +294,12 @@ uint32_t IMU_Core_GetFreqSetLastStatus(void);
 
 /** @brief 获取最近一次请求设置的输出频率，单位 Hz。 */
 uint32_t IMU_Core_GetRequestedOutputFreqHz(void);
+
+/** @brief 获取固件版本查询命令的发送尝试次数。 */
+uint32_t IMU_Core_GetVersionRequestAttemptCount(void);
+
+/** @brief 获取最近一次发送固件版本查询命令时的 HAL 状态。 */
+uint32_t IMU_Core_GetVersionRequestLastStatus(void);
 
 /**
  * @brief Reset all statistics counters

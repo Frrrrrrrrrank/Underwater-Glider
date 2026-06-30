@@ -180,6 +180,8 @@ typedef struct
   uint32_t freq_set_success_count;/* 输出频率设置命令的串口发送成功次数 */
   uint32_t freq_set_last_status;  /* 最近一次发送频率命令的 HAL 状态 */
   uint32_t requested_output_hz;   /* 最近一次请求设置的输出频率，单位 Hz */
+  uint32_t version_request_attempt_count; /* 固件版本查询命令的发送次数 */
+  uint32_t version_request_last_status;   /* 最近一次版本查询的 HAL 状态 */
   
   /* Raw 9-axis data */
   float ax, ay, az;               /* Accelerometer (m/s²) */
@@ -204,6 +206,7 @@ typedef struct
   uint8_t version_high;
   uint8_t version_mid;
   uint8_t version_low;
+  uint32_t version_known;         /* 1 表示已经收到固件版本返回帧 */
 } IMUDebugView;
 
 typedef struct
@@ -2597,6 +2600,8 @@ void Start_IMU_Task(void *argument)
     g_imu_debug.freq_set_success_count = IMU_Core_GetFreqSetSuccessCount();
     g_imu_debug.freq_set_last_status = IMU_Core_GetFreqSetLastStatus();
     g_imu_debug.requested_output_hz = IMU_Core_GetRequestedOutputFreqHz();
+    g_imu_debug.version_request_attempt_count = IMU_Core_GetVersionRequestAttemptCount();
+    g_imu_debug.version_request_last_status = IMU_Core_GetVersionRequestLastStatus();
 
     /* Read raw 9-axis data if available */
     if (IMU_Core_GetRawData(&raw))
@@ -2652,8 +2657,9 @@ void Start_IMU_Task(void *argument)
       g_imu_debug.baro_updated = baro.updated;
     }
 
-    /* Read version info if available */
-    if (IMU_Core_GetVersion(&ver))
+    /* 读取版本号，并保留是否真正收到版本返回帧的标志。 */
+    g_imu_debug.version_known = IMU_Core_GetVersion(&ver);
+    if (g_imu_debug.version_known)
     {
       g_imu_debug.version_high = ver.version_high;
       g_imu_debug.version_mid = ver.version_mid;
@@ -2694,10 +2700,13 @@ void StartServoTask(void *argument)
   uint16_t sw_right_outer;
   int32_t worm_cmd_rpm;
   int32_t stepper_cmd_rpm;
-  uint8_t thrust_speed_cmd = 0U;
-  uint8_t thrust_direction_cmd = 0U;
+  uint8_t thrust1_speed_cmd = 0U;
+  uint8_t thrust2_speed_cmd = 0U;
+  uint8_t thrust1_direction_cmd = 0U;
+  uint8_t thrust2_direction_cmd = 0U;
   uint8_t thrust_first_nonzero_done = 0U;
-  uint16_t thrust_pulse_us;
+  uint16_t thrust1_pulse_us;
+  uint16_t thrust2_pulse_us;
 
   (void)argument;
 
@@ -2824,19 +2833,21 @@ void StartServoTask(void *argument)
         stepper_cmd_rpm = 0;
       }
 
-      thrust_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor_speed_rpm;
-      thrust_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction;
+      thrust1_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor1se_speed_rpm;
+      thrust2_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor2se_speed_rpm;
+      thrust1_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction;
+      thrust2_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction2;
 
-      if ((thrust_first_nonzero_done == 0U) && (thrust_speed_cmd != 0U))
+      if ((thrust_first_nonzero_done == 0U) && ((thrust1_speed_cmd != 0U) || (thrust2_speed_cmd != 0U)))
       {
         (void)ThrusterDriver_SetDualPulseUs(THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
         thrust_first_nonzero_done = 1U;
       }
       else
       {
-        thrust_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust_direction_cmd, thrust_speed_cmd);
-        test_thru = 3000-thrust_pulse_us;
-        (void)ThrusterDriver_SetDualPulseUs(thrust_pulse_us, test_thru);
+        thrust1_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust1_direction_cmd, thrust1_speed_cmd);
+        thrust2_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust2_direction_cmd, thrust2_speed_cmd);
+        (void)ThrusterDriver_SetDualPulseUs(thrust1_pulse_us, thrust2_pulse_us);
       }
     }
 

@@ -67,7 +67,7 @@ typedef struct
   uint8_t rollmotor_enable;
   uint32_t rollmotor_speed_rpm;
   uint8_t thrustmotor_direction;
-  uint8_t thrustmotor_speed_rpm;
+  uint8_t thrustmotor_direction2;
   uint8_t thrustmotor1se_speed_rpm;
   uint8_t thrustmotor2se_speed_rpm;
   uint8_t backup_for_thrust;
