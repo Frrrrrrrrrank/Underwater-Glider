@@ -11,6 +11,11 @@
 #define ETHERNET_UART_TASK_PERIOD_MS 20U
 #define ETHERNET_UART_HEARTBEAT_PERIOD_MS 1000U
 
+/* EKF 遥测定义，单行 ASCII 帧上限（NMEA 风格 $UGEKF,...*HH），以及周期(ms)。
+ * 行内全部字段定点格式化，正常约 200B，留足余量到 512；100ms=10Hz。 */
+#define ETHERNET_UART_EKF_LINE_MAX 512U
+#define ETHERNET_UART_EKF_PERIOD_MS 100U
+
 typedef struct
 {
   uint32_t initialized;
@@ -82,6 +87,9 @@ extern volatile EthernetUartState g_ethernet_uart_state;
 extern volatile EthernetUartReadoutPack g_ethernet_uart_readout_pack;
 extern volatile uint8_t g_ethernet_rx_message_flag;
 
+/* EKF 遥测帧累计成功发送计数，供 Ozone 确认遥测在持续推送 */
+extern volatile uint32_t g_ekf_telem_tx_count;
+
 #define g_ethernet_uart_diag g_ethernet_uart_state.diag
 #define g_ethernet_uart_readout g_ethernet_uart_state.readout
 
@@ -89,6 +97,8 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart);
 void EthernetUartDriver_RunTask(void *argument);
 void EthernetUartDriver_SendText(const char *text);
 void EthernetUartDriver_SendSystemSnapshot(void);
+/* 拼一行 $UGEKF,...*HH 的 EKF 状态估计遥测并发送（线程上下文，由以太网任务周期调用）。 */
+void EthernetUartDriver_SendEkfTelemetry(void);
 void EthernetUartDriver_ClearRxRing(void);
 bool EthernetUartDriver_ConvertFront19BytesToPack(EthernetUartReadoutPack *out_pack);
 void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart);
