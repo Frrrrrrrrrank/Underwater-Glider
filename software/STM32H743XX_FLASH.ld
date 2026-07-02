@@ -168,6 +168,15 @@ SECTIONS
     _edata = .;        /* define a global symbol at data end */
   } >DTCMRAM AT> FLASH
 
+  /* SDMMC DMA buffers and FatFS objects in AXI SRAM (D1 domain) */
+  .RAM_D1 :
+  {
+    . = ALIGN(32);
+    *(.RAM_D1)
+    *(.RAM_D1*)
+    . = ALIGN(32);
+  } >RAM AT> FLASH
+
 
   /* Uninitialized data section */
   . = ALIGN(4);

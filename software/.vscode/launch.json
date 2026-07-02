@@ -8,8 +8,8 @@
       "args": [],
       "stopAtEntry": false,
       "externalConsole": true,
-      "cwd": "d:/work/czq/otherproject/underwatermotion/32/program/new/Underwater-Glider/software/Core/Src",
-      "program": "d:/work/czq/otherproject/underwatermotion/32/program/new/Underwater-Glider/software/Core/Src/build/Debug/outDebug",
+      "cwd": "d:/work/czq/otherproject/underwatermotion/32/program/new/Underwater-Glider_mputest/software/Core/Src",
+      "program": "d:/work/czq/otherproject/underwatermotion/32/program/new/Underwater-Glider_mputest/software/Core/Src/build/Debug/outDebug",
       "MIMode": "gdb",
       "miDebuggerPath": "gdb",
       "setupCommands": [

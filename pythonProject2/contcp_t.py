@@ -5,8 +5,6 @@ import time
 import sys
 import ctypes
 import json
-import os
-from datetime import datetime
 
 # ==================== 全局标志 ====================
 running = True          # 控制线程退出
@@ -428,15 +426,7 @@ class EthernetUartSystemSnapshot(ctypes.Structure):
         ("servo_mode", ctypes.c_uint8),
         ("pump_speed_triggered", ctypes.c_uint8),
         ("pump_direction_reversed", ctypes.c_uint8),
-        # ==== EKF 状态估计（与板端 EthernetUartSystemSnapshot 严格同序） ====
-        ("ekf_pN_cm", ctypes.c_int32),     # x：北向位置 (cm)
-        ("ekf_pE_cm", ctypes.c_int32),     # y：东向位置 (cm)
-        ("ekf_depth_mm", ctypes.c_int32),  # 深度 (mm，正=水下)
-        ("ekf_roll_x10", ctypes.c_int16),  # 横滚 (deg×10)
-        ("ekf_pitch_x10", ctypes.c_int16), # 俯仰 (deg×10)
-        ("ekf_yaw_x10", ctypes.c_int16),   # 航向 (deg×10)
-        ("ekf_status", ctypes.c_uint8),    # UgEkfStatus 0..5
-        ("ekf_valid", ctypes.c_uint8),     # 1 = valid_for_control
+        ("reserved", ctypes.c_uint8 * 2),
     ]
 
 
@@ -658,69 +648,6 @@ def input_control_packet(conn):
                 print("  请输入有效的整数。")
     send_control_packet(conn, *values)
 
-#  EKF 遥测($UGEKF)解析 + CSV 记录 
-# 字段顺序必须与板端 EthernetUartDriver_SendEkfTelemetry() 完全一致。
-EKF_FIELDS = [
-    "seq", "t_ms", "status", "fl",
-    "roll_deg", "pitch_deg", "yaw_deg",
-    "pN", "pE", "depth",
-    "vN", "vE", "vD",
-    "bgx", "bgy", "bgz",
-    "bax", "bay", "baz",
-    "Ppos", "Pvel", "Patt",
-    "nisD", "accD", "rejD", "dstreak", "dreset",
-    "dmeas", "dt", "imuhz", "tlast",
-]
-EKF_INT_FIELDS = {"seq", "t_ms", "status", "fl", "accD", "rejD", "dstreak", "dreset"}
-EKF_STATUS_NAMES = {0: "UNINIT", 1: "WAIT_BOOT_DELAY", 2: "WAIT_STILL",
-                    3: "ALIGNING", 4: "RUNNING", 5: "FAULT"}
-# CSV 表头：墙钟时间 + fl 展开成 5 个布尔列 + 其余数值字段
-EKF_CSV_HEADER = (["host_iso"]
-                  + ["seq", "t_ms", "status", "status_name",
-                     "healthy", "valid", "still", "finite", "aligned"]
-                  + EKF_FIELDS[4:])
-
-
-def ekf_checksum_ok(line):
-    """校验 $...*HH：异或 $ 与 * 之间所有字符。"""
-    star = line.rfind("*")
-    if star < 1 or star + 3 > len(line):
-        return False
-    cks = 0
-    for ch in line[1:star]:
-        cks ^= ord(ch)
-    try:
-        return cks == int(line[star + 1:star + 3], 16)
-    except ValueError:
-        return False
-
-
-def ekf_parse(line):
-    """解析一行 $UGEKF...，返回 dict；格式不符返回 None。"""
-    star = line.rfind("*")
-    parts = line[1:star].split(",")
-    if not parts or parts[0] != "UGEKF" or len(parts) - 1 != len(EKF_FIELDS):
-        return None
-    row = {}
-    try:
-        for name, raw in zip(EKF_FIELDS, parts[1:]):
-            row[name] = int(raw) if name in EKF_INT_FIELDS else float(raw)
-    except ValueError:
-        return None
-    return row
-
-
-def ekf_csv_row(row):
-    """把解析结果 + fl 位展开成与 EKF_CSV_HEADER 对齐的列表。"""
-    fl = row["fl"]
-    out = [datetime.now().isoformat(timespec="milliseconds"),
-           row["seq"], row["t_ms"], row["status"],
-           EKF_STATUS_NAMES.get(row["status"], "?"),
-           (fl >> 0) & 1, (fl >> 1) & 1, (fl >> 2) & 1, (fl >> 3) & 1, (fl >> 4) & 1]
-    out.extend(row[name] for name in EKF_FIELDS[4:])
-    return out
-
-
 # ==================== 接收线程函数 ====================
 def receive_thread(conn):
     """负责不断接收并打印来自客户端的数据"""
@@ -728,46 +655,9 @@ def receive_thread(conn):
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
     line_buffer = ""
 
-    # —— EKF 遥测 CSV：连接起把 $UGEKF 落盘，便于离线绘图 ——
-    os.makedirs("logs", exist_ok=True)
-    ekf_csv_path = os.path.join("logs", "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
-    ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
-    ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
-    ekf_csv.flush()
-    print(f"[EKF] 遥测记录 -> {ekf_csv_path}")
-    ekf_stat = {"ok": 0, "bad": 0, "last_print": 0.0, "last_key": None}
-
     def handle_line(raw_line):
         line = raw_line.strip()
         if not line:
-            return
-
-        # —— EKF 遥测行：始终落 CSV；仅在 状态/健康/就绪 变化时打印，平时静默 ——
-        #     （另留 30s 心跳确认链路存活；想完全静默把 HB 设成很大，如 1e9）
-        if line.startswith("$UGEKF"):
-            if not ekf_checksum_ok(line):
-                ekf_stat["bad"] += 1
-                return
-            row = ekf_parse(line)
-            if row is None:
-                ekf_stat["bad"] += 1
-                return
-            ekf_csv.write(",".join(str(x) for x in ekf_csv_row(row)) + "\n")
-            ekf_csv.flush()
-            ekf_stat["ok"] += 1
-            fl = row["fl"]
-            key = (row["status"], (fl >> 0) & 1, (fl >> 1) & 1)  # (status, healthy, valid)
-            now = time.time()
-            HB = 30.0  # 心跳间隔(秒)
-            if key != ekf_stat["last_key"] or (now - ekf_stat["last_print"] >= HB):
-                ekf_stat["last_key"] = key
-                ekf_stat["last_print"] = now
-                print("\n[EKF] %s hlth=%d vld=%d roll=%.1f pitch=%.1f yaw=%.1f "
-                      "depth=%.3f vD=%.3f ok=%d bad=%d"
-                      % (EKF_STATUS_NAMES.get(row["status"], "?"),
-                         (fl >> 0) & 1, (fl >> 1) & 1,
-                         row["roll_deg"], row["pitch_deg"], row["yaw_deg"],
-                         row["depth"], row["vD"], ekf_stat["ok"], ekf_stat["bad"]))
             return
 
         if line == "AT":
@@ -815,10 +705,6 @@ def receive_thread(conn):
             print(f"[接收错误] {e}")
             break
     # 线程结束前清理
-    try:
-        ekf_csv.close()
-    except Exception:
-        pass
     conn.close()
     print("[接收线程] 已退出。")
 
@@ -844,7 +730,6 @@ def main():
     print("\n========== 交互控制台 ==========")
     print("输入文本直接发送（文本格式）")
     print("输入 'pack' 发送控制包")
-    print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'quit' 或 'exit' 退出程序")
     print("==================================\n")
 
@@ -859,14 +744,6 @@ def main():
                 break
             elif user_input.lower() == 'pack':
                 input_control_packet(conn)
-            elif user_input.lower() == 'ekfoff':
-                # 仅置 ask_for_status=3 停发遥测；其余全 0、eth_control_flag=0 不触发电机控制
-                send_control_packet(conn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0)
-                print("[EKF] 已请求板子停发遥测")
-            elif user_input.lower() == 'ekfon':
-                # ask_for_status=2 开始遥测
-                send_control_packet(conn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0)
-                print("[EKF] 已请求板子开始遥测")
             else:
                 # 以文本方式发送
                 try:

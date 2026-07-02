@@ -20,19 +20,14 @@
 #define IMU_FUNC_VERSION        0x01U  /* Return firmware version (major,minor,patch) */
 #define IMU_FUNC_RETURN_STATUS  0x81U  /* Return status response */
 
-/* IMU 命令功能码 */
-#define IMU_CMD_REQUEST_VERSION 0x80U  /* 请求固件版本 */
-#define IMU_CMD_CALIBRATE_IMU   0x70U  /* 校准陀螺仪和加速度计 */
-#define IMU_CMD_CALIBRATE_MAG   0x71U  /* 校准磁力计 */
-#define IMU_CMD_CALIBRATE_TEMP  0x73U  /* 校准温度 */
-#define IMU_CMD_SET_OUTPUT_FREQ 0x60U  /* 设置自动输出频率 */
-#define IMU_CMD_SET_ALGO_TYPE   0x61U  /* 设置算法类型 */
-#define IMU_CMD_RESET_USER_DATA 0xA0U  /* 重置用户数据 */
-
-/* IMU 串口协议规定的输出频率范围，以及我们要求的目标频率。 */
-#define IMU_OUTPUT_FREQ_MIN_HZ       10U    //最低频率
-#define IMU_OUTPUT_FREQ_MAX_HZ      100U    //最高频率
-#define IMU_OUTPUT_FREQ_TARGET_HZ   100U    //期望频率
+/* Command function codes (for future implementation) */
+#define IMU_CMD_REQUEST_VERSION 0x80U  /* Request firmware version */
+#define IMU_CMD_CALIBRATE_IMU   0x70U  /* Calibrate IMU */
+#define IMU_CMD_CALIBRATE_MAG   0x71U  /* Calibrate magnetometer */
+#define IMU_CMD_CALIBRATE_TEMP  0x73U  /* Calibrate temperature */
+#define IMU_CMD_SET_OUTPUT_FREQ 0x60U  /* Set output frequency */
+#define IMU_CMD_SET_ALGO_TYPE   0x61U  /* Set algorithm type */
+#define IMU_CMD_RESET_USER_DATA 0xA0U  /* Reset user data */
 
 /* Frame structure constants */
 #define IMU_FRAME_MIN_LENGTH  5U   /* HEAD1 + HEAD2 + LENGTH + FUNCTION + CHECKSUM */
@@ -137,26 +132,6 @@ void IMU_Core_RunRxTask(void);
  * Sends configuration or query commands to IMU
  */
 void IMU_Core_RunTxTask(void);
-
-/**
- * @brief 设置 IMU 模块的自动输出频率。
- * 协议帧格式：7E 23 07 60 <频率> 5F <校验和>。
- * @param frequency_hz 目标频率，单位 Hz，有效范围为 10～100。
- * @return 本次串口发送的 HAL 状态。
- *
- * 协议规定该命令没有返回帧，因此必须通过实际收到的原始数据帧率
- * 判断模块是否真正应用了新频率。
- */
-HAL_StatusTypeDef IMU_Core_SetOutputFrequency(uint8_t frequency_hz);
-
-/**
- * @brief 请求读取 IMU 模块的固件版本。
- * 协议帧格式：7E 23 07 80 01 00 29。
- * @return 本次串口发送的 HAL 状态。
- *
- * 该命令有版本返回帧，可用于验证“STM32 TX → IMU RX”方向是否真正连通。
- */
-HAL_StatusTypeDef IMU_Core_RequestVersion(void);
 
 /* ============================================================
  * Data Getter Functions - Access sensor readings
@@ -282,24 +257,6 @@ uint32_t IMU_Core_GetRxRearmFailCount(void);
  * @return HAL_StatusTypeDef value captured during IMU_Core_Init.
  */
 uint32_t IMU_Core_GetRxInitStatus(void);
-
-/** @brief 获取输出频率设置命令的发送尝试次数。 */
-uint32_t IMU_Core_GetFreqSetAttemptCount(void);
-
-/** @brief 获取输出频率设置命令的串口发送成功次数。 */
-uint32_t IMU_Core_GetFreqSetSuccessCount(void);
-
-/** @brief 获取最近一次发送输出频率命令时的 HAL 状态。 */
-uint32_t IMU_Core_GetFreqSetLastStatus(void);
-
-/** @brief 获取最近一次请求设置的输出频率，单位 Hz。 */
-uint32_t IMU_Core_GetRequestedOutputFreqHz(void);
-
-/** @brief 获取固件版本查询命令的发送尝试次数。 */
-uint32_t IMU_Core_GetVersionRequestAttemptCount(void);
-
-/** @brief 获取最近一次发送固件版本查询命令时的 HAL 状态。 */
-uint32_t IMU_Core_GetVersionRequestLastStatus(void);
 
 /**
  * @brief Reset all statistics counters

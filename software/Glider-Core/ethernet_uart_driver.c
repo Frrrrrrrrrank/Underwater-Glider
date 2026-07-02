@@ -6,12 +6,9 @@
 #include "pump_driver.h"
 #include "servo_driver.h"
 #include "limit_switch.h"
-#include "ekf_bridge.h"   /* EkfBridge_CopyState / StateEstimate / g_ekf_depth_meas */
-#include "ekf_task.h"     /* g_ekf_imu_hz */
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include <math.h>         /* isfinite：定点格式化前剔除 NaN/Inf */
 
 typedef struct
 {
@@ -209,15 +206,7 @@ typedef struct
   uint8_t servo_mode;
   uint8_t pump_speed_triggered;
   uint8_t pump_direction_reversed;
-  /*EKF 状态估计（供以太网快照直接观察；x=pN, y=pE 为 NED 水平位置）*/
-  int32_t ekf_pN_cm;     /* x：北向位置 (cm)，Phase1 无水平观测会漂移 */
-  int32_t ekf_pE_cm;     /* y：东向位置 (cm)，同上 */
-  int32_t ekf_depth_mm;  /* 深度 (mm，正=水下) */
-  int16_t ekf_roll_x10;  /* 横滚 (deg×10) */
-  int16_t ekf_pitch_x10; /* 俯仰 (deg×10) */
-  int16_t ekf_yaw_x10;   /* 航向 (deg×10) */
-  uint8_t ekf_status;    /* UgEkfStatus 0..5 */
-  uint8_t ekf_valid;     /* 1 = valid_for_control(RUNNING&healthy) */
+  uint8_t reserved[2];
 } EthernetUartSystemSnapshot;
 
 extern volatile GliderDebugView g_dbg_view;
@@ -231,9 +220,6 @@ volatile EthernetUartState g_ethernet_uart_state = {0};
 volatile EthernetUartReadoutPack g_ethernet_uart_readout_pack = {0};
 volatile uint8_t g_ethernet_rx_message_flag = 0U;
 
-/* EKF 遥测帧累计成功发送计数（Ozone 观察用） */
-volatile uint32_t g_ekf_telem_tx_count = 0U;
-
 static UART_HandleTypeDef *s_uart = NULL;
 static volatile uint8_t s_rx_byte = 0U;
 static volatile uint8_t s_eth_rx_ring[ETHERNET_UART_RX_RING_SIZE];
@@ -241,9 +227,6 @@ static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static volatile uint32_t s_tx_busy = 0U;
 static uint32_t s_last_command_tick = 0U;
-/* EKF 遥测开关：1=发(默认,上电即记录)，0=停。
- * PC 用控制包 ask_for_status=2(开)/3(关) 切换；见 OnRxComplete。 */
-static volatile uint8_t s_ekf_telem_enabled = 1U;
 
 static void EthernetUartDriver_RearmReceive(void);
 static void EthernetUartDriver_RingPush(uint8_t byte);
@@ -416,27 +399,8 @@ static void EthernetUartDriver_UpdateSystemSnapshot(void)
   g_ethernet_system_snapshot.servo_mode = (uint8_t)(g_servo_debug.mode & 0xFFU);
   g_ethernet_system_snapshot.pump_speed_triggered = g_io_pump_debug.speed_triggered;
   g_ethernet_system_snapshot.pump_direction_reversed = g_io_pump_debug.direction_reversed;
-
-  /* EKF 状态估计：散读全局镜像 g_state_estimate（本函数在 ISR 上下文，
-     不能用 EkfBridge_CopyState 的临界区；偶发撕裂仅影响一帧显示，可接受）。
-     角度 rad→deg×10；位置 m→cm；深度 m→mm。 */
-  {
-    const UgEkfOutput *eo = &g_state_estimate.out;
-    g_ethernet_system_snapshot.ekf_pN_cm =
-        EthernetUartDriver_ScaleFloatToI32(eo->pN, 100.0f);
-    g_ethernet_system_snapshot.ekf_pE_cm =
-        EthernetUartDriver_ScaleFloatToI32(eo->pE, 100.0f);
-    g_ethernet_system_snapshot.ekf_depth_mm =
-        EthernetUartDriver_ScaleFloatToI32(eo->depth_m, 1000.0f);
-    g_ethernet_system_snapshot.ekf_roll_x10 =
-        EthernetUartDriver_ScaleFloatToI16(eo->roll * 57.2957795f, 10.0f);
-    g_ethernet_system_snapshot.ekf_pitch_x10 =
-        EthernetUartDriver_ScaleFloatToI16(eo->pitch * 57.2957795f, 10.0f);
-    g_ethernet_system_snapshot.ekf_yaw_x10 =
-        EthernetUartDriver_ScaleFloatToI16(eo->yaw * 57.2957795f, 10.0f);
-    g_ethernet_system_snapshot.ekf_status = (uint8_t)eo->status;
-    g_ethernet_system_snapshot.ekf_valid = (uint8_t)eo->valid_for_control;
-  }
+  g_ethernet_system_snapshot.reserved[0] = 0U;
+  g_ethernet_system_snapshot.reserved[1] = 0U;
 }
 
 static void EthernetUartDriver_RearmReceive(void)
@@ -580,8 +544,7 @@ static void EthernetUartDriver_ProcessReceivedData(void)
 
 static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_t length)
 {
-  /* 上限放宽到 EKF 遥测行长度；请求应答路径仍按 ≤160 分块，互不影响 */
-  if (s_uart == NULL || data == NULL || length == 0U || length > ETHERNET_UART_EKF_LINE_MAX)
+  if (s_uart == NULL || data == NULL || length == 0U || length > ETHERNET_UART_TX_LINE_MAX)
   {
     return HAL_ERROR;
   }
@@ -652,7 +615,6 @@ void EthernetUartDriver_RunTask(void *argument)
   };
   const size_t setup_count = sizeof(setup_commands) / sizeof(setup_commands[0]);
   static size_t setup_index = 0U;
-  static uint32_t s_last_ekf_tx_tick = 0U; /* EKF 遥测上次推送 tick */
 
   for (;;)
   {
@@ -671,23 +633,11 @@ void EthernetUartDriver_RunTask(void *argument)
         setup_index++;
       }
     }
-    else
+    else if ((now - g_ethernet_uart_diag.last_tx_tick) >= ETHERNET_UART_HEARTBEAT_PERIOD_MS)
     {
-      /* AT 配置完成进入透传：开关打开时周期推送 EKF 遥测（10Hz）。
-       * 开关由 PC 控制包 ask_for_status=2(开)/3(关) 切换，默认开。 */
-      if ((s_ekf_telem_enabled != 0U) &&
-          ((now - s_last_ekf_tx_tick) >= ETHERNET_UART_EKF_PERIOD_MS))
-      {
-        EthernetUartDriver_SendEkfTelemetry();
-        s_last_ekf_tx_tick = now;
-      }
-      /* 保留原心跳计数（AT 心跳本就注释掉，仅留 liveness 计数） */
-      if ((now - g_ethernet_uart_diag.last_tx_tick) >= ETHERNET_UART_HEARTBEAT_PERIOD_MS)
-      {
-        g_ethernet_uart_diag.heartbeat_count++;
-        g_ethernet_uart_diag.last_tx_tick = now;
-        //EthernetUartDriver_SendText("AT\r\n");
-      }
+      g_ethernet_uart_diag.heartbeat_count++;
+      g_ethernet_uart_diag.last_tx_tick = now;
+      //EthernetUartDriver_SendText("AT\r\n");
     }
 
     g_ethernet_uart_readout.ring_available_bytes = g_ethernet_uart_diag.ring_available_bytes;
@@ -752,184 +702,6 @@ void EthernetUartDriver_SendSystemSnapshot(void)
     EthernetUartDriver_SendText(line);
 
     out_offset = (uint16_t)(out_offset + chunk_len);
-  }
-}
-
-/*  ===== EKF 状态估计遥测：定点格式化工具 + 单行构帧（$UGEKF,...*HH） =====  */
-
-/* 把无符号整数追加到 p，至少 min_width 位（不足左补 0）。返回写入字符数。
- * 调用方保证缓冲足够（行缓冲已按最坏情况留余量）。 */
-static int EthernetUartDriver_AppendUint(char *p, unsigned long val, int min_width)
-{
-  char tmp[12];
-  int n = 0;
-  int w = 0;
-  int pad;
-
-  do
-  {
-    tmp[n++] = (char)('0' + (val % 10UL));
-    val /= 10UL;
-  } while (val != 0UL);
-
-  for (pad = min_width - n; pad > 0; pad--)
-  {
-    p[w++] = '0';
-  }
-  while (n > 0)
-  {
-    p[w++] = tmp[--n];
-  }
-  return w;
-}
-
-/* 把浮点 v 以定点（decimals 位小数）追加到 p。返回写入字符数。
- * 绕开 nano.specs 不支持 %f：手动整数化；非有限值输出 "nan"；
- * 幅值 clamp 到 ±1e6 保证行长有界、不溢出行缓冲。 */
-static int EthernetUartDriver_AppendFixed(char *p, float v, int decimals)
-{
-  int w = 0;
-  int neg;
-  int k;
-  unsigned long scale = 1UL;
-  unsigned long scaled;
-
-  if (!isfinite(v))
-  {
-    p[0] = 'n';
-    p[1] = 'a';
-    p[2] = 'n';
-    return 3;
-  }
-  if (v > 1.0e6f)
-  {
-    v = 1.0e6f;
-  }
-  if (v < -1.0e6f)
-  {
-    v = -1.0e6f;
-  }
-
-  neg = (v < 0.0f);
-  if (neg)
-  {
-    v = -v;
-  }
-  for (k = 0; k < decimals; k++)
-  {
-    scale *= 10UL;
-  }
-  scaled = (unsigned long)((double)v * (double)scale + 0.5);
-  if (scaled == 0UL)
-  {
-    neg = 0; /* 避免 -0.000 */
-  }
-  if (neg)
-  {
-    p[w++] = '-';
-  }
-  w += EthernetUartDriver_AppendUint(p + w, scaled / scale, 1);
-  if (decimals > 0)
-  {
-    p[w++] = '.';
-    w += EthernetUartDriver_AppendUint(p + w, scaled % scale, decimals);
-  }
-  return w;
-}
-
-void EthernetUartDriver_SendEkfTelemetry(void)
-{
-  static const char hex_chars[] = "0123456789ABCDEF";
-  static char line[ETHERNET_UART_EKF_LINE_MAX]; /* static：IT 发送期间须保持有效 */
-  StateEstimate se;
-  const UgEkfOutput *o;
-  uint32_t fl;
-  uint8_t cks = 0U;
-  int i = 0;
-  int k;
-
-  if (s_uart == NULL)
-  {
-    return;
-  }
-  /* 上一帧还在发：跳过本拍，避免改写正在 IT 发送中的静态缓冲 */
-  if (s_tx_busy != 0U)
-  {
-    g_ethernet_uart_diag.tx_busy_count++;
-    return;
-  }
-
-  (void)EkfBridge_CopyState(&se); /* 防撕裂整体快照 */
-  o = &se.out;
-
-  /* 健康 / 状态位打包：bit0 healthy,1 valid_for_control,2 still,3 finite,4 aligned */
-  fl = (o->healthy ? 1UL : 0UL);
-  fl |= (o->valid_for_control ? 1UL : 0UL) << 1;
-  fl |= (o->still ? 1UL : 0UL) << 2;
-  fl |= (o->finite ? 1UL : 0UL) << 3;
-  fl |= (o->aligned ? 1UL : 0UL) << 4;
-
-  line[i++] = '$';
-  line[i++] = 'U';
-  line[i++] = 'G';
-  line[i++] = 'E';
-  line[i++] = 'K';
-  line[i++] = 'F';
-
-  /* 时序 / 状态 */
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)se.update_seq, 1);
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)HAL_GetTick(), 1);
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->status, 1);
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)fl, 1);
-  /* 姿态 deg */
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->roll * 57.2957795f, 2);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch * 57.2957795f, 2);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->yaw * 57.2957795f, 2);
-  /* 位置 m */
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pN, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pE, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_m, 3);
-  /* 速度 m/s */
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->vN, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->vE, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->vD, 3);
-  /* 零偏（陀螺 / 加计） */
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->b_g[0], 5);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->b_g[1], 5);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->b_g[2], 5);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->b_a[0], 5);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->b_a[1], 5);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->b_a[2], 5);
-  /* 协方差迹（发散指示） */
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->P_trace_pos, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->P_trace_vel, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->P_trace_att, 3);
-  /* 深度量测一致性 */
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->nis_depth, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->accept_depth, 1);
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->reject_depth, 1);
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->depth_reject_streak, 1);
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->depth_reset_count, 1);
-  /* 交叉验证 / 时序诊断 */
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, g_ekf_depth_meas, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->dt_last, 4);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, g_ekf_imu_hz, 2);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->t_last, 3);
-
-  /* NMEA 异或校验：$ 与 * 之间所有字符 */
-  for (k = 1; k < i; k++)
-  {
-    cks ^= (uint8_t)line[k];
-  }
-  line[i++] = '*';
-  line[i++] = hex_chars[(cks >> 4) & 0x0FU];
-  line[i++] = hex_chars[cks & 0x0FU];
-  line[i++] = '\r';
-  line[i++] = '\n';
-
-  if (EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)i) == HAL_OK)
-  {
-    g_ekf_telem_tx_count++;
   }
 }
 
@@ -1026,14 +798,6 @@ void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart)
   else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 0U))
   {
     EthernetUartDriver_SendText("AT\r\n");
-  }
-  else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 2U))
-  {
-    s_ekf_telem_enabled = 1U;   /* PC 请求：开始发 EKF 遥测 */
-  }
-  else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 3U))
-  {
-    s_ekf_telem_enabled = 0U;   /* PC 请求：停发 EKF 遥测 */
   }
 
   if (g_ethernet_uart_readout_pack.eth_control_flag == 1U)
