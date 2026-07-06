@@ -272,16 +272,16 @@ void USART3_IRQHandler(void)
 /**
   * @brief This function handles SDMMC1 global interrupt.
   */
-void SDMMC1_IRQHandler(void)
-{
-  /* USER CODE BEGIN SDMMC1_IRQn 0 */
+// void SDMMC1_IRQHandler(void)
+// {
+//   /* USER CODE BEGIN SDMMC1_IRQn 0 */
 
-  /* USER CODE END SDMMC1_IRQn 0 */
-  HAL_SD_IRQHandler(&hsd1);
-  /* USER CODE BEGIN SDMMC1_IRQn 1 */
+//   /* USER CODE END SDMMC1_IRQn 0 */
+//   HAL_SD_IRQHandler(&hsd1);
+//   /* USER CODE BEGIN SDMMC1_IRQn 1 */
 
-  /* USER CODE END SDMMC1_IRQn 1 */
-}
+//   /* USER CODE END SDMMC1_IRQn 1 */
+// }
 
 /**
   * @brief This function handles UART4 global interrupt.

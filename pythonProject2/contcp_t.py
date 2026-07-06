@@ -5,8 +5,6 @@ import time
 import sys
 import ctypes
 import json
-import os
-from datetime import datetime
 
 # ==================== 全局标志 ====================
 running = True          # 控制线程退出
@@ -436,15 +434,7 @@ class EthernetUartSystemSnapshot(ctypes.Structure):
         ("servo_mode", ctypes.c_uint8),
         ("pump_speed_triggered", ctypes.c_uint8),
         ("pump_direction_reversed", ctypes.c_uint8),
-        # ==== EKF 状态估计（与板端 EthernetUartSystemSnapshot 严格同序） ====
-        ("ekf_pN_cm", ctypes.c_int32),     # x：北向位置 (cm)
-        ("ekf_pE_cm", ctypes.c_int32),     # y：东向位置 (cm)
-        ("ekf_depth_mm", ctypes.c_int32),  # 深度 (mm，正=水下)
-        ("ekf_roll_x10", ctypes.c_int16),  # 横滚 (deg×10)
-        ("ekf_pitch_x10", ctypes.c_int16), # 俯仰 (deg×10)
-        ("ekf_yaw_x10", ctypes.c_int16),   # 航向 (deg×10)
-        ("ekf_status", ctypes.c_uint8),    # UgEkfStatus 0..5
-        ("ekf_valid", ctypes.c_uint8),     # 1 = valid_for_control
+        ("reserved", ctypes.c_uint8 * 2),
     ]
 
 
@@ -1054,46 +1044,9 @@ def receive_thread(conn):
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
     line_buffer = ""
 
-    # —— EKF 遥测 CSV：连接起把 $UGEKF 落盘，便于离线绘图 ——
-    os.makedirs("logs", exist_ok=True)
-    ekf_csv_path = os.path.join("logs", "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
-    ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
-    ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
-    ekf_csv.flush()
-    print(f"[EKF] 遥测记录 -> {ekf_csv_path}")
-    ekf_stat = {"ok": 0, "bad": 0, "last_print": 0.0, "last_key": None}
-
     def handle_line(raw_line):
         line = raw_line.strip()
         if not line:
-            return
-
-        # —— EKF 遥测行：始终落 CSV；仅在 状态/健康/就绪 变化时打印，平时静默 ——
-        #     （另留 30s 心跳确认链路存活；想完全静默把 HB 设成很大，如 1e9）
-        if line.startswith("$UGEKF"):
-            if not ekf_checksum_ok(line):
-                ekf_stat["bad"] += 1
-                return
-            row = ekf_parse(line)
-            if row is None:
-                ekf_stat["bad"] += 1
-                return
-            ekf_csv.write(",".join(str(x) for x in ekf_csv_row(row)) + "\n")
-            ekf_csv.flush()
-            ekf_stat["ok"] += 1
-            fl = row["fl"]
-            key = (row["status"], (fl >> 0) & 1, (fl >> 1) & 1)  # (status, healthy, valid)
-            now = time.time()
-            HB = 30.0  # 心跳间隔(秒)
-            if key != ekf_stat["last_key"] or (now - ekf_stat["last_print"] >= HB):
-                ekf_stat["last_key"] = key
-                ekf_stat["last_print"] = now
-                print("\n[EKF] %s hlth=%d vld=%d roll=%.1f pitch=%.1f yaw=%.1f "
-                      "depth=%.3f vD=%.3f ok=%d bad=%d"
-                      % (EKF_STATUS_NAMES.get(row["status"], "?"),
-                         (fl >> 0) & 1, (fl >> 1) & 1,
-                         row["roll_deg"], row["pitch_deg"], row["yaw_deg"],
-                         row["depth"], row["vD"], ekf_stat["ok"], ekf_stat["bad"]))
             return
 
         if line == "AT":
@@ -1141,10 +1094,6 @@ def receive_thread(conn):
             print(f"[接收错误] {e}")
             break
     # 线程结束前清理
-    try:
-        ekf_csv.close()
-    except Exception:
-        pass
     conn.close()
     print("[接收线程] 已退出。")
 

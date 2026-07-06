@@ -19,7 +19,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include "fatfs.h"
+#include "bsp.h"
+#include "ff.h"				/* FatFSÎÄ¼þÏµÍ³Ä£¿é*/
+#include "ff_gen_drv.h"
+#include "sd_diskio_dma.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -38,10 +41,10 @@
 #include "limit_switch.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "ekf_task.h"//EKF相关头文件声明
-#include "glider_time.h"
 #include "disk_driver.h"
+#include "limit_switch.h"
 #include "thruster_driver.h"
+#include "bsp.h"
 
 /* USER CODE END Includes */
 
@@ -175,13 +178,6 @@ typedef struct
   uint32_t last_function_code;    /* Last received function code (0x40, 0x41, etc) */
   uint32_t last_rx_function;      /* Return-state frame field[0] */
   int32_t last_rx_state;          /* Return-state frame field[1] */
-  //Ozone调试变量,用于看IMU设置的频率
-  uint32_t freq_set_attempt_count;/* 输出频率设置命令的发送尝试次数 */
-  uint32_t freq_set_success_count;/* 输出频率设置命令的串口发送成功次数 */
-  uint32_t freq_set_last_status;  /* 最近一次发送频率命令的 HAL 状态 */
-  uint32_t requested_output_hz;   /* 最近一次请求设置的输出频率，单位 Hz */
-  uint32_t version_request_attempt_count; /* 固件版本查询命令的发送次数 */
-  uint32_t version_request_last_status;   /* 最近一次版本查询的 HAL 状态 */
   
   /* Raw 9-axis data */
   float ax, ay, az;               /* Accelerometer (m/s²) */
@@ -206,7 +202,6 @@ typedef struct
   uint8_t version_high;
   uint8_t version_mid;
   uint8_t version_low;
-  uint32_t version_known;         /* 1 表示已经收到固件版本返回帧 */
 } IMUDebugView;
 
 typedef struct
@@ -326,15 +321,6 @@ const osThreadAttr_t Usart2Task_attributes = {
   .priority = (osPriority_t) osPriorityNormal3,
 };
 /* USER CODE BEGIN PV */
-/* EKF 任务句柄与属性，单一所有者，仅此任务访问滤波器单例 g_ekf */
-osThreadId_t ekfTaskHandle;
-const osThreadAttr_t ekfTask_attributes = {
-  .name = "ekfTask",
-  /* 栈 16KB（4096 B ×4），上板后看 g_ekf_stack_high_water_words 再收敛 */
-  .stack_size = 4096 * 4,
-  /* 优先级与 IMU 同级，低于舵机任务 */
-  .priority = (osPriority_t) osPriorityNormal2,
-};
 osThreadId_t EthernetTaskHandle;
 const osThreadAttr_t EthernetTask_attributes = {
   .name = "EthernetTask",
@@ -537,6 +523,8 @@ static int32_t RcControl_MapStickToSignedRpm(uint16_t raw, uint16_t max_rpm)
   return RcControl_ClampSigned(signed_rpm, (int32_t)max_rpm);
 }
 
+extern void DemoFatFS(void);
+
 /* USER CODE END 0 */
 
 /**
@@ -552,12 +540,13 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
-  MPU_Config();
+  //MPU_Config();
 
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+  //HAL_Init();
+  bsp_Init();	
 
   /* USER CODE BEGIN Init */
   g_dbg_boot_stage = 2U;
@@ -565,7 +554,7 @@ int main(void)
   /* USER CODE END Init */
 
   /* Configure the system clock */
-  SystemClock_Config();
+  //SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
   g_dbg_boot_stage = 3U;
@@ -595,6 +584,7 @@ int main(void)
   MX_TIM15_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+  DemoFatFS();
   g_dbg_boot_stage = 46U;
   GliderCore_Init(&huart7);
   g_dbg_boot_stage = 4U;
@@ -685,9 +675,7 @@ int main(void)
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   EthernetTaskHandle = osThreadNew(EthernetUartDriver_RunTask, NULL, &EthernetTask_attributes);
-  /* 创建 EKF 任务，基于事件触发，IMU 输入后被唤醒 */
-  ekfTaskHandle = osThreadNew(StartEkfTask, NULL, &ekfTask_attributes);
-  g_dbg_boot_stage = 6U;//EKF Task 阶段标志位
+  g_dbg_boot_stage = 6U;
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -2596,12 +2584,6 @@ void Start_IMU_Task(void *argument)
     g_imu_debug.last_function_code = IMU_Core_GetLastFunctionCode();
     g_imu_debug.last_rx_function = IMU_Core_GetLastRxFunction();
     g_imu_debug.last_rx_state = IMU_Core_GetLastRxState();
-    g_imu_debug.freq_set_attempt_count = IMU_Core_GetFreqSetAttemptCount();
-    g_imu_debug.freq_set_success_count = IMU_Core_GetFreqSetSuccessCount();
-    g_imu_debug.freq_set_last_status = IMU_Core_GetFreqSetLastStatus();
-    g_imu_debug.requested_output_hz = IMU_Core_GetRequestedOutputFreqHz();
-    g_imu_debug.version_request_attempt_count = IMU_Core_GetVersionRequestAttemptCount();
-    g_imu_debug.version_request_last_status = IMU_Core_GetVersionRequestLastStatus();
 
     /* Read raw 9-axis data if available */
     if (IMU_Core_GetRawData(&raw))
@@ -2616,16 +2598,6 @@ void Start_IMU_Task(void *argument)
       g_imu_debug.my = raw.mag.my;
       g_imu_debug.mz = raw.mag.mz;
       g_imu_debug.raw_updated = raw.updated;
-
-    /*输入给ESKF，唯一 IMU 数据源，时间戳用统一单调时钟，唤醒EKF任务*/
-    //写IMU快照，防止读写冲突，唤醒EKFTask，定义在ekf_task
-    /* 仅在真正有新 raw 帧时投喂 ESKF，IMU_Core_GetRawData 的返回值是"曾收到过帧"，
-       不是新帧；raw.updated 才是真正的新帧标志。否则会以 ~1kHz 重复投喂旧帧导致活锁
-       上一版bug在于用于判断的参数错误 */
-      if (raw.updated)
-      {
-        EkfTask_PublishImuRaw(&raw, GliderTime_NowUs());
-      }
     }
 
     /* Read Euler angles if available */
@@ -2657,9 +2629,8 @@ void Start_IMU_Task(void *argument)
       g_imu_debug.baro_updated = baro.updated;
     }
 
-    /* 读取版本号，并保留是否真正收到版本返回帧的标志。 */
-    g_imu_debug.version_known = IMU_Core_GetVersion(&ver);
-    if (g_imu_debug.version_known)
+    /* Read version info if available */
+    if (IMU_Core_GetVersion(&ver))
     {
       g_imu_debug.version_high = ver.version_high;
       g_imu_debug.version_mid = ver.version_mid;
