@@ -316,7 +316,7 @@ osThreadId_t Usart3TaskHandle;
 const osThreadAttr_t Usart3Task_attributes = {
   .name = "Usart3Task",
   .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityNormal1,
+  .priority = (osPriority_t) osPriorityNormal3,
 };
 /* Definitions for Usart2Task */
 osThreadId_t Usart2TaskHandle;
