@@ -11,6 +11,14 @@ from datetime import datetime
 # ==================== 全局标志 ====================
 running = True          # 控制线程退出
 
+AUTO_SEND_PERIOD_S = 1.0
+AUTO_KEY_POLL_S = 0.02
+THRUST_SPEED_MIN = 0.0
+THRUST_SPEED_MAX = 100.0
+THRUST_SPEED_INIT = 10.0
+THRUST_SPEED_REARM_AFTER_RESET = 10.0
+THRUST_DIFF_RATE_PER_S = 20.0
+
 UMOTOR_NODE_COUNT = 4
 UMOTOR_MAX_READ_REG_COUNT = 16
 UMOTOR_NODE_DEBUG_RX_MAX = 40
@@ -658,6 +666,324 @@ def input_control_packet(conn):
                 print("  请输入有效的整数。")
     send_control_packet(conn, *values)
 
+
+def _clamp(value, low, high):
+    return max(low, min(high, value))
+
+
+def _build_default_auto_packet():
+    return {
+        "pitchmotor_enable": 0,
+        "pitchmotor_speed_rpm": 0,
+        "rollmotor_enable": 0,
+        "rollmotor_speed_rpm": 0,
+        "thrustmotor_direction": 0,
+        "thrustmotor_direction2": 0,
+        "thrustmotor1se_speed_rpm": 0,
+        "thrustmotor2se_speed_rpm": 0,
+        "backup_for_thrust": 0,
+        "pump_direction": 0,
+        "pump_on_off": 0,
+        "ask_for_status": 0,
+        "eth_control_flag": 1,
+    }
+
+
+def _apply_thrust_direction(packet, direction_key, now_s, dir_state, init_speed=None):
+    if init_speed is None:
+        init_speed = THRUST_SPEED_INIT
+
+    packet["thrustmotor1se_speed_rpm"] = int(init_speed)
+    packet["thrustmotor2se_speed_rpm"] = int(init_speed)
+
+    if direction_key == 'I':
+        packet["thrustmotor_direction"] = 0
+        packet["thrustmotor_direction2"] = 1
+    else:
+        packet["thrustmotor_direction"] = 1
+        packet["thrustmotor_direction2"] = 0
+
+    dir_state["mode"] = direction_key
+    dir_state["hold_start"] = now_s
+    dir_state["base_s1"] = float(packet["thrustmotor1se_speed_rpm"])
+    dir_state["base_s2"] = float(packet["thrustmotor2se_speed_rpm"])
+
+
+def _apply_thrust_direction_keep_speed(packet, direction_key, now_s, dir_state):
+    if direction_key == 'I':
+        packet["thrustmotor_direction"] = 0
+        packet["thrustmotor_direction2"] = 1
+    else:
+        packet["thrustmotor_direction"] = 1
+        packet["thrustmotor_direction2"] = 0
+
+    # 同方向再次按下时，不重置速度；仅从当前速度重新开始长按倍率计算。
+    dir_state["mode"] = direction_key
+    dir_state["hold_start"] = now_s
+    dir_state["base_s1"] = float(packet["thrustmotor1se_speed_rpm"])
+    dir_state["base_s2"] = float(packet["thrustmotor2se_speed_rpm"])
+
+
+def _print_auto_help(packet):
+    print("[AUTO] 按键说明:")
+    print("  W: pitch_enable=1, pitch_speed=-200")
+    print("  S: pitch_enable=1, pitch_speed=200")
+    print("  X: pitch_enable=0, pitch_speed=0")
+    print("  E: pump_direction=0, pump_on_off=1")
+    print("  D: pump_direction=1, pump_on_off=1")
+    print("  C: pump_direction=0, pump_on_off=0")
+    print("  I: thrust_dir=(0,1)，首次/切换置双推进速度为10，长按同比例放大")
+    print("  K: thrust_dir=(1,0)，首次/切换置双推进速度为10，长按同比例放大")
+    print("  J: thrust1下降 thrust2上升（1秒变化20）")
+    print("  L: thrust1上升 thrust2下降（1秒变化20）")
+    print("  U: 双推进按比例衰减，长按1秒变为按下瞬间的0.5")
+    print("  N: thrustmotor1se_speed_rpm 和 thrustmotor2se_speed_rpm 同时置0")
+    print("  Z: 除 eth_control_flag 外全部清零，eth_control_flag=1")
+    print("  N/Z 后首次 I/K: 双推进速度置10")
+    print("  H: 显示帮助与当前包状态")
+    print("  Q/ESC: 退出 auto")
+    print(
+        "[AUTO] 当前包状态: "
+        f"pitch=({packet['pitchmotor_enable']},{packet['pitchmotor_speed_rpm']}) "
+        f"roll=({packet['rollmotor_enable']},{packet['rollmotor_speed_rpm']}) "
+        f"thrust_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
+        f"thrust_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']}) "
+        f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
+        f"backup={packet['backup_for_thrust']} ask={packet['ask_for_status']} eth_flag={packet['eth_control_flag']}"
+    )
+
+
+def run_auto_mode(conn):
+    """自动模式：1 秒发送一次控制包，按键仅修改对应字段。"""
+    if os.name != 'nt':
+        print("[AUTO] 仅支持 Windows 控制台键盘读取。")
+        return
+
+    user32 = ctypes.windll.user32
+    vk_map = {
+        'W': ord('W'),
+        'S': ord('S'),
+        'X': ord('X'),
+        'E': ord('E'),
+        'D': ord('D'),
+        'C': ord('C'),
+        'I': ord('I'),
+        'K': ord('K'),
+        'J': ord('J'),
+        'L': ord('L'),
+        'U': ord('U'),
+        'N': ord('N'),
+        'Z': ord('Z'),
+        'H': ord('H'),
+        'Q': ord('Q'),
+        'ESC': 0x1B,
+    }
+
+    packet = _build_default_auto_packet()
+    prev_pressed = {k: False for k in vk_map}
+    dir_state = {
+        "mode": None,
+        "hold_start": time.monotonic(),
+        "base_s1": float(packet["thrustmotor1se_speed_rpm"]),
+        "base_s2": float(packet["thrustmotor2se_speed_rpm"]),
+        "rearm_init_pending": False,
+        "u_hold_start": time.monotonic(),
+        "u_base_s1": float(packet["thrustmotor1se_speed_rpm"]),
+        "u_base_s2": float(packet["thrustmotor2se_speed_rpm"]),
+    }
+
+    last_loop_s = time.monotonic()
+    next_send_s = last_loop_s
+
+    print("[AUTO] 已进入自动模式：每 1 秒发送一次控制包。")
+    print("[AUTO] 按键: W/S/X 俯仰, E/D/C 泵, I/K 推进方向, J/L 双推进差动, U 双推进衰减, N 双推进清零, Z 清零, H 帮助, Q 或 ESC 退出。")
+    _print_auto_help(packet)
+
+    while running:
+        now_s = time.monotonic()
+        dt = now_s - last_loop_s
+        last_loop_s = now_s
+
+        pressed = {
+            k: (user32.GetAsyncKeyState(vk) & 0x8000) != 0
+            for k, vk in vk_map.items()
+        }
+        rising = {k: pressed[k] and (not prev_pressed[k]) for k in vk_map}
+        prev_pressed = pressed
+
+        if rising['Q'] or rising['ESC']:
+            # 退出前先执行一次与 Z 相同的清零动作（保留 eth_control_flag=1）。
+            packet = _build_default_auto_packet()
+            dir_state["mode"] = None
+            dir_state["hold_start"] = now_s
+            dir_state["base_s1"] = 0.0
+            dir_state["base_s2"] = 0.0
+            dir_state["rearm_init_pending"] = True
+            send_control_packet(
+                conn,
+                packet["pitchmotor_enable"],
+                packet["pitchmotor_speed_rpm"],
+                packet["rollmotor_enable"],
+                packet["rollmotor_speed_rpm"],
+                packet["thrustmotor_direction"],
+                packet["thrustmotor_direction2"],
+                packet["thrustmotor1se_speed_rpm"],
+                packet["thrustmotor2se_speed_rpm"],
+                packet["backup_for_thrust"],
+                packet["pump_direction"],
+                packet["pump_on_off"],
+                packet["ask_for_status"],
+                packet["eth_control_flag"],
+            )
+
+            # 再发送一个全零包（包括 eth_control_flag=0）用于彻底停控。
+            send_control_packet(conn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            print("[AUTO] 已发送 Z 清零包 + 全零停控包，退出自动模式。")
+            break
+
+        if rising['H']:
+            _print_auto_help(packet)
+
+        if rising['U']:
+            dir_state["u_hold_start"] = now_s
+            dir_state["u_base_s1"] = float(packet["thrustmotor1se_speed_rpm"])
+            dir_state["u_base_s2"] = float(packet["thrustmotor2se_speed_rpm"])
+
+        if rising['N']:
+            packet["thrustmotor1se_speed_rpm"] = 0
+            packet["thrustmotor2se_speed_rpm"] = 0
+            dir_state["mode"] = None
+            dir_state["base_s1"] = 0.0
+            dir_state["base_s2"] = 0.0
+            dir_state["hold_start"] = now_s
+            dir_state["rearm_init_pending"] = True
+            print("[AUTO] 已执行 N: 双推进速度置 0，推进方向状态已重置。")
+
+        if rising['Z']:
+            packet = _build_default_auto_packet()
+            dir_state["mode"] = None
+            dir_state["hold_start"] = now_s
+            dir_state["base_s1"] = 0.0
+            dir_state["base_s2"] = 0.0
+            dir_state["rearm_init_pending"] = True
+            print("[AUTO] 已执行清零: 除 eth_control_flag 外全部字段置 0。")
+            _print_auto_help(packet)
+
+        # 俯仰电机控制
+        if rising['W']:
+            packet["pitchmotor_enable"] = 1
+            packet["pitchmotor_speed_rpm"] = -200
+        if rising['S']:
+            packet["pitchmotor_enable"] = 1
+            packet["pitchmotor_speed_rpm"] = 200
+        if rising['X']:
+            packet["pitchmotor_enable"] = 0
+            packet["pitchmotor_speed_rpm"] = 0
+
+        # 泵控制
+        if rising['E']:
+            packet["pump_direction"] = 0
+            packet["pump_on_off"] = 1
+        if rising['D']:
+            packet["pump_direction"] = 1
+            packet["pump_on_off"] = 1
+        if rising['C']:
+            packet["pump_direction"] = 0
+            packet["pump_on_off"] = 0
+
+        # 推进方向控制：首次按下或 I/K 切换时回到双 10；同方向重复按下不重置。
+        if rising['I']:
+            if dir_state["mode"] != 'I':
+                init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
+                _apply_thrust_direction(packet, 'I', now_s, dir_state, init_speed=init_speed)
+                dir_state["rearm_init_pending"] = False
+            else:
+                _apply_thrust_direction_keep_speed(packet, 'I', now_s, dir_state)
+        if rising['K']:
+            if dir_state["mode"] != 'K':
+                init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
+                _apply_thrust_direction(packet, 'K', now_s, dir_state, init_speed=init_speed)
+                dir_state["rearm_init_pending"] = False
+            else:
+                _apply_thrust_direction_keep_speed(packet, 'K', now_s, dir_state)
+
+        s1 = float(packet["thrustmotor1se_speed_rpm"])
+        s2 = float(packet["thrustmotor2se_speed_rpm"])
+
+        # J/L 按住时，按时长连续增减（1 秒变化 20）。
+        # I 模式: J=1降2升, L=1升2降；K 模式下 J/L 逻辑反向。
+        if pressed['J'] and (not pressed['L']):
+            if dir_state["mode"] == 'K':
+                s1 += THRUST_DIFF_RATE_PER_S * dt
+                s2 -= THRUST_DIFF_RATE_PER_S * dt
+            else:
+                s1 -= THRUST_DIFF_RATE_PER_S * dt
+                s2 += THRUST_DIFF_RATE_PER_S * dt
+        elif pressed['L'] and (not pressed['J']):
+            if dir_state["mode"] == 'K':
+                s1 -= THRUST_DIFF_RATE_PER_S * dt
+                s2 += THRUST_DIFF_RATE_PER_S * dt
+            else:
+                s1 += THRUST_DIFF_RATE_PER_S * dt
+                s2 -= THRUST_DIFF_RATE_PER_S * dt
+
+        # U 按住时，双推进按比例衰减：按下 1 秒后为按下瞬间的 0.5。
+        if pressed['U'] and (not pressed['I']) and (not pressed['K']) and (not pressed['J']) and (not pressed['L']):
+            u_hold_s = max(0.0, now_s - dir_state["u_hold_start"])
+            u_scale = 0.5 ** u_hold_s
+            s1 = dir_state["u_base_s1"] * u_scale
+            s2 = dir_state["u_base_s2"] * u_scale
+
+        # I 或 K 长按时，按当前比例同比例放大（每 1 秒 *2），直到任一到 100。
+        if pressed['I'] and (not pressed['K']) and dir_state["mode"] == 'I' and (not pressed['J']) and (not pressed['L']):
+            hold_s = max(0.0, now_s - dir_state["hold_start"])
+            scale = 2.0 ** hold_s
+            s1 = dir_state["base_s1"] * scale
+            s2 = dir_state["base_s2"] * scale
+        elif pressed['K'] and (not pressed['I']) and dir_state["mode"] == 'K' and (not pressed['J']) and (not pressed['L']):
+            hold_s = max(0.0, now_s - dir_state["hold_start"])
+            scale = 2.0 ** hold_s
+            s1 = dir_state["base_s1"] * scale
+            s2 = dir_state["base_s2"] * scale
+
+        # 限幅到 [0, 100]。
+        s1 = _clamp(s1, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
+        s2 = _clamp(s2, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
+        packet["thrustmotor1se_speed_rpm"] = int(round(s1))
+        packet["thrustmotor2se_speed_rpm"] = int(round(s2))
+
+        packet["eth_control_flag"] = 1
+
+        if now_s >= next_send_s:
+            send_control_packet(
+                conn,
+                packet["pitchmotor_enable"],
+                packet["pitchmotor_speed_rpm"],
+                packet["rollmotor_enable"],
+                packet["rollmotor_speed_rpm"],
+                packet["thrustmotor_direction"],
+                packet["thrustmotor_direction2"],
+                packet["thrustmotor1se_speed_rpm"],
+                packet["thrustmotor2se_speed_rpm"],
+                packet["backup_for_thrust"],
+                packet["pump_direction"],
+                packet["pump_on_off"],
+                packet["ask_for_status"],
+                packet["eth_control_flag"],
+            )
+            print(
+                "[AUTO] send "
+                f"pitch_en={packet['pitchmotor_enable']} pitch_spd={packet['pitchmotor_speed_rpm']} "
+                f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
+                f"thr_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
+                f"thr_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']})"
+            )
+            next_send_s += AUTO_SEND_PERIOD_S
+            while next_send_s <= now_s:
+                next_send_s += AUTO_SEND_PERIOD_S
+
+        time.sleep(AUTO_KEY_POLL_S)
+
 #  EKF 遥测($UGEKF)解析 + CSV 记录 
 # 字段顺序必须与板端 EthernetUartDriver_SendEkfTelemetry() 完全一致。
 EKF_FIELDS = [
@@ -844,6 +1170,7 @@ def main():
     print("\n========== 交互控制台 ==========")
     print("输入文本直接发送（文本格式）")
     print("输入 'pack' 发送控制包")
+    print("输入 'auto' 进入自动控制模式（按 Q/ESC 退出该模式）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'quit' 或 'exit' 退出程序")
     print("==================================\n")
@@ -859,6 +1186,8 @@ def main():
                 break
             elif user_input.lower() == 'pack':
                 input_control_packet(conn)
+            elif user_input.lower() == 'auto':
+                run_auto_mode(conn)
             elif user_input.lower() == 'ekfoff':
                 # 仅置 ask_for_status=3 停发遥测；其余全 0、eth_control_flag=0 不触发电机控制
                 send_control_packet(conn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0)
