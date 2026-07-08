@@ -5,6 +5,8 @@ import time
 import sys
 import ctypes
 import json
+import os
+from datetime import datetime, timedelta
 
 # ==================== 全局标志 ====================
 running = True          # 控制线程退出
@@ -12,7 +14,7 @@ running = True          # 控制线程退出
 AUTO_SEND_PERIOD_S = 1.0
 AUTO_KEY_POLL_S = 0.02
 THRUST_SPEED_MIN = 0.0
-THRUST_SPEED_MAX = 100.0
+THRUST_SPEED_MAX = 30.0
 THRUST_SPEED_INIT = 10.0
 THRUST_SPEED_REARM_AFTER_RESET = 10.0
 THRUST_DIFF_RATE_PER_S = 20.0
