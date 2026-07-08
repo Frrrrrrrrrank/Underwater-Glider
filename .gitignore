@@ -15,3 +15,7 @@ fp-info-cache
 
 # OS noise
 Thumbs.db
+
+# Generated EKF logs and analysis outputs
+/logs/csv/
+/logs/analysis/plots/

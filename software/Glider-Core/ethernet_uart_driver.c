@@ -1010,6 +1010,7 @@ bool EthernetUartDriver_ConvertFront19BytesToPack(EthernetUartReadoutPack *out_p
 void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart)
 {
   bool packet_updated;
+  EthernetUartReadoutPack prev_pack;
 
   if (huart == NULL || s_uart == NULL || huart->Instance != s_uart->Instance)
   {
@@ -1017,32 +1018,44 @@ void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart)
   }
   g_ethernet_uart_diag.rx_irq_count++;
   EthernetUartDriver_RingPush(s_rx_byte);
+
+  /* 先存下当前已生效的控制包：遥测开关包(ask_for_status=2/3)解析后要还原它，
+     使开关遥测完全不扰动电机控制。 */
+  prev_pack = g_ethernet_uart_readout_pack;
   packet_updated = EthernetUartDriver_ConvertFront19BytesToPack(&g_ethernet_uart_readout_pack);
 
-  if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 1U))
+  if (packet_updated != false)
   {
-    EthernetUartDriver_SendSystemSnapshot();
-  }
-  else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 0U))
-  {
-    EthernetUartDriver_SendText("AT\r\n");
-  }
-  else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 2U))
-  {
-    s_ekf_telem_enabled = 1U;   /* PC 请求：开始发 EKF 遥测 */
-  }
-  else if ((packet_updated != false) && (g_ethernet_uart_readout_pack.ask_for_status == 3U))
-  {
-    s_ekf_telem_enabled = 0U;   /* PC 请求：停发 EKF 遥测 */
-  }
+    const uint8_t asf = g_ethernet_uart_readout_pack.ask_for_status;
 
-  if (g_ethernet_uart_readout_pack.eth_control_flag == 1U)
-  {
-    g_ethernet_rx_message_flag = 1U;
-  }
-  else
-  {
-    g_ethernet_rx_message_flag = 0U;
+    if ((asf == 2U) || (asf == 3U))
+    {
+      /* 遥测开关：纯配置。只切开关，并把控制包还原成上一帧、不动
+         g_ethernet_rx_message_flag —— 否则会把控制切回已弃用的 SBUS 分支而停电机。 */
+      s_ekf_telem_enabled = (asf == 2U) ? 1U : 0U;
+      g_ethernet_uart_readout_pack = prev_pack;
+    }
+    else
+    {
+      if (asf == 1U)
+      {
+        EthernetUartDriver_SendSystemSnapshot();
+      }
+      else if (asf == 0U)
+      {
+        EthernetUartDriver_SendText("AT\r\n");
+      }
+
+      /* 仅真正的控制包(0/1)才切换控制源 flag */
+      if (g_ethernet_uart_readout_pack.eth_control_flag == 1U)
+      {
+        g_ethernet_rx_message_flag = 1U;
+      }
+      else
+      {
+        g_ethernet_rx_message_flag = 0U;
+      }
+    }
   }
   EthernetUartDriver_RearmReceive();
 }
