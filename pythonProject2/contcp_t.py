@@ -722,6 +722,10 @@ def ekf_csv_row(row):
 
 
 # ==================== 接收线程函数 ====================
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+EKF_LOG_DIR = os.path.join(REPO_ROOT, "logs", "csv")
+
+
 def receive_thread(conn):
     """负责不断接收并打印来自客户端的数据"""
     global running
@@ -729,8 +733,8 @@ def receive_thread(conn):
     line_buffer = ""
 
     # —— EKF 遥测 CSV：连接起把 $UGEKF 落盘，便于离线绘图 ——
-    os.makedirs("logs", exist_ok=True)
-    ekf_csv_path = os.path.join("logs", "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
+    os.makedirs(EKF_LOG_DIR, exist_ok=True)
+    ekf_csv_path = os.path.join(EKF_LOG_DIR, "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
     ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
     ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
     ekf_csv.flush()
@@ -758,7 +762,7 @@ def receive_thread(conn):
             fl = row["fl"]
             key = (row["status"], (fl >> 0) & 1, (fl >> 1) & 1)  # (status, healthy, valid)
             now = time.time()
-            HB = 30.0  # 心跳间隔(秒)
+            HB = 10.0  # 心跳间隔(秒)
             if key != ekf_stat["last_key"] or (now - ekf_stat["last_print"] >= HB):
                 ekf_stat["last_key"] = key
                 ekf_stat["last_print"] = now
