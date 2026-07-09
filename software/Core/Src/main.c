@@ -537,6 +537,8 @@ static int32_t RcControl_MapStickToSignedRpm(uint16_t raw, uint16_t max_rpm)
   return RcControl_ClampSigned(signed_rpm, (int32_t)max_rpm);
 }
 
+extern void DemoFatFS(void);
+
 /* USER CODE END 0 */
 
 /**
@@ -595,6 +597,7 @@ int main(void)
   MX_TIM15_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+  DemoFatFS();
   g_dbg_boot_stage = 46U;
   GliderCore_Init(&huart7);
   g_dbg_boot_stage = 4U;

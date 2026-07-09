@@ -57,6 +57,10 @@ Glider-App/common/glider_time.c \
 Glider-Core/disk_driver.c \
 Glider-Core/limit_switch.c \
 Glider-Core/thruster_driver.c \
+Glider-Core/bspforSD/bsp.c \
+Glider-Core/bspforSD/bsp_timer.c \
+Glider-Core/bspforSD/bsp_sdio_sd.c \
+Glider-Core/bspforSD/demo_sd_fatfs.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc.c \
@@ -102,13 +106,13 @@ Middlewares/Third_Party/FreeRTOS/Source/timers.c \
 Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/cmsis_os2.c \
 Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c \
 Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c \
-FATFS/Target/bsp_driver_sd.c \
-FATFS/Target/sd_diskio.c \
-FATFS/App/fatfs.c \
-Middlewares/Third_Party/FatFs/src/diskio.c \
-Middlewares/Third_Party/FatFs/src/ff.c \
-Middlewares/Third_Party/FatFs/src/ff_gen_drv.c \
-Middlewares/Third_Party/FatFs/src/option/syscall.c
+FATFS/src/fatfs.c \
+FATFS/src/diskio.c \
+FATFS/src/ff.c \
+FATFS/src/ff_gen_drv.c \
+FATFS/src/drivers/sd_diskio_dma.c \
+FATFS/src/option/syscall.c \
+FATFS/src/option/cc936.c
 
 # C++ sources，ESKF 核心以及嵌入式 wrapper，
 CPP_SOURCES =  \
@@ -178,6 +182,7 @@ AS_INCLUDES =
 C_INCLUDES =  \
 -ICore/Inc \
 -IGlider-Core \
+-IGlider-Core/bspforSD \
 -IDrivers/STM32H7xx_HAL_Driver/Inc \
 -IDrivers/STM32H7xx_HAL_Driver/Inc/Legacy \
 -IDrivers/CMSIS/Device/ST/STM32H7xx/Include \
@@ -190,9 +195,9 @@ C_INCLUDES =  \
 -IGlider-App/tasks \
 -IGlider-App/common \
 -IMiddlewares/Third_Party/Eigen \
--IFATFS/Target \
--IFATFS/App \
--IMiddlewares/Third_Party/FatFs/src
+-IFATFS/src \
+-IFATFS/src/drivers \
+-IFATFS/src/option
 
 
 # compile gcc flags
