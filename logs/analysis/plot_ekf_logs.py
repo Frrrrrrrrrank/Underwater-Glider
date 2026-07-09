@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""分析并绘制水下滑翔机 EKF CSV 日志。
+"""分析并绘制水下滑翔机状态估计相关的CSV 日志
 
 脚本按板端启动次数划分实验会话，使用板端时间戳拼接上位机重连日志，
-为每个会话生成运动总览图，并为深度更新质量最好的会话生成 pitch-vD 相图。
+为每个会话生成运动总览图，并为深度更新质量最好的会话生成 pitch-vD 相图
+
+在相对路径中 Python plot_ekf_logs.py
 """
 
 from __future__ import annotations
