@@ -597,7 +597,6 @@ int main(void)
   MX_TIM15_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  DemoFatFS();
   g_dbg_boot_stage = 46U;
   GliderCore_Init(&huart7);
   g_dbg_boot_stage = 4U;
@@ -2390,6 +2389,8 @@ void StartDefaultTask(void *argument)
   static uint32_t sd_mount_last_try_tick = 0U;
   (void)argument;
   g_dbg_boot_stage = 100U;
+
+  DemoFatFS();
 
   /* Infinite loop */
   for(;;)
