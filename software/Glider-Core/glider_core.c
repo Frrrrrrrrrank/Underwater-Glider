@@ -50,6 +50,7 @@ static volatile uint32_t s_tx_fail_count = 0;
 static volatile uint32_t s_tx_last_hal_status = 0;
 static volatile uint32_t s_tx_last_uart_error = 0;
 static volatile uint32_t s_shortmsg_sent_count = 0;
+static volatile uint32_t s_bdpwi_signal_available = 0;
 static char s_last_tx_text[32] = {0};
 static char s_last_shortmsg_payload[96] = {0};
 
@@ -338,6 +339,51 @@ static bool try_parse_signal_from_bdbsi(const char *line, uint32_t *has_good_sig
 
   *has_good_signal = (strong_beam_count > 0U) ? 1U : 0U;
   return true;
+}
+
+static void update_signal_state(uint32_t new_signal_good)
+{
+  if (new_signal_good != 0U)
+  {
+    s_signal_good_streak++;
+    s_signal_bad_streak = 0U;
+    if (s_signal_good_streak > GLIDER_SIGNAL_STABLE_COUNT)
+    {
+      s_signal_good_streak = GLIDER_SIGNAL_STABLE_COUNT;
+    }
+  }
+  else
+  {
+    s_signal_bad_streak++;
+    s_signal_good_streak = 0U;
+    if (s_signal_bad_streak > GLIDER_SIGNAL_STABLE_COUNT)
+    {
+      s_signal_bad_streak = GLIDER_SIGNAL_STABLE_COUNT;
+    }
+  }
+
+  if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT)
+  {
+    s_signal_good = 1U;
+  }
+  else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT)
+  {
+    s_signal_good = 0U;
+  }
+
+  if (s_mode_switch_cooldown == 0U && s_shortmsg_pending == 0U && s_tc_mode_active == 0U && s_tc_mode_requested == 0U)
+  {
+    if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_POSITION_TEST)
+    {
+      s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
+      s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
+    }
+    else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_SIGNAL_POLL)
+    {
+      s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
+      s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
+    }
+  }
 }
 
 static bool try_parse_target_card_from_sendto(const char *line)
@@ -803,48 +849,18 @@ static void process_line(const char *line)
   {
     s_rd_mode_active = 1U;
     s_rn_mode_active = 0U;
+    if (s_bdpwi_signal_available == 0U)
+    {
+      update_signal_state(new_signal_good);
+    }
+  }
 
-    if (new_signal_good != 0U)
-    {
-      s_signal_good_streak++;
-      s_signal_bad_streak = 0U;
-      if (s_signal_good_streak > GLIDER_SIGNAL_STABLE_COUNT)
-      {
-        s_signal_good_streak = GLIDER_SIGNAL_STABLE_COUNT;
-      }
-    }
-    else
-    {
-      s_signal_bad_streak++;
-      s_signal_good_streak = 0U;
-      if (s_signal_bad_streak > GLIDER_SIGNAL_STABLE_COUNT)
-      {
-        s_signal_bad_streak = GLIDER_SIGNAL_STABLE_COUNT;
-      }
-    }
-
-    if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT)
-    {
-      s_signal_good = 1U;
-    }
-    else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT)
-    {
-      s_signal_good = 0U;
-    }
-
-    if (s_mode_switch_cooldown == 0U && s_shortmsg_pending == 0U && s_tc_mode_active == 0U && s_tc_mode_requested == 0U)
-    {
-      if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_POSITION_TEST)
-      {
-        s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
-        s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
-      }
-      else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_SIGNAL_POLL)
-      {
-        s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
-        s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
-      }
-    }
+  if (s_decoded_frame.is_bdpwi)
+  {
+    s_rd_mode_active = 1U;
+    s_rn_mode_active = 0U;
+    s_bdpwi_signal_available = 1U;
+    update_signal_state(s_decoded_frame.bdpwi.signal_good ? 1U : 0U);
   }
 
   if (s_decoded_frame.is_rn_mode || s_decoded_frame.is_gnrmc)
@@ -942,6 +958,7 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_tx_fail_count = 0;
   s_tx_last_hal_status = 0;
   s_tx_last_uart_error = 0;
+  s_bdpwi_signal_available = 0U;
   s_signal_good = 0U;
   s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
   s_shortmsg_sent_count = 0U;
