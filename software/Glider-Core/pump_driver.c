@@ -578,7 +578,7 @@ void IoControlPump_Poll(uint32_t now_ms)
   {
     IoControlPump_SetDirection(0U);
     g_io_pump_debug.direction_reversed = 0U;
-     if(g_displacement_sensor.displacement_mm > 137.0f)
+     if(g_displacement_sensor.displacement_mm > 130.0f)
     {
       /* If currently extended, reverse direction to retract. */
       IoControlPump_SetSpeed(0U);
@@ -618,7 +618,7 @@ void IoControlPump_Poll(uint32_t now_ms)
   {
     IoControlPump_SetDirection(0U);
     g_io_pump_debug.direction_reversed = 0U;
-     if(g_displacement_sensor.displacement_mm > 137.0f)
+     if(g_displacement_sensor.displacement_mm > 130.0f)
     {
       /* If currently extended, reverse direction to retract. */
       IoControlPump_SetSpeed(0U);

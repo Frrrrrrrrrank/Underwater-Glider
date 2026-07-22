@@ -184,41 +184,8 @@ typedef struct
   char bdepi_data_payload[48];
 } GliderDebugView;
 
-typedef struct
-{
-  uint32_t alive_counter;
-  int32_t gnrmc_latitude_e6;
-  int32_t gnrmc_longitude_e6;
-  uint32_t alarm_bits;
-  int16_t displacement_mm_x10;
-  int16_t imu_roll_x10;
-  int16_t imu_pitch_x10;
-  int16_t imu_yaw_x10;
-  int16_t imu_height_dm;
-  int16_t imu_temp_c_x10;
-  uint16_t pressure_bar_x100;
-  int16_t pressure_temp_c_x10;
-  int16_t pump_feedback_rpm;
-  int16_t umotor0_feedback_rpm;
-  int16_t umotor1_feedback_rpm;
-  uint16_t servo_pulse_us;
-  uint8_t limit_switch_bits;
-  uint8_t displacement_valid;
-  uint8_t gnrmc_valid;
-  uint8_t pressure_valid;
-  uint8_t servo_mode;
-  uint8_t pump_speed_triggered;
-  uint8_t pump_direction_reversed;
-  /*EKF 状态估计（供以太网快照直接观察；x=pN, y=pE 为 NED 水平位置）*/
-  int32_t ekf_pN_cm;     /* x：北向位置 (cm)，Phase1 无水平观测会漂移 */
-  int32_t ekf_pE_cm;     /* y：东向位置 (cm)，同上 */
-  int32_t ekf_depth_mm;  /* 深度 (mm，正=水下) */
-  int16_t ekf_roll_x10;  /* 横滚 (deg×10) */
-  int16_t ekf_pitch_x10; /* 俯仰 (deg×10) */
-  int16_t ekf_yaw_x10;   /* 航向 (deg×10) */
-  uint8_t ekf_status;    /* UgEkfStatus 0..5 */
-  uint8_t ekf_valid;     /* 1 = valid_for_control(RUNNING&healthy) */
-} EthernetUartSystemSnapshot;
+/* EthernetUartSystemSnapshot 定义已上移至 ethernet_uart_driver.h，供以太网上报
+ * 与 SD 卡日志任务共用。 */
 
 extern volatile GliderDebugView g_dbg_view;
 extern volatile GliderDebugQuickView g_dbg_quick;
@@ -252,7 +219,6 @@ static void EthernetUartDriver_ProcessReceivedData(void);
 static void EthernetUartDriver_ProcessLine(const char *line);
 static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_t length);
 static uint32_t EthernetUartDriver_ReadLeU32(const uint8_t *bytes);
-static void EthernetUartDriver_UpdateSystemSnapshot(void);
 
 static int16_t EthernetUartDriver_ClampI16(int32_t value)
 {
@@ -295,7 +261,7 @@ static int32_t EthernetUartDriver_ScaleFloatToI32(float value, float scale)
   return (int32_t)scaled;
 }
 
-static void EthernetUartDriver_UpdateSystemSnapshot(void)
+void EthernetUartDriver_UpdateSystemSnapshot(void)
 {
   uint32_t alarm = 0U;
   uint8_t limit_bits = 0U;
