@@ -2710,6 +2710,8 @@ void StartServoTask(void *argument)
   uint8_t thrust_first_nonzero_done = 0U;
   uint16_t thrust1_pulse_us;
   uint16_t thrust2_pulse_us;
+  EthernetUartReadoutPack ethernet_pack = {0};
+  uint8_t ethernet_control_flag = 0U;
 
   (void)argument;
 
@@ -2720,7 +2722,18 @@ void StartServoTask(void *argument)
 
   for(;;)
   {
-    if (g_ethernet_rx_message_flag == 0U){
+    (void)EthernetUartDriver_CopyControlPack(
+        &ethernet_pack, &ethernet_control_flag);
+    if (ethernet_control_flag == 0U){
+  //Ethernet 控制退出或看门狗超时时，上一拍 PWM 不会自动消失。
+  //每次进入非 Ethernet 分支都显式回中立，并重置下次非零命令的预备拍
+    thrust1_speed_cmd = 0U;
+    thrust2_speed_cmd = 0U;
+    thrust1_direction_cmd = 0U;
+    thrust2_direction_cmd = 0U;
+    (void)ThrusterDriver_SetDualPulseUs(
+        THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
+    thrust_first_nonzero_done = 0U;
     now_tick = HAL_GetTick();
     channel_count = SbusDriver_GetChannels(channels, SBUS_CHANNEL_COUNT,
                                            &frame_lost, &failsafe, NULL);
@@ -2803,10 +2816,10 @@ void StartServoTask(void *argument)
     else
     {
       mode = RC_CTRL_MODE_ETH;
-      worm_cmd_rpm = RcControl_ClampSigned(g_ethernet_uart_readout_pack.pitchmotor_speed_rpm,RC_WORM_MOTOR_MAX_RPM);
-      stepper_cmd_rpm = RcControl_ClampSigned(g_ethernet_uart_readout_pack.rollmotor_speed_rpm,RC_STEPPER_MAX_RPM);
+      worm_cmd_rpm = RcControl_ClampSigned(ethernet_pack.pitchmotor_speed_rpm,RC_WORM_MOTOR_MAX_RPM);
+      stepper_cmd_rpm = RcControl_ClampSigned(ethernet_pack.rollmotor_speed_rpm,RC_STEPPER_MAX_RPM);
       
-      if (g_ethernet_uart_readout_pack.pitchmotor_enable == 1U)
+      if (ethernet_pack.pitchmotor_enable == 1U)
       {   
         if (motor_enabled == 0U)
         {
@@ -2826,7 +2839,7 @@ void StartServoTask(void *argument)
           worm_cmd_rpm = 0;
       }
       
-      if (g_ethernet_uart_readout_pack.rollmotor_enable == 1U)
+      if (ethernet_pack.rollmotor_enable == 1U)
       {
         Stepper_SetContinuousSignedRpm(stepper_cmd_rpm);
       }
@@ -2836,10 +2849,10 @@ void StartServoTask(void *argument)
         stepper_cmd_rpm = 0;
       }
 
-      thrust1_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor1se_speed_rpm;
-      thrust2_speed_cmd = g_ethernet_uart_readout_pack.thrustmotor2se_speed_rpm;
-      thrust1_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction;
-      thrust2_direction_cmd = g_ethernet_uart_readout_pack.thrustmotor_direction2;
+      thrust1_speed_cmd = ethernet_pack.thrustmotor1se_speed_rpm;
+      thrust2_speed_cmd = ethernet_pack.thrustmotor2se_speed_rpm;
+      thrust1_direction_cmd = ethernet_pack.thrustmotor_direction;
+      thrust2_direction_cmd = ethernet_pack.thrustmotor_direction2;
 
       if ((thrust_first_nonzero_done == 0U) && ((thrust1_speed_cmd != 0U) || (thrust2_speed_cmd != 0U)))
       {

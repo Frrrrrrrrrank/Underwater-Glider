@@ -6,23 +6,23 @@ EKF 状态估计遥测记录器（上位机 / 电脑端）
 配合板端 EthernetUartDriver_SendEkfTelemetry() 推送的 NMEA 风格行：
     $UGEKF,seq,t_ms,status,fl,roll,pitch,yaw,pN,pE,depth,vN,vE,vD,
            bgx,bgy,bgz,bax,bay,baz,Ppos,Pvel,Patt,
-           nisD,accD,rejD,dstreak,dreset,dmeas,dt,imuhz,tlast*HH
+           nisD,accD,rejD,dstreak,dreset,dmeas,dt,imuhz,tlast,cal_crc,cal_valid*HH
 
 设计要点（面向真机下水）：
-  - 板上的 UART 转以太网模块是 TCP server（默认端口 12345），本脚本作为 TCP client 连过去。
-  - 自动重连：板子复位 / 缆松动会断 TCP，循环重连，尽量不漏上电到下水全程。
+  - 本脚本在 PC 上作 TCP server（默认端口 8800），板上的 UART 转以太网模块作 client 连入。
+  - 自动重接：板子复位 / 缆松动会断 TCP，脚本回到 accept 等待模块再次连入。
   - 双写：收到的原始字节立刻 append 到 raw_*.log 并 flush（绝不丢原始流）；
           解析校验通过的帧另写 ekf_*.csv（带电脑墙钟接收时间戳，便于离线对齐/绘图）。
   - 容错：非 $UGEKF 行（AT 回显、OK、心跳等）直接跳过；异或校验失败计数但不写 CSV。
   - 掉帧 / 重启检测：用 seq 连续性判丢帧，用 seq 归零判板子重启。
 
 用法：
-    python ekf_logger.py <板端IP> [--port 8800] [--outdir logs/csv]
+    python ekf_logger.py [PC本机绑定IP] [--port 8800] [--outdir logs/csv]
 说明：
     [...] 表示可选参数，不要照抄方括号；端口用 --port 指定。
     --outdir 是日志输出目录，不填默认 logs/csv（脚本自动创建）。
 例：
-    python ekf_logger.py 192.168.57.100 --port 8800
+    python ekf_logger.py 0.0.0.0 --port 8800
     python ekf_logger.py 192.168.57.100 --port 8800 --outdir D:\glider_logs
 """
 
@@ -33,11 +33,25 @@ import sys
 import time
 from datetime import datetime
 
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+STATION_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
+REPO_ROOT = os.path.abspath(os.path.join(STATION_DIR, os.pardir))
+if STATION_DIR not in sys.path:
+    sys.path.insert(0, STATION_DIR)
+
+from ugcp_protocol import (  # noqa: E402
+    MSG_STREAM_CONTROL,
+    STREAM_EKF,
+    SequenceCounter,
+    build_frame,
+    pack_stream_control_payload,
+)
+
+
 DEFAULT_OUTDIR = os.path.join(REPO_ROOT, "logs", "csv")
 
 # 板端 $UGEKF 之后的字段顺序，必须与 ethernet_uart_driver.c 的构帧完全一致
-FIELDS = [
+BASE_FIELDS = [
     "seq", "t_ms", "status", "fl",
     "roll_deg", "pitch_deg", "yaw_deg",
     "pN", "pE", "depth",
@@ -48,16 +62,20 @@ FIELDS = [
     "nisD", "accD", "rejD", "dstreak", "dreset",
     "dmeas", "dt", "imuhz", "tlast",
 ]
+ACK_FIELDS = ["cal_crc", "cal_valid"]
+FIELDS = BASE_FIELDS + ACK_FIELDS
 
 # 整数字段（其余按 float 解析，'nan' 也能被 float() 接受）
 INT_FIELDS = {"seq", "t_ms", "status", "fl",
-              "accD", "rejD", "dstreak", "dreset"}
+              "accD", "rejD", "dstreak", "dreset",
+              "cal_crc", "cal_valid"}
 
 # out.status 枚举（与 UgEkfStatus 对应）
 STATUS_NAMES = {
     0: "UNINIT", 1: "WAIT_BOOT_DELAY", 2: "WAIT_STILL",
     3: "ALIGNING", 4: "RUNNING", 5: "FAULT",
 }
+STREAM_RETRY_SECONDS = 2.0
 
 # CSV 表头：墙钟时间 + fl 展开成 5 个布尔列 + 其余字段
 CSV_HEADER = (
@@ -84,23 +102,29 @@ def nmea_checksum_ok(line):
 
 
 def parse_ugekf(line):
-    """解析一行 $UGEKF...，返回 dict；格式不符返回 None。"""
+    """解析旧 31 字段或带 cal_crc/cal_valid 的新 33 字段 $UGEKF。"""
     star = line.rfind("*")
     parts = line[1:star].split(",")  # 去掉 '$'，去掉 '*HH'
     if not parts or parts[0] != "UGEKF":
         return None
     vals = parts[1:]
-    if len(vals) != len(FIELDS):
+    if len(vals) == len(BASE_FIELDS):
+        frame_fields = BASE_FIELDS
+    elif len(vals) == len(FIELDS):
+        frame_fields = FIELDS
+    else:
         return None  # 字段数对不上，可能截断帧
     row = {}
     try:
-        for name, raw in zip(FIELDS, vals):
+        for name, raw in zip(frame_fields, vals):
             if name in INT_FIELDS:
                 row[name] = int(raw)
             else:
                 row[name] = float(raw)  # 'nan' 也可被解析
     except ValueError:
         return None
+    for name in ACK_FIELDS:
+        row.setdefault(name, None)
     return row
 
 
@@ -130,6 +154,25 @@ def make_server(bind_ip, port):
     return srv
 
 
+def send_stream_control(conn, sequence, mask):
+    """向板端声明完整遥测状态，返回本次 UGCP sequence。"""
+    seq = sequence.next()
+    conn.sendall(build_frame(
+        MSG_STREAM_CONTROL,
+        pack_stream_control_payload(mask),
+        seq,
+    ))
+    return seq
+
+
+def stream_retry_due(last_valid_time, last_request_time, now):
+    """合法数据和最近请求都已沉默满 2 秒时才重申，避免请求风暴。"""
+    return (
+        now - last_valid_time >= STREAM_RETRY_SECONDS and
+        now - last_request_time >= STREAM_RETRY_SECONDS
+    )
+
+
 def main():
     ap = argparse.ArgumentParser(description="EKF 遥测记录器（PC 作 TCP 服务端）")
     ap.add_argument("bind", nargs="?", default="0.0.0.0",
@@ -157,6 +200,7 @@ def main():
     last_ok_count = 0
 
     srv = make_server(args.bind, args.port)
+    tx_sequence = SequenceCounter()
     try:
         while True:
             # —— 等板子连接（板复位/断缆会断开，循环重新 accept） ——
@@ -169,7 +213,20 @@ def main():
             buf = b""
             last_seq = None     # 每条连接重置：板复位后 seq 会归零
             try:
+                stream_seq = send_stream_control(conn, tx_sequence, STREAM_EKF)
+                print("[遥测] 已请求 EKF-only，seq=%d" % stream_seq)
+                last_stream_request = time.monotonic()
+                last_valid_ekf = last_stream_request
                 while True:
+                    now_mono = time.monotonic()
+                    if stream_retry_due(
+                            last_valid_ekf, last_stream_request, now_mono):
+                        stream_seq = send_stream_control(
+                            conn, tx_sequence, STREAM_EKF)
+                        print("[遥测] 连续 2 秒无合法 $UGEKF，重发 EKF-only，seq=%d"
+                              % stream_seq)
+                        last_stream_request = now_mono
+
                     try:
                         chunk = conn.recv(4096)
                     except socket.timeout:
@@ -219,9 +276,15 @@ def main():
                         csv_f.write(",".join(str(x) for x in out) + "\n")
                         csv_f.flush()  # 边采边落盘，掉电最多丢最后一行
                         n_ok += 1
+                        last_valid_ekf = time.monotonic()
             except OSError as e:
                 print("[连接] 异常(%s)，回到等待连接" % e)
             finally:
+                try:
+                    send_stream_control(conn, tx_sequence, 0)
+                    print("[遥测] 已请求关闭 EKF 流")
+                except (OSError, ValueError):
+                    pass
                 try:
                     conn.close()
                 except OSError:
