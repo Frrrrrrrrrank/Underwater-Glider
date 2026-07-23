@@ -146,12 +146,53 @@ typedef struct
 
 } EthernetUartReadoutPack;
 
+/* 系统快照：把各传感器/执行器/EKF 全局镜像定点打包，供以太网上报，
+ * 也供 SD 卡日志任务周期落盘。字段单位见各成员后缀（_x10=×10，_e6=×1e6 等）。 */
+typedef struct
+{
+  uint32_t alive_counter;
+  int32_t gnrmc_latitude_e6;
+  int32_t gnrmc_longitude_e6;
+  uint32_t alarm_bits;
+  int16_t displacement_mm_x10;
+  int16_t imu_roll_x10;
+  int16_t imu_pitch_x10;
+  int16_t imu_yaw_x10;
+  int16_t imu_height_dm;
+  int16_t imu_temp_c_x10;
+  uint16_t pressure_bar_x100;
+  int16_t pressure_temp_c_x10;
+  int16_t pump_feedback_rpm;
+  int16_t umotor0_feedback_rpm;
+  int16_t umotor1_feedback_rpm;
+  uint16_t servo_pulse_us;
+  uint8_t limit_switch_bits;
+  uint8_t displacement_valid;
+  uint8_t gnrmc_valid;
+  uint8_t pressure_valid;
+  uint8_t servo_mode;
+  uint8_t pump_speed_triggered;
+  uint8_t pump_direction_reversed;
+  /*EKF 状态估计（供以太网快照直接观察；x=pN, y=pE 为 NED 水平位置）*/
+  int32_t ekf_pN_cm;     /* x：北向位置 (cm)，Phase1 无水平观测会漂移 */
+  int32_t ekf_pE_cm;     /* y：东向位置 (cm)，同上 */
+  int32_t ekf_depth_mm;  /* 深度 (mm，正=水下) */
+  int16_t ekf_roll_x10;  /* 横滚 (deg×10) */
+  int16_t ekf_pitch_x10; /* 俯仰 (deg×10) */
+  int16_t ekf_yaw_x10;   /* 航向 (deg×10) */
+  uint8_t ekf_status;    /* UgEkfStatus 0..5 */
+  uint8_t ekf_valid;     /* 1 = valid_for_control(RUNNING&healthy) */
+} EthernetUartSystemSnapshot;
+
 extern volatile EthernetUartState g_ethernet_uart_state;
 extern volatile EthernetUartReadoutPack g_ethernet_uart_readout_pack;
 extern volatile uint8_t g_ethernet_rx_message_flag;
 extern volatile uint32_t g_ethernet_control_last_rx_tick;
 /* Ozone 诊断：NONE=0、STREAM=1（受 2.5s 看门狗）、LATCHED=2（保持）。 */
 extern volatile uint8_t g_ethernet_control_policy;
+
+/* 系统快照全局实例，由 EthernetUartDriver_UpdateSystemSnapshot() 刷新 */
+extern volatile EthernetUartSystemSnapshot g_ethernet_system_snapshot;
 
 /* EKF 遥测帧累计成功发送计数，供 Ozone 确认遥测在持续推送 */
 extern volatile uint32_t g_ekf_telem_tx_count;
@@ -163,6 +204,8 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart);
 void EthernetUartDriver_RunTask(void *argument);
 void EthernetUartDriver_SendText(const char *text);
 void EthernetUartDriver_SendSystemSnapshot(void);
+/* 从各全局镜像刷新 g_ethernet_system_snapshot（线程上下文调用即可）。 */
+void EthernetUartDriver_UpdateSystemSnapshot(void);
 /* 拼一行 $UGEKF,...*HH 的 EKF 状态估计遥测并发送（线程上下文，由以太网任务周期调用）。 */
 void EthernetUartDriver_SendEkfTelemetry(void);
 /* 拼一行 $UGMAG,seq,t_ms,mx,my,mz*HH 的原始磁力计遥测并发送（磁标定采集用；

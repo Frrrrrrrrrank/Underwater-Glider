@@ -902,6 +902,7 @@ def run_auto_mode(conn):
         rising = {k: pressed[k] and (not prev_pressed[k]) for k in vk_map}
         prev_pressed = pressed
 
+
         if rising['Q'] or rising['ESC']:
             packet = _build_default_auto_packet()
             dir_state["mode"] = None
@@ -915,6 +916,7 @@ def run_auto_mode(conn):
 
         if rising['H']:
             _print_auto_help(packet)
+            packet["ask_for_status"] = 1
 
         if rising['U']:
             dir_state["u_hold_start"] = now_s
@@ -1043,6 +1045,8 @@ def run_auto_mode(conn):
                 f"thr_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']})"
             )
             next_send_s += AUTO_SEND_PERIOD_S
+            if packet["ask_for_status"] == 1:
+                packet["ask_for_status"] = 0
             while next_send_s <= now_s:
                 next_send_s += AUTO_SEND_PERIOD_S
 

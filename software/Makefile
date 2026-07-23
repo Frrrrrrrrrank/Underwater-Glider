@@ -52,6 +52,7 @@ Glider-Core/pressure_sensor_driver.c \
 Glider-Core/sbus_driver.c \
 Glider-Core/buzzer_driver.c \
 Glider-App/estimation/ekf_bridge.c \
+Glider-App/estimation/control/zigzag_control.c \
 Glider-App/tasks/ekf_task.c \
 Glider-App/common/glider_time.c \
 Glider-Core/disk_driver.c \
@@ -61,6 +62,7 @@ Glider-Core/bspforSD/bsp.c \
 Glider-Core/bspforSD/bsp_timer.c \
 Glider-Core/bspforSD/bsp_sdio_sd.c \
 Glider-Core/bspforSD/demo_sd_fatfs.c \
+Glider-Core/bspforSD/sd_log_task.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c \
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_rcc.c \
@@ -191,6 +193,7 @@ C_INCLUDES =  \
 -IMiddlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 \
 -IMiddlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F \
 -IGlider-App/estimation \
+-IGlider-App/estimation/control \
 -IGlider-App/estimation/ug_estimation/include \
 -IGlider-App/tasks \
 -IGlider-App/common \

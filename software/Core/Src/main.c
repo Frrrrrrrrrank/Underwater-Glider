@@ -42,6 +42,7 @@
 #include "glider_time.h"
 #include "disk_driver.h"
 #include "thruster_driver.h"
+#include "sd_log_task.h"//SD 卡日志任务，每分钟落盘系统快照
 
 /* USER CODE END Includes */
 
@@ -341,6 +342,13 @@ const osThreadAttr_t EthernetTask_attributes = {
   .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal3,
 };
+/* SD 卡日志任务：每分钟把系统快照追加写入 armfly.txt，优先级最低不抢占控制 */
+osThreadId_t sdLogTaskHandle;
+const osThreadAttr_t sdLogTask_attributes = {
+  .name = "sdLogTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
 volatile uint32_t g_dbg_alive_counter = 0U;
 volatile uint32_t g_dbg_rtos_tick = 0U;
 volatile uint32_t g_dbg_rx_line_count = 0U;
@@ -597,7 +605,6 @@ int main(void)
   MX_TIM15_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
-  DemoFatFS();
   g_dbg_boot_stage = 46U;
   GliderCore_Init(&huart7);
   g_dbg_boot_stage = 4U;
@@ -690,6 +697,8 @@ int main(void)
   EthernetTaskHandle = osThreadNew(EthernetUartDriver_RunTask, NULL, &EthernetTask_attributes);
   /* 创建 EKF 任务，基于事件触发，IMU 输入后被唤醒 */
   ekfTaskHandle = osThreadNew(StartEkfTask, NULL, &ekfTask_attributes);
+  /* 创建 SD 卡日志任务，每分钟落盘一次系统快照 */
+  sdLogTaskHandle = osThreadNew(StartSdLogTask, NULL, &sdLogTask_attributes);
   g_dbg_boot_stage = 6U;//EKF Task 阶段标志位
   /* USER CODE END RTOS_THREADS */
 
@@ -2390,6 +2399,8 @@ void StartDefaultTask(void *argument)
   static uint32_t sd_mount_last_try_tick = 0U;
   (void)argument;
   g_dbg_boot_stage = 100U;
+
+  DemoFatFS();
 
   /* Infinite loop */
   for(;;)
