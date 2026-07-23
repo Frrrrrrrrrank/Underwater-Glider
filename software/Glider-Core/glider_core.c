@@ -23,7 +23,7 @@
 #define GLIDER_TX_MODE_POSITION_TEST 1U
 #define GLIDER_TX_MODE_RECEIVE_ONLY 2U
 /* Only edit this macro to change the target platform card ID. */
-#define GLIDER_TARGET_CARD_ID "381127"
+#define GLIDER_TARGET_CARD_ID "1462111"
 #define GLIDER_PLATFORM_CARD_ID GLIDER_TARGET_CARD_ID
 #define GLIDER_SIGNAL_STABLE_COUNT 2U
 #define GLIDER_MODE_SWITCH_COOLDOWN_LINES 3U
@@ -624,36 +624,20 @@ static bool try_send_pending_shortmsg(void)
 
   if (s_transparent_mode_ready == 0U)
   {
-    if (s_current_target_card_known == 0U && s_target_card_query_attempted == 0U)
+    written = snprintf(cmd, sizeof(cmd), GLIDER_SET_CARD_CMD_FMT, GLIDER_PLATFORM_CARD_ID);
+    if (written <= 0 || (size_t)written >= sizeof(cmd))
     {
-      if (GliderCore_SendText(GLIDER_QUERY_TARGET_CARD_CMD) != HAL_OK)
-      {
-        return false;
-      }
-      s_target_card_query_attempted = 1U;
+      return false;
+    }
+    if (GliderCore_SendText(cmd) != HAL_OK)
+    {
       return false;
     }
 
-    if (s_current_target_card_known == 0U || s_current_target_card_match == 0U)
-    {
-      written = snprintf(cmd, sizeof(cmd), GLIDER_SET_CARD_CMD_FMT, GLIDER_PLATFORM_CARD_ID);
-      if (written <= 0 || (size_t)written >= sizeof(cmd))
-      {
-        return false;
-      }
-      if (GliderCore_SendText(cmd) != HAL_OK)
-      {
-        return false;
-      }
-      strncpy(s_current_target_card, GLIDER_PLATFORM_CARD_ID, sizeof(s_current_target_card) - 1U);
-      s_current_target_card[sizeof(s_current_target_card) - 1U] = '\0';
-      s_current_target_card_known = 1U;
-      s_current_target_card_match = 1U;
-      s_target_card_query_attempted = 0U;
-      s_transparent_mode_ready = 1U;
-      return false;
-    }
-
+    strncpy(s_current_target_card, GLIDER_PLATFORM_CARD_ID, sizeof(s_current_target_card) - 1U);
+    s_current_target_card[sizeof(s_current_target_card) - 1U] = '\0';
+    s_current_target_card_known = 1U;
+    s_current_target_card_match = 1U;
     s_target_card_query_attempted = 0U;
     s_transparent_mode_ready = 1U;
     return false;
