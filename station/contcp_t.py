@@ -466,7 +466,7 @@ class EthernetUartSystemSnapshot(ctypes.Structure):
         ("servo_mode", ctypes.c_uint8),
         ("pump_speed_triggered", ctypes.c_uint8),
         ("pump_direction_reversed", ctypes.c_uint8),
-        # ==== EKF 状态估计（与板端 EthernetUartSystemSnapshot 严格同序） ====
+        # EKF 状态估计（与板端 EthernetUartSystemSnapshot 严格同序）
         ("ekf_pN_cm", ctypes.c_int32),     # x：北向位置 (cm)
         ("ekf_pE_cm", ctypes.c_int32),     # y：东向位置 (cm)
         ("ekf_depth_mm", ctypes.c_int32),  # 深度 (mm，正=水下)
@@ -630,7 +630,7 @@ def print_snapshot_struct(snap):
 
     print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
 
-# ==================== 控制包发送函数 ====================
+# 控制包发送函数
 def send_ugcp_frame(conn, msg_type, payload, label='UGCP'):
     """串行化一次完整 UGCP 发送，保证多线程下 seq 顺序与线上顺序一致。"""
     try:
@@ -717,7 +717,7 @@ def send_snapshot_request(conn):
 
 # ==================== 控制包输入交互 ====================
 def input_control_packet(conn):
-    """引导用户输入控制包各字段并发送"""
+    """用户输入控制包各字段并发送"""
     print("\n========== 输入控制包字段 ==========")
     fields = [
         ('pitchmotor_enable', 'bit (0/1)'),
@@ -1260,7 +1260,7 @@ def main():
     # ========== 主线程负责输入和发送 ==========
     print("\n========== 交互控制台 ==========")
     print("仅接受下列命令；未知文本不会发送到板端")
-    print("输入 'pack' 发送锁存控制包（保持到下一条命令，不受2.5秒超时）")
+    print("输入 'pack' 发送锁存控制包（保持到下一条命令，没有看门狗保护）")
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'snapshot' 请求一次系统状态快照")

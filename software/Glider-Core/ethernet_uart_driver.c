@@ -599,7 +599,7 @@ static bool EthernetUartDriver_ParseControlPayload(
 
   return true;
 }
-
+//CRC校验通过后解析控制包
 static void EthernetUartDriver_HandleControl(
     const uint8_t *payload, uint16_t payload_length, uint8_t policy)
 {
