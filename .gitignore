@@ -19,3 +19,9 @@ Thumbs.db
 # Generated EKF logs and analysis outputs
 /logs/csv/
 /logs/analysis/plots/
+
+# Agent 知识库(本地, 不上 GitHub)
+/AGENTS.md
+/CLAUDE.md
+/docs/AGENT_STATUS.md
+/EKF_context_for_new_codex.txt

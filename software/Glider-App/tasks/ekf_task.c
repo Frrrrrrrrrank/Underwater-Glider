@@ -24,7 +24,8 @@ void EkfTask_PublishImuRaw(const IMU_RawData *raw, uint64_t t_us)
     return;
   }
   EkfBridge_SubmitImu(raw->gyro.gx, raw->gyro.gy, raw->gyro.gz,
-                      raw->accel.ax, raw->accel.ay, raw->accel.az, t_us);
+                      raw->accel.ax, raw->accel.ay, raw->accel.az,
+                      raw->mag.mx, raw->mag.my, raw->mag.mz, t_us);
 
   /* 测量 IMU 真实新帧率：每累计 1 秒用帧数算一次 Hz。本函数仅在真正新帧时被调
      （main.c 已用 raw.updated 门控），t_us 为帧时间戳，统一时基。 */
@@ -37,7 +38,7 @@ void EkfTask_PublishImuRaw(const IMU_RawData *raw, uint64_t t_us)
     s_imu_hz_win_start_us = t_us;
   }
 
-  /* 目前raw mag 仅记录观察，不进 EKF，等 hard/soft iron 标定后再启用 yaw 更新 */
+  /* 保留模块系 raw mag 供遥测观察；bridge 仅在磁标定 cal_valid=1 后融合 yaw。 */
   g_ekf_mag_raw[0] = raw->mag.mx;
   g_ekf_mag_raw[1] = raw->mag.my;
   g_ekf_mag_raw[2] = raw->mag.mz;
@@ -51,6 +52,8 @@ void StartEkfTask(void *argument)
 {
   (void)argument;
 
+  /* 完整 EKF 初始化会构造较大的矩阵，必须使用本任务的 16KB 栈，
+   * 不能放在调度器启动前仅 1KB 的 MSP 上。初始化结束后 bridge 才接受参数提交。 */
   EkfBridge_Init();
 
   for (;;) {

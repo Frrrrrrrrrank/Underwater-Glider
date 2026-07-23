@@ -1,5 +1,4 @@
 import socket
-import struct
 import threading
 import time
 import sys
@@ -8,8 +7,39 @@ import json
 import os
 from datetime import datetime
 
+try:
+    from .ugcp_protocol import (
+        MSG_CONTROL19_LATCHED,
+        MSG_CONTROL19_STREAM,
+        MSG_SNAPSHOT_REQUEST,
+        MSG_STREAM_CONTROL,
+        STREAM_EKF,
+        SequenceCounter,
+        build_frame,
+        pack_control_payload,
+        pack_snapshot_request_payload,
+        pack_stream_control_payload,
+        pack_telem_control_payload,
+    )
+except ImportError:
+    from ugcp_protocol import (
+        MSG_CONTROL19_LATCHED,
+        MSG_CONTROL19_STREAM,
+        MSG_SNAPSHOT_REQUEST,
+        MSG_STREAM_CONTROL,
+        STREAM_EKF,
+        SequenceCounter,
+        build_frame,
+        pack_control_payload,
+        pack_snapshot_request_payload,
+        pack_stream_control_payload,
+        pack_telem_control_payload,
+    )
+
 # ==================== 全局标志 ====================
 running = True          # 控制线程退出
+UGCP_TX_SEQUENCE = SequenceCounter()
+UGCP_TX_LOCK = threading.Lock()
 
 AUTO_SEND_PERIOD_S = 1.0
 AUTO_KEY_POLL_S = 0.02
@@ -436,7 +466,7 @@ class EthernetUartSystemSnapshot(ctypes.Structure):
         ("servo_mode", ctypes.c_uint8),
         ("pump_speed_triggered", ctypes.c_uint8),
         ("pump_direction_reversed", ctypes.c_uint8),
-        # ==== EKF 状态估计（与板端 EthernetUartSystemSnapshot 严格同序） ====
+        # EKF 状态估计（与板端 EthernetUartSystemSnapshot 严格同序）
         ("ekf_pN_cm", ctypes.c_int32),     # x：北向位置 (cm)
         ("ekf_pE_cm", ctypes.c_int32),     # y：东向位置 (cm)
         ("ekf_depth_mm", ctypes.c_int32),  # 深度 (mm，正=水下)
@@ -600,56 +630,109 @@ def print_snapshot_struct(snap):
 
     print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
 
-# ==================== 控制包发送函数 ====================
+# 控制包发送函数
+def send_ugcp_frame(conn, msg_type, payload, label='UGCP'):
+    """串行化一次完整 UGCP 发送，保证多线程下 seq 顺序与线上顺序一致。"""
+    try:
+        with UGCP_TX_LOCK:
+            seq = UGCP_TX_SEQUENCE.next()
+            frame = build_frame(msg_type, payload, seq)
+            conn.sendall(frame)
+        print(f'[{label}] 已发送 seq={seq}，payload={len(payload)}B，总长={len(frame)}B')
+        return True
+    except Exception as e:
+        print(f'[发送错误] {e}')
+        return False
+
+
 def send_control_packet(conn, pitchmotor_enable, pitchmotor_speed_rpm,
                         rollmotor_enable, rollmotor_speed_rpm,
                         thrustmotor_direction, thrustmotor_direction2,
                         thrustmotor1se_speed_rpm, thrustmotor2se_speed_rpm,
                         backup_for_thrust,
                         pump_direction, pump_on_off,
-                        ask_for_status, eth_control_flag):
-    """按 EthernetUartReadoutPack 结构打包并发送控制包（19字节）。"""
-    pack_format = '<B I B I B B B B B B B B B'   # 小端紧凑打包
+                        ask_for_status, eth_control_flag, latched=False):
+    """编码同一份 CONTROL19；latched=False 是连续租约，True 是键盘锁存。"""
     try:
-        packet = struct.pack(pack_format,
-                             pitchmotor_enable & 0xFF,
-                             pitchmotor_speed_rpm & 0xFFFFFFFF,
-                             rollmotor_enable & 0xFF,
-                             rollmotor_speed_rpm & 0xFFFFFFFF,
-                             thrustmotor_direction & 0xFF,
-                             thrustmotor_direction2 & 0xFF,
-                             thrustmotor1se_speed_rpm & 0xFF,
-                             thrustmotor2se_speed_rpm & 0xFF,
-                             backup_for_thrust & 0xFF,
-                             pump_direction & 0xFF,
-                             pump_on_off & 0xFF,
-                             ask_for_status & 0xFF,
-                             eth_control_flag & 0xFF)
-        conn.sendall(packet)
-        print(f"[控制包] 已发送，长度 {len(packet)} 字节")
-        return True
+        payload = pack_control_payload(
+            pitchmotor_enable, pitchmotor_speed_rpm,
+            rollmotor_enable, rollmotor_speed_rpm,
+            thrustmotor_direction, thrustmotor_direction2,
+            thrustmotor1se_speed_rpm, thrustmotor2se_speed_rpm,
+            backup_for_thrust, pump_direction, pump_on_off,
+            ask_for_status, eth_control_flag,
+        )
     except Exception as e:
-        print(f"[发送错误] {e}")
+        print(f'[控制字段错误] {e}')
         return False
+    msg_type = MSG_CONTROL19_LATCHED if latched else MSG_CONTROL19_STREAM
+    label = '锁存控制包' if latched else '连续控制包'
+    return send_ugcp_frame(conn, msg_type, payload, label)
+
+
+def send_stream_control(conn, mask):
+    """设置完整遥测状态：bit0=$UGEKF，bit1=$UGMAG。"""
+    return send_ugcp_frame(
+        conn,
+        MSG_STREAM_CONTROL,
+        pack_stream_control_payload(mask),
+        '遥测流控制',
+    )
+
+
+def send_telem_control(conn, enabled):
+    """兼容交互命令：off=全关，on=只开 EKF。"""
+    return send_ugcp_frame(
+        conn,
+        MSG_STREAM_CONTROL,
+        pack_telem_control_payload(enabled),
+        'EKF 遥测控制',
+    )
+
+
+def send_neutral_and_release(conn):
+    """正常退出：锁存全中立，再释放 Ethernet 控制权。"""
+    neutral_ok = send_control_packet(
+        conn,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0, 1,
+        latched=True,
+    )
+    if neutral_ok:
+        time.sleep(0.05)
+    release_ok = send_control_packet(
+        conn,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0, 0,
+        latched=True,
+    )
+    return neutral_ok and release_ok
+
+
+def send_snapshot_request(conn):
+    return send_ugcp_frame(
+        conn, MSG_SNAPSHOT_REQUEST, pack_snapshot_request_payload(), '快照请求')
 
 # ==================== 控制包输入交互 ====================
 def input_control_packet(conn):
-    """引导用户输入控制包各字段并发送"""
+    """用户输入控制包各字段并发送"""
     print("\n========== 输入控制包字段 ==========")
     fields = [
-        ('pitchmotor_enable', 'uint8 (0-255)'),
-        ('pitchmotor_speed_rpm', 'uint32 (0-4294967295)'),
-        ('rollmotor_enable', 'uint8 (0-255)'),
-        ('rollmotor_speed_rpm', 'uint32 (0-4294967295)'),
-        ('thrustmotor_direction', 'uint8 (0-255)'),
-        ('thrustmotor_direction2', 'uint8 (0-255)'),
-        ('thrustmotor1se_speed_rpm', 'uint8 (0-255)'),
-        ('thrustmotor2se_speed_rpm', 'uint8 (0-255)'),
-        ('backup_for_thrust', 'uint8 (0-255)'),
-        ('pump_direction', 'uint8 (0-255)'),
-        ('pump_on_off', 'uint8 (0-255)'),
-        ('ask_for_status', 'uint8 (0-255)'),
-        ('eth_control_flag', 'uint8 (0-255)')
+        ('pitchmotor_enable', 'bit (0/1)'),
+        ('pitchmotor_speed_rpm', 'int32'),
+        ('rollmotor_enable', 'bit (0/1)'),
+        ('rollmotor_speed_rpm', 'int32'),
+        ('thrustmotor_direction', 'bit (0/1)'),
+        ('thrustmotor_direction2', 'bit (0/1)'),
+        ('thrustmotor1se_speed_rpm', 'speed (0-100)'),
+        ('thrustmotor2se_speed_rpm', 'speed (0-100)'),
+        ('backup_for_thrust', 'bit (0/1)'),
+        ('pump_direction', 'bit (0/1)'),
+        ('pump_on_off', 'bit (0/1)'),
+        ('ask_for_status', 'bit (0/1)'),
+        ('eth_control_flag', 'bit (0/1)')
     ]
     values = []
     for name, hint in fields:
@@ -657,14 +740,23 @@ def input_control_packet(conn):
             try:
                 val_str = input(f"{name} ({hint}): ").strip()
                 val = int(val_str)
-                if 'uint8' in hint and (val < 0 or val > 255):
-                    print("  输入超出 0-255 范围，请重新输入。")
+                if hint.startswith('bit') and val not in (0, 1):
+                    print('  该字段只能输入 0 或 1。')
+                    continue
+                if hint.startswith('speed') and not 0 <= val <= 100:
+                    print('  推进器速度必须在 0..100。')
+                    continue
+                if hint == 'int32' and not -0x80000000 <= val <= 0x7FFFFFFF:
+                    print('  转速必须在 int32 范围。')
                     continue
                 values.append(val)
                 break
             except ValueError:
                 print("  请输入有效的整数。")
-    send_control_packet(conn, *values)
+    sent = send_control_packet(conn, *values, latched=True)
+    if sent and values[-1] == 1:
+        print("[锁存警告] 此命令没有 2.5 秒超时，会一直保持到下一条控制命令、"
+              "显式释放或板子复位；断网不会自动停机。")
 
 
 def _clamp(value, low, high):
@@ -818,23 +910,7 @@ def run_auto_mode(conn):
             dir_state["base_s1"] = 0.0
             dir_state["base_s2"] = 0.0
             dir_state["rearm_init_pending"] = True
-            send_control_packet(
-                conn,
-                packet["pitchmotor_enable"],
-                packet["pitchmotor_speed_rpm"],
-                packet["rollmotor_enable"],
-                packet["rollmotor_speed_rpm"],
-                packet["thrustmotor_direction"],
-                packet["thrustmotor_direction2"],
-                packet["thrustmotor1se_speed_rpm"],
-                packet["thrustmotor2se_speed_rpm"],
-                packet["backup_for_thrust"],
-                packet["pump_direction"],
-                packet["pump_on_off"],
-                packet["ask_for_status"],
-                packet["eth_control_flag"],
-            )
-            send_control_packet(conn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+            send_neutral_and_release(conn)
             print("[AUTO] 已发送 Z 清零包 + 全零停控包，退出自动模式。")
             break
 
@@ -959,6 +1035,7 @@ def run_auto_mode(conn):
                 packet["pump_on_off"],
                 packet["ask_for_status"],
                 packet["eth_control_flag"],
+                latched=False,
             )
             print(
                 "[AUTO] send "
@@ -977,7 +1054,7 @@ def run_auto_mode(conn):
 
 #  EKF 遥测($UGEKF)解析 + CSV 记录 
 # 字段顺序必须与板端 EthernetUartDriver_SendEkfTelemetry() 完全一致。
-EKF_FIELDS = [
+EKF_BASE_FIELDS = [
     "seq", "t_ms", "status", "fl",
     "roll_deg", "pitch_deg", "yaw_deg",
     "pN", "pE", "depth",
@@ -988,7 +1065,12 @@ EKF_FIELDS = [
     "nisD", "accD", "rejD", "dstreak", "dreset",
     "dmeas", "dt", "imuhz", "tlast",
 ]
-EKF_INT_FIELDS = {"seq", "t_ms", "status", "fl", "accD", "rejD", "dstreak", "dreset"}
+EKF_ACK_FIELDS = ["cal_crc", "cal_valid"]
+EKF_FIELDS = EKF_BASE_FIELDS + EKF_ACK_FIELDS
+EKF_INT_FIELDS = {
+    "seq", "t_ms", "status", "fl", "accD", "rejD", "dstreak", "dreset",
+    "cal_crc", "cal_valid",
+}
 EKF_STATUS_NAMES = {0: "UNINIT", 1: "WAIT_BOOT_DELAY", 2: "WAIT_STILL",
                     3: "ALIGNING", 4: "RUNNING", 5: "FAULT"}
 # CSV 表头：墙钟时间 + fl 展开成 5 个布尔列 + 其余数值字段
@@ -1013,17 +1095,26 @@ def ekf_checksum_ok(line):
 
 
 def ekf_parse(line):
-    """解析一行 $UGEKF...，返回 dict；格式不符返回 None。"""
+    """解析旧 31 字段或带磁标定 ACK 的新 33 字段 $UGEKF。"""
     star = line.rfind("*")
     parts = line[1:star].split(",")
-    if not parts or parts[0] != "UGEKF" or len(parts) - 1 != len(EKF_FIELDS):
+    if not parts or parts[0] != "UGEKF":
+        return None
+    values = parts[1:]
+    if len(values) == len(EKF_BASE_FIELDS):
+        frame_fields = EKF_BASE_FIELDS
+    elif len(values) == len(EKF_FIELDS):
+        frame_fields = EKF_FIELDS
+    else:
         return None
     row = {}
     try:
-        for name, raw in zip(EKF_FIELDS, parts[1:]):
+        for name, raw in zip(frame_fields, values):
             row[name] = int(raw) if name in EKF_INT_FIELDS else float(raw)
     except ValueError:
         return None
+    for name in EKF_ACK_FIELDS:
+        row.setdefault(name, None)
     return row
 
 
@@ -1055,7 +1146,7 @@ def receive_thread(conn):
     ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
     ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
     ekf_csv.flush()
-    print(f"[EKF] 遥测记录 -> {ekf_csv_path}")
+    print(f"[EKF] 状态遥测记录（非磁标定） -> {ekf_csv_path}")
     ekf_stat = {"ok": 0, "bad": 0, "last_print": 0.0, "last_key": None}
 
     def handle_line(raw_line):
@@ -1089,6 +1180,11 @@ def receive_thread(conn):
                          (fl >> 0) & 1, (fl >> 1) & 1,
                          row["roll_deg"], row["pitch_deg"], row["yaw_deg"],
                          row["depth"], row["vD"], ekf_stat["ok"], ekf_stat["bad"]))
+            return
+
+        # 磁标定采集属于 station/tools/mag_logger.py。新固件默认不会发；
+        # 这里仍防御性吞掉旧固件或上一次会话残留的数据，避免终端刷屏。
+        if line.startswith("$UGMAG"):
             return
 
         if line == "AT":
@@ -1156,6 +1252,10 @@ def main():
 
     conn, addr = server_socket.accept()
     print(f"接收到客户端连接：{addr}")
+    if send_stream_control(conn, STREAM_EKF):
+        print("[遥测] 已声明 EKF-only；磁标定采集请单独运行 station/tools/mag_logger.py")
+    else:
+        print("[遥测警告] EKF-only 声明发送失败，请检查连接后重试 ekfon")
 
     # 启动接收线程
     recv_thread = threading.Thread(target=receive_thread, args=(conn,), daemon=True)
@@ -1163,10 +1263,11 @@ def main():
 
     # ========== 主线程负责输入和发送 ==========
     print("\n========== 交互控制台 ==========")
-    print("输入文本直接发送（文本格式）")
-    print("输入 'pack' 发送控制包")
-    print("输入 'auto' 进入自动控制模式（按 Q/ESC 退出该模式）")
+    print("仅接受下列命令；未知文本不会发送到板端")
+    print("输入 'pack' 发送锁存控制包（保持到下一条命令，没有看门狗保护）")
+    print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
+    print("输入 'snapshot' 请求一次系统状态快照")
     print("输入 'quit' 或 'exit' 退出程序")
     print("==================================\n")
 
@@ -1184,24 +1285,21 @@ def main():
             elif user_input.lower() == 'auto':
                 run_auto_mode(conn)
             elif user_input.lower() == 'ekfoff':
-                # 仅置 ask_for_status=3 停发遥测；其余全 0、eth_control_flag=0 不触发电机控制
-                send_control_packet(conn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0)
+                send_telem_control(conn, 0)
                 print("[EKF] 已请求板子停发遥测")
             elif user_input.lower() == 'ekfon':
-                # ask_for_status=2 开始遥测
-                send_control_packet(conn, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0)
+                send_telem_control(conn, 1)
                 print("[EKF] 已请求板子开始遥测")
+            elif user_input.lower() == 'snapshot':
+                send_snapshot_request(conn)
             else:
-                # 以文本方式发送
-                try:
-                    conn.send(user_input.encode('utf-8'))
-                    print("[文本] 已发送")
-                except Exception as e:
-                    print(f"[发送错误] {e}")
-                    break
+                print("[命令] 未识别，未发送；可用 pack/auto/ekfon/ekfoff/snapshot/quit")
     except KeyboardInterrupt:
         print("\n检测到 Ctrl+C，退出。")
     finally:
+        print("[退出] 正在锁存中立命令并释放 Ethernet 控制权...")
+        send_neutral_and_release(conn)
+        send_stream_control(conn, 0)
         # 通知接收线程退出
         running = False
         # 等待线程结束（最多2秒）

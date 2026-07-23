@@ -517,19 +517,28 @@ void IoControlPump_Poll(uint32_t now_ms)
   const uint32_t run_threshold = 1400U;
   const uint32_t mid_low = 800U;         /* Mid position lower bound */
   const uint32_t mid_high = 1200U;       /* Mid position upper bound */
+  EthernetUartReadoutPack ethernet_pack = {0};
+  uint8_t ethernet_control_flag = 0U;
+
+  /* SBUS 的 last_update_tick 来自 HAL_GetTick()；不能与 RTOS task tick 混算。 */
+  (void)now_ms;
   
   if (s_io_pump_state.initialized == 0U)
   {
     return;
   }
-  if (g_ethernet_rx_message_flag == 0U)
+  (void)EthernetUartDriver_CopyControlPack(
+      &ethernet_pack, &ethernet_control_flag);
+  if (ethernet_control_flag == 0U)
   {
   /* Get current SBUS channels */
   channel_count = SbusDriver_GetChannels(channels, 18U, &frame_lost, &failsafe, &last_update_tick);
   
-  if (channel_count < 18U || frame_lost != 0U || failsafe != 0U)
+  if (channel_count < 18U ||
+      SbusDriver_IsFrameFresh(HAL_GetTick(), SBUS_FRAME_FRESH_DEFAULT_MS) == 0U ||
+      frame_lost != 0U || failsafe != 0U)
   {
-    /* No valid RC signal: keep speed bits low/stopped and STP high. */
+    /* 无新鲜且有效的 RC 帧：不能沿用断线前缓存的 RUN 开关。 */
     IoControlPump_SetSpeed(0U);
     IoControlPump_SetDirection(0U);
     g_io_pump_debug.right_outer_switch = 0U;
@@ -591,7 +600,7 @@ void IoControlPump_Poll(uint32_t now_ms)
     g_io_pump_debug.right_outer_switch = 0U;
     g_io_pump_debug.left_mid2_switch = 0U;
 
-    if (g_ethernet_uart_readout_pack.pump_on_off == 1U)
+    if (ethernet_pack.pump_on_off == 1U)
   {
     IoControlPump_SetSpeed(1U);
     g_io_pump_debug.speed_triggered = 1U;
@@ -602,7 +611,7 @@ void IoControlPump_Poll(uint32_t now_ms)
     g_io_pump_debug.speed_triggered = 0U;
   }
 
-  if (g_ethernet_uart_readout_pack.pump_direction == 1U)
+  if (ethernet_pack.pump_direction == 1U)
   {
     IoControlPump_SetDirection(1U);
     g_io_pump_debug.direction_reversed = 1U;
