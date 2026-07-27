@@ -19,6 +19,8 @@ decode_shortmsg.py
 import sys
 import re
 
+from show_location import open_location, parse_coordinates
+
 
 CONTROL_CHARS = {
     0x00: "<NUL>",
@@ -83,6 +85,19 @@ def process_one(label: str, hex_str: str) -> None:
         print(f"  长度 : {len(raw_bytes)} 字节")
         print(format_hex_dump(raw_bytes))
         print(f"  解码 : {decoded}")
+
+        ascii_text = raw_bytes.decode("ascii", errors="ignore").strip()
+        if re.search(r"\bLAT\s*=", ascii_text, re.IGNORECASE) and re.search(
+            r"\bLON\s*=", ascii_text, re.IGNORECASE
+        ):
+            try:
+                latitude, longitude = parse_coordinates(ascii_text)
+                print("  坐标 : 有效，正在打开百度地图")
+                if not open_location(latitude, longitude):
+                    print("  地图 : 浏览器未能自动打开，请使用上面输出的网址")
+            except ValueError as error:
+                print(f"  坐标 : 无效（{error}）")
+
         # 尝试 UTF-8 解码（适用于含中文的载荷）
         try:
             utf8_decoded = raw_bytes.decode("utf-8")

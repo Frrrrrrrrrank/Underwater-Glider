@@ -474,6 +474,8 @@ static bool cache_coordinate_shortmsg(const GliderRdssDecodedFrame *frame)
   int sign_lon = 0;
   uint32_t abs_lat = 0U;
   uint32_t abs_lon = 0U;
+  uint32_t lat_ten_thousandths = 0U;
+  uint32_t lon_ten_thousandths = 0U;
 
   if (frame == NULL)
   {
@@ -484,19 +486,19 @@ static bool cache_coordinate_shortmsg(const GliderRdssDecodedFrame *frame)
   sign_lon = (frame->gnrmc.longitude_deg_e7 >= 0) ? 1 : -1;
   abs_lat = (uint32_t)((sign_lat > 0) ? frame->gnrmc.latitude_deg_e7 : -frame->gnrmc.latitude_deg_e7);
   abs_lon = (uint32_t)((sign_lon > 0) ? frame->gnrmc.longitude_deg_e7 : -frame->gnrmc.longitude_deg_e7);
+  lat_ten_thousandths = (abs_lat + 500U) / 1000U;
+  lon_ten_thousandths = (abs_lon + 500U) / 1000U;
 
   written = snprintf(
       payload,
       sizeof(payload),
-      "LAT=%c%lu.%07lu,LON=%c%lu.%07lu,UTC=%s,DATE=%s\r\n",
+      "LAT=%c%lu.%04lu,LON=%c%lu.%04lu",
       (sign_lat > 0) ? '+' : '-',
-      (unsigned long)(abs_lat / 10000000U),
-      (unsigned long)(abs_lat % 10000000U),
+      (unsigned long)(lat_ten_thousandths / 10000U),
+      (unsigned long)(lat_ten_thousandths % 10000U),
       (sign_lon > 0) ? '+' : '-',
-      (unsigned long)(abs_lon / 10000000U),
-      (unsigned long)(abs_lon % 10000000U),
-      frame->gnrmc.utc,
-      frame->gnrmc.date);
+      (unsigned long)(lon_ten_thousandths / 10000U),
+      (unsigned long)(lon_ten_thousandths % 10000U));
 
   if (written <= 0 || (size_t)written >= sizeof(payload))
   {
