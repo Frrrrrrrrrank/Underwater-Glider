@@ -53,6 +53,7 @@ Glider-Core/sbus_driver.c \
 Glider-Core/buzzer_driver.c \
 Glider-App/estimation/ekf_bridge.c \
 Glider-App/estimation/control/zigzag_control.c \
+Glider-App/estimation/control/pid_control_service.c \
 Glider-App/tasks/ekf_task.c \
 Glider-App/common/glider_time.c \
 Glider-Core/disk_driver.c \

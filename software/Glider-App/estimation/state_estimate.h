@@ -20,6 +20,9 @@ extern "C" {
 typedef struct {
   UgEkfOutput out;          /* 滤波器输出，字段见 ug_ekf_glider.h */
   uint32_t    update_seq;   /* 每次 EKF 刷新自增；读侧判新旧/校验一致性 */
+  /* 只在一帧新压力被实际投喂给 EKF 时变化，供低速深度外环判新样本。 */
+  uint32_t    depth_measurement_seq;
+  uint32_t    depth_measurement_tick_ms;
 } StateEstimate;
 
 #ifdef __cplusplus

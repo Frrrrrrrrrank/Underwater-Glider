@@ -39,6 +39,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "ekf_task.h"//EKF相关头文件声明
+#include "ekf_bridge.h"
+#include "pid_control_service.h"
 #include "glider_time.h"
 #include "disk_driver.h"
 #include "thruster_driver.h"
@@ -309,7 +311,8 @@ const osThreadAttr_t imuRxTask_attributes = {
 osThreadId_t servoTaskHandle;
 const osThreadAttr_t servoTask_attributes = {
   .name = "servoTask",
-  .stack_size = 256 * 4,
+  /* PID 参数解码最深静态调用链约 1000B；2KB 留出异常/浮点上下文余量。 */
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal3,
 };
 /* Definitions for Usart3Task */
@@ -456,7 +459,7 @@ void StartUsart2Task(void *argument);
 #define RC_SWITCH_UP_THRESHOLD     640U
 #define RC_SWITCH_DOWN_THRESHOLD   1400U
 #define RC_STICK_DEADBAND          40U
-#define RC_CONTROL_PERIOD_MS       20U
+#define RC_CONTROL_PERIOD_MS       20U  //ServoTask，也即PID 控制周期，20ms 对应 50Hz
 #define RC_FRAME_TIMEOUT_MS        150U
 
 #define RC_WORM_MOTOR_NODE_ID      0x01U
@@ -470,12 +473,14 @@ void StartUsart2Task(void *argument);
 #define RC_OFF_REASON_FAILSAFE_OR_LOST     2U
 #define RC_OFF_REASON_ALL_SWITCH_UP        3U
 #define RC_OFF_REASON_MODE_SWITCH_NOT_MID  4U
+#define RC_OFF_REASON_PID_FAULT_BASE        100U
 
 typedef enum
 {
   RC_CTRL_MODE_OFF = 0U,
   RC_CTRL_MODE_OPEN_LOOP_SPEED = 1U,
-  RC_CTRL_MODE_ETH = 2U
+  RC_CTRL_MODE_ETH = 2U,
+  RC_CTRL_MODE_PID_ETH = 3U
 } RcControlMode;
 
 static uint32_t RcControl_IsSwitchUp(uint16_t raw)
@@ -656,6 +661,7 @@ int main(void)
   /* add mutexes, ... */
   DisplacementSensor_Init(&huart3);
   IoControlPump_Init();
+  PidControlService_Init();//新添加的PID任务初始化
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -2335,14 +2341,8 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   {
     g_dbg_uart3_error_count++;
     g_dbg_uart3_last_error = huart->ErrorCode;
-
-    __HAL_UART_CLEAR_OREFLAG(huart);
-    __HAL_UART_CLEAR_NEFLAG(huart);
-    __HAL_UART_CLEAR_FEFLAG(huart);
-    __HAL_UART_CLEAR_PEFLAG(huart);
-
-    huart->ErrorCode = HAL_UART_ERROR_NONE;
-    huart->RxState = HAL_UART_STATE_READY;
+    /* 先把原始错误码交给位移模块；恢复与重挂由 Usart3Task 完成。 */
+    DisplacementSensor_OnError(huart);
   }
 
   PressureSensorDriver_OnError(huart);
@@ -2696,7 +2696,6 @@ void Start_IMU_Task(void *argument)
 * @retval None
 */
 /* USER CODE END Header_StartServoTask */
-uint16_t test_thru = 0U;
 void StartServoTask(void *argument)
 {
   /* USER CODE BEGIN StartServoTask */
@@ -2708,21 +2707,34 @@ void StartServoTask(void *argument)
   uint32_t now_tick;
   uint32_t channel_count;
   uint8_t motor_enabled = 0U;
-  uint16_t sw_left_outer;
-  uint16_t sw_left_mid_1;
-  uint16_t sw_left_mid_2;
-  uint16_t sw_right_outer;
-  int32_t worm_cmd_rpm;
-  int32_t stepper_cmd_rpm;
+  uint8_t sbus_valid;
+  uint8_t pitchmotor_enable_cmd;
+  uint8_t rollmotor_enable_cmd;
+  uint8_t pump_enable_cmd;
+  uint8_t pump_direction_cmd;
+  uint16_t sw_left_outer = 0U;
+  uint16_t sw_left_mid_1 = 0U;
+  uint16_t sw_left_mid_2 = 0U;
+  uint16_t sw_right_outer = 0U;
+  int32_t worm_cmd_rpm = 0;
+  int32_t stepper_cmd_rpm = 0;
   uint8_t thrust1_speed_cmd = 0U;
   uint8_t thrust2_speed_cmd = 0U;
   uint8_t thrust1_direction_cmd = 0U;
   uint8_t thrust2_direction_cmd = 0U;
   uint8_t thrust_first_nonzero_done = 0U;
+  uint8_t thrust_last_direction1 = 0U;
+  uint8_t thrust_last_direction2 = 0U;
   uint16_t thrust1_pulse_us;
   uint16_t thrust2_pulse_us;
+  float signed_thrust;
+  float thrust_magnitude;
+  IoControlPumpSource pump_source;
   EthernetUartReadoutPack ethernet_pack = {0};
   uint8_t ethernet_control_flag = 0U;
+  StateEstimate state_estimate;
+  ZigzagControlOutput pid_output;
+  PidControlStatus pid_status;
 
   (void)argument;
 
@@ -2733,37 +2745,101 @@ void StartServoTask(void *argument)
 
   for(;;)
   {
+    now_tick = HAL_GetTick();
     (void)EthernetUartDriver_CopyControlPack(
         &ethernet_pack, &ethernet_control_flag);
-    if (ethernet_control_flag == 0U){
-  //Ethernet 控制退出或看门狗超时时，上一拍 PWM 不会自动消失。
-  //每次进入非 Ethernet 分支都显式回中立，并重置下次非零命令的预备拍
+    (void)EkfBridge_CopyState(&state_estimate);//ServoTask每轮调用PID
+    PidControlService_Step(
+        &state_estimate,
+        now_tick,
+        ((float)RC_CONTROL_PERIOD_MS) * 0.001f,
+        &pid_output);//调用PID服务
+    (void)PidControlService_CopyStatus(&pid_status);
+
+    channel_count = SbusDriver_GetChannels(
+        channels, SBUS_CHANNEL_COUNT, &frame_lost, &failsafe, NULL);
+    sbus_valid =
+        (channel_count >= SBUS_CHANNEL_COUNT &&
+         SbusDriver_IsFrameFresh(now_tick, RC_FRAME_TIMEOUT_MS) != 0U &&
+         failsafe == 0U && frame_lost == 0U)
+            ? 1U
+            : 0U;
+
+    mode = RC_CTRL_MODE_OFF;
+    off_reason = RC_OFF_REASON_NONE;
+    pitchmotor_enable_cmd = 0U;
+    rollmotor_enable_cmd = 0U;
+    pump_enable_cmd = 0U;
+    pump_direction_cmd = 0U;
+    pump_source = IO_PUMP_SOURCE_OFF;
+    worm_cmd_rpm = 0;
+    stepper_cmd_rpm = 0;
     thrust1_speed_cmd = 0U;
     thrust2_speed_cmd = 0U;
     thrust1_direction_cmd = 0U;
     thrust2_direction_cmd = 0U;
-    (void)ThrusterDriver_SetDualPulseUs(
-        THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
-    thrust_first_nonzero_done = 0U;
-    now_tick = HAL_GetTick();
-    channel_count = SbusDriver_GetChannels(channels, SBUS_CHANNEL_COUNT,
-                                           &frame_lost, &failsafe, NULL);
 
-    worm_cmd_rpm = 0;
-    stepper_cmd_rpm = 0;
-    mode = RC_CTRL_MODE_OFF;
-    off_reason = RC_OFF_REASON_NONE;
+    // 新鲜 PID ARM 会话优先,其内部故障时保持 PID 源但输出全零，禁止回落旧命令
+    if (pid_status.arm_requested != 0U &&
+        pid_status.requested_mode != ZIGZAG_MODE_OFF &&
+        pid_status.command_age_ms <= PID_CONTROL_COMMAND_TIMEOUT_MS)
+    {
+      mode = RC_CTRL_MODE_PID_ETH;
+      pump_source = IO_PUMP_SOURCE_PID_ETH;
+      if (pid_output.output_valid != 0U)
+      {
+        pitchmotor_enable_cmd = 1U;
+        worm_cmd_rpm = RcControl_ClampSigned(
+            pid_output.worm_motor_rpm, RC_WORM_MOTOR_MAX_RPM);
+        pump_enable_cmd = pid_output.pump_enable;
+        pump_direction_cmd = pid_output.pump_direction;
 
-    if ((channel_count < SBUS_CHANNEL_COUNT) ||
-        (SbusDriver_IsFrameFresh(now_tick, RC_FRAME_TIMEOUT_MS) == 0U))
-    {
-      off_reason = RC_OFF_REASON_FRAME_TIMEOUT;
+        signed_thrust = pid_output.signed_thrust_percent;
+        thrust_magnitude =
+            (signed_thrust >= 0.0f) ? signed_thrust : -signed_thrust;
+        if (thrust_magnitude > 100.0f)
+        {
+          thrust_magnitude = 100.0f;
+        }
+        thrust1_speed_cmd = (uint8_t)(thrust_magnitude + 0.5f);
+        thrust2_speed_cmd = thrust1_speed_cmd;
+
+        /* 沿用 station AUTO：正值=I 键方向，负值=K 键方向。 */
+        if (signed_thrust > 0.0f)
+        {
+          thrust1_direction_cmd = 0U;
+          thrust2_direction_cmd = 1U;
+        }
+        else if (signed_thrust < 0.0f)
+        {
+          thrust1_direction_cmd = 1U;
+          thrust2_direction_cmd = 0U;
+        }
+      }
+      else
+      {
+        off_reason =
+            RC_OFF_REASON_PID_FAULT_BASE + (uint32_t)pid_status.fault;
+      }
     }
-    else if ((failsafe != 0U) || (frame_lost != 0U))
+    else if (ethernet_control_flag != 0U)
     {
-      off_reason = RC_OFF_REASON_FAILSAFE_OR_LOST;
+      mode = RC_CTRL_MODE_ETH;
+      pump_source = IO_PUMP_SOURCE_DIRECT_ETH;
+      pitchmotor_enable_cmd = ethernet_pack.pitchmotor_enable;
+      rollmotor_enable_cmd = ethernet_pack.rollmotor_enable;
+      pump_enable_cmd = ethernet_pack.pump_on_off;
+      pump_direction_cmd = ethernet_pack.pump_direction;
+      worm_cmd_rpm = RcControl_ClampSigned(
+          ethernet_pack.pitchmotor_speed_rpm, RC_WORM_MOTOR_MAX_RPM);
+      stepper_cmd_rpm = RcControl_ClampSigned(
+          ethernet_pack.rollmotor_speed_rpm, RC_STEPPER_MAX_RPM);
+      thrust1_speed_cmd = ethernet_pack.thrustmotor1se_speed_rpm;
+      thrust2_speed_cmd = ethernet_pack.thrustmotor2se_speed_rpm;
+      thrust1_direction_cmd = ethernet_pack.thrustmotor_direction;
+      thrust2_direction_cmd = ethernet_pack.thrustmotor_direction2;
     }
-    else
+    else if (sbus_valid != 0U)
     {
       sw_left_outer = channels[SBUS_CH_SWITCH_LEFT_OUTER];
       sw_left_mid_1 = channels[SBUS_CH_SWITCH_LEFT_MID_1];
@@ -2775,6 +2851,13 @@ void StartServoTask(void *argument)
       g_rc_sw_left_mid_2 = sw_left_mid_2;
       g_rc_sw_right_outer = sw_right_outer;
 
+      /* 泵沿用原 SBUS 语义，但只发布邮箱命令，不在本任务写 GPIO。 */
+      pump_source = IO_PUMP_SOURCE_SBUS;
+      pump_enable_cmd =
+          (sw_right_outer > RC_SWITCH_DOWN_THRESHOLD) ? 1U : 0U;
+      pump_direction_cmd =
+          (sw_left_mid_2 > 800U && sw_left_mid_2 < 1200U) ? 1U : 0U;
+
       if ((RcControl_IsSwitchUp(sw_left_outer) != 0U) &&
           (RcControl_IsSwitchUp(sw_left_mid_1) != 0U) &&
           (RcControl_IsSwitchUp(sw_left_mid_2) != 0U) &&
@@ -2785,105 +2868,102 @@ void StartServoTask(void *argument)
       else if (RcControl_IsSwitchMid(sw_left_mid_1) != 0U)
       {
         mode = RC_CTRL_MODE_OPEN_LOOP_SPEED;
+        pitchmotor_enable_cmd = 1U;
+        rollmotor_enable_cmd = 1U;
+        g_rc_left_stick_y = channels[SBUS_CH_LEFT_STICK_Y];
+        g_rc_left_stick_x = channels[SBUS_CH_LEFT_STICK_X];
+        g_rc_right_stick_y = channels[SBUS_CH_RIGHT_STICK_Y];
+        worm_cmd_rpm = RcControl_MapStickToSignedRpm(
+            g_rc_left_stick_y, RC_WORM_MOTOR_MAX_RPM);
+        stepper_cmd_rpm = RcControl_MapStickToSignedRpm(
+            g_rc_left_stick_x, RC_STEPPER_MAX_RPM);
       }
       else
       {
         off_reason = RC_OFF_REASON_MODE_SWITCH_NOT_MID;
       }
     }
-
-    if (mode == RC_CTRL_MODE_OPEN_LOOP_SPEED)
+    else if (channel_count < SBUS_CHANNEL_COUNT ||
+             SbusDriver_IsFrameFresh(
+                 now_tick, RC_FRAME_TIMEOUT_MS) == 0U)
     {
-      g_rc_left_stick_y = channels[SBUS_CH_LEFT_STICK_Y];
-      g_rc_left_stick_x = channels[SBUS_CH_LEFT_STICK_X];
-      g_rc_right_stick_y = channels[SBUS_CH_RIGHT_STICK_Y];
+      off_reason = RC_OFF_REASON_FRAME_TIMEOUT;
+    }
+    else
+    {
+      off_reason = RC_OFF_REASON_FAILSAFE_OR_LOST;
+    }
 
-      worm_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_left_stick_y, RC_WORM_MOTOR_MAX_RPM);
-      stepper_cmd_rpm = RcControl_MapStickToSignedRpm(g_rc_left_stick_x, RC_STEPPER_MAX_RPM);
-
-
+    /* 唯一硬件应用点：先完成源仲裁，再一次性写各执行器。 */
+    if (pitchmotor_enable_cmd != 0U)
+    {
       if (motor_enabled == 0U)
       {
         UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 1U);
         motor_enabled = 1U;
       }
-
       UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, worm_cmd_rpm);
-      Stepper_SetContinuousSignedRpm(stepper_cmd_rpm);
     }
     else
     {
+      worm_cmd_rpm = 0;
       UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, 0);
-
       if (motor_enabled != 0U)
       {
         UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 0U);
         motor_enabled = 0U;
       }
-
-      Stepper_SetContinuousSignedRpm(0);
     }
+
+    if (rollmotor_enable_cmd != 0U)
+    {
+      Stepper_SetContinuousSignedRpm(stepper_cmd_rpm);
     }
     else
     {
-      mode = RC_CTRL_MODE_ETH;
-      worm_cmd_rpm = RcControl_ClampSigned(ethernet_pack.pitchmotor_speed_rpm,RC_WORM_MOTOR_MAX_RPM);
-      stepper_cmd_rpm = RcControl_ClampSigned(ethernet_pack.rollmotor_speed_rpm,RC_STEPPER_MAX_RPM);
-      
-      if (ethernet_pack.pitchmotor_enable == 1U)
-      {   
-        if (motor_enabled == 0U)
-        {
-          UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 1U);
-          motor_enabled = 1U;
-        }
-        UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, worm_cmd_rpm);
-      }
-      else
-      {   
-        if (motor_enabled == 1U)
-        {
-          UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 0U);
-          motor_enabled = 0U;
-        }
-          UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, 0);
-          worm_cmd_rpm = 0;
-      }
-      
-      if (ethernet_pack.rollmotor_enable == 1U)
-      {
-        Stepper_SetContinuousSignedRpm(stepper_cmd_rpm);
-      }
-      else
-      {
-        Stepper_SetContinuousSignedRpm(0);
-        stepper_cmd_rpm = 0;
-      }
-
-      thrust1_speed_cmd = ethernet_pack.thrustmotor1se_speed_rpm;
-      thrust2_speed_cmd = ethernet_pack.thrustmotor2se_speed_rpm;
-      thrust1_direction_cmd = ethernet_pack.thrustmotor_direction;
-      thrust2_direction_cmd = ethernet_pack.thrustmotor_direction2;
-
-      if ((thrust_first_nonzero_done == 0U) && ((thrust1_speed_cmd != 0U) || (thrust2_speed_cmd != 0U)))
-      {
-        (void)ThrusterDriver_SetDualPulseUs(THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
-        thrust_first_nonzero_done = 1U;
-      }
-      else
-      {
-        thrust1_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust1_direction_cmd, thrust1_speed_cmd);
-        thrust2_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(thrust2_direction_cmd, thrust2_speed_cmd);
-        (void)ThrusterDriver_SetDualPulseUs(thrust1_pulse_us, thrust2_pulse_us);
-      }
+      stepper_cmd_rpm = 0;
+      Stepper_SetContinuousSignedRpm(0);
     }
+
+    if (thrust1_speed_cmd == 0U && thrust2_speed_cmd == 0U)
+    {
+      (void)ThrusterDriver_SetDualPulseUs(
+          THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
+      thrust_first_nonzero_done = 0U;
+    }
+    else if (thrust_first_nonzero_done == 0U ||
+             thrust1_direction_cmd != thrust_last_direction1 ||
+             thrust2_direction_cmd != thrust_last_direction2)
+    {
+      /* 从静止启动或换向时先给一拍中立。 */
+      (void)ThrusterDriver_SetDualPulseUs(
+          THRUSTER_PULSE_NEUTRAL_US, THRUSTER_PULSE_NEUTRAL_US);
+      thrust_first_nonzero_done = 1U;
+      thrust_last_direction1 = thrust1_direction_cmd;
+      thrust_last_direction2 = thrust2_direction_cmd;
+    }
+    else
+    {
+      thrust1_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(
+          thrust1_direction_cmd, thrust1_speed_cmd);
+      thrust2_pulse_us = ThrusterDriver_MapDirectionSpeedToPulseUs(
+          thrust2_direction_cmd, thrust2_speed_cmd);
+      (void)ThrusterDriver_SetDualPulseUs(
+          thrust1_pulse_us, thrust2_pulse_us);
+    }
+
+    (void)IoControlPump_SubmitCommand(
+        pump_source,
+        pump_enable_cmd,
+        pump_direction_cmd,
+        now_tick);
 
     g_rc_ctrl_mode = mode;
     g_rc_ctrl_off_reason = off_reason;
     g_rc_worm_cmd_rpm = worm_cmd_rpm;
     g_rc_stepper_cmd_rpm = stepper_cmd_rpm;
 
-    osDelay(RC_CONTROL_PERIOD_MS);
+    osDelay(RC_CONTROL_PERIOD_MS);//循环定义位置
   }
   /* USER CODE END StartServoTask */
 }
@@ -2902,10 +2982,15 @@ void StartUsart3Task(void *argument)
 
   for (;;)
   {
-    uint32_t now = osKernelGetTickCount();
-    DisplacementSensor_Poll(now);
-    IoControlPump_Poll(now);
+    /* 位移数据、ServoTask 邮箱时间戳和泵超时统一使用 HAL_GetTick。 */
+    uint32_t now = HAL_GetTick();
+    /*
+     * 限位电平在这里 10ms 刷新一次，motor_driver 直接读当前电平判方向
+     * （Motor_IsLimitBlocked），不再需要单独的限位事件观察函数。
+     */
     LimitSwitch_ReadStates(g_limit_switch_states);
+    DisplacementSensor_Poll(now);
+    IoControlPump_Poll();
     osDelay(10);
   }
   /* USER CODE END StartUsart3Task */

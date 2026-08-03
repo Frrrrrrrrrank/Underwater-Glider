@@ -20,7 +20,7 @@ extern "C" {
  * 1 -> not touched (pulled up)
  * 0 -> touched (connected to GND)
  */
-void LimitSwitch_ReadStates(uint8_t states[LIMIT_SWITCH_COUNT]);
+void LimitSwitch_ReadStates(volatile uint8_t states[LIMIT_SWITCH_COUNT]);
 
 #ifdef __cplusplus
 }

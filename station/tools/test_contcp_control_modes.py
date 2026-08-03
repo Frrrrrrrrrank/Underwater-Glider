@@ -1,14 +1,18 @@
 import contextlib
 import io
+import os
+import sys
 import unittest
 from unittest import mock
 
-try:
-    from . import contcp_t
-    from . import ugcp_protocol as ugcp
-except ImportError:
-    import contcp_t
-    import ugcp_protocol as ugcp
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+STATION_DIR = os.path.dirname(HERE)
+if STATION_DIR not in sys.path:
+    sys.path.insert(0, STATION_DIR)
+
+import contcp_t
+import ugcp_protocol as ugcp
 
 
 class FakeSocket:

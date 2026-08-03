@@ -8,6 +8,7 @@
 #include "limit_switch.h"
 #include "ekf_bridge.h"   /* EkfBridge_CopyState / StateEstimate / g_ekf_depth_meas */
 #include "ekf_task.h"     /* g_ekf_imu_hz */
+#include "pid_control_service.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>
@@ -212,9 +213,10 @@ static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static volatile uint32_t s_tx_busy = 0U;
 static uint32_t s_last_command_tick = 0U;
-/* 两路遥测独立控制；默认只发状态 EKF，磁标定原始流必须由采集脚本显式开启。 */
+/* 三路遥测独立控制；默认只发状态 EKF，MAG/CTL 由对应工具显式开启。 */
 static volatile uint8_t s_ekf_telem_enabled = 1U;
 static volatile uint8_t s_mag_telem_enabled = 0U;
+static volatile uint8_t s_ctl_telem_enabled = 0U;
 /* HAL_BUSY 时不篡改 HAL 内部状态，由 Ethernet task 在 READY 后重试挂接。 */
 static volatile uint8_t s_rx_rearm_pending = 0U;
 
@@ -223,7 +225,10 @@ static volatile uint8_t s_rx_rearm_pending = 0U;
 #define UGCP_CRC_SIZE               ETHERNET_UART_FRAME_CRC_SIZE
 #define UGCP_MAX_FRAME_SIZE         ETHERNET_UART_FRAME_MAX_SIZE
 #define UGCP_CONTROL_PAYLOAD_SIZE  19U
+#define UGCP_CASCADE_PAYLOAD_SIZE  24U
+#define UGCP_CASCADE_SCHEMA_V1      1U
 #define UGCP_PARAM_GROUP_MAG_CAL    1U
+#define UGCP_PARAM_GROUP_PID        2U
 #define UGCP_PARAM_BLOCK_COUNT      4U
 #define UGCP_PARAM_BLOCK_DATA_SIZE 16U
 #define UGCP_PARAM_BLOCK_PAYLOAD_SIZE 19U
@@ -258,8 +263,8 @@ static void EthernetUartDriver_DispatchFrame(
 static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_t length);
 static uint32_t EthernetUartDriver_ReadLeU32(const uint8_t *bytes);
 static int32_t EthernetUartDriver_ReadLeI32(const uint8_t *bytes);
+static float EthernetUartDriver_ReadLeFloat(const uint8_t *bytes);
 static uint32_t EthernetUartDriver_Crc32(const uint8_t *data, uint16_t length);
-static void EthernetUartDriver_UpdateSystemSnapshot(void);
 
 static int16_t EthernetUartDriver_ClampI16(int32_t value)
 {
@@ -571,6 +576,7 @@ static void EthernetUartDriver_HandleControl(
     const uint8_t *payload, uint16_t payload_length, uint8_t policy)
 {
   EthernetUartReadoutPack parsed;
+  PidControlCommand pid_off;
   uint32_t now;
 
   if (!EthernetUartDriver_ParseControlPayload(payload, payload_length, &parsed))
@@ -594,6 +600,11 @@ static void EthernetUartDriver_HandleControl(
   taskEXIT_CRITICAL();
   g_ethernet_uart_diag.control_packet_count++;
 
+  /* 最后收到的 Ethernet 控制类型接管：DIRECT 到来时撤销旧 PID 会话。 */
+  (void)memset(&pid_off, 0, sizeof(pid_off));
+  pid_off.mode = ZIGZAG_MODE_OFF;
+  (void)PidControlService_SubmitCommand(&pid_off, now);
+
   if (parsed.ask_for_status == 1U)
   {
     /* 只置请求，实际构造/异步发送由 Ethernet task 的发送调度完成。 */
@@ -601,6 +612,69 @@ static void EthernetUartDriver_HandleControl(
   }
 }
 
+static void EthernetUartDriver_HandleCascadeCommand(
+    const uint8_t *payload, uint16_t payload_length)
+{
+  PidControlCommand command;
+  uint32_t now;
+
+  if (payload == NULL || payload_length != UGCP_CASCADE_PAYLOAD_SIZE)
+  {
+    g_ethernet_uart_diag.frame_length_error_count++;
+    g_ethernet_uart_diag.control_payload_error_count++;
+    g_ethernet_uart_diag.control_reject_count++;
+    return;
+  }
+
+  if (payload[0] != UGCP_CASCADE_SCHEMA_V1 ||
+      payload[1] > (uint8_t)ZIGZAG_MODE_DEPTH_CASCADE ||
+      (payload[2] & 0xFEU) != 0U ||
+      payload[3] != 0U ||
+      payload[6] != 0U ||
+      payload[7] != 0U)
+  {
+    g_ethernet_uart_diag.control_payload_error_count++;
+    g_ethernet_uart_diag.control_reject_count++;
+    return;
+  }
+
+  (void)memset(&command, 0, sizeof(command));
+  command.mode = (ZigzagControlMode)payload[1];
+  command.armed = payload[2] & 0x01U;
+  command.command_id =
+      (uint16_t)((uint16_t)payload[4] | ((uint16_t)payload[5] << 8U));
+  command.target_depth_m = EthernetUartDriver_ReadLeFloat(&payload[8]);
+  command.target_pitch_deg = EthernetUartDriver_ReadLeFloat(&payload[12]);
+  command.signed_thrust_percent =
+      EthernetUartDriver_ReadLeFloat(&payload[16]);
+  command.required_pid_crc = EthernetUartDriver_ReadLeU32(&payload[20]);
+
+  if (!isfinite(command.target_depth_m) ||
+      !isfinite(command.target_pitch_deg) ||
+      !isfinite(command.signed_thrust_percent))
+  {
+    g_ethernet_uart_diag.control_payload_error_count++;
+    g_ethernet_uart_diag.control_reject_count++;
+    return;
+  }
+
+  now = HAL_GetTick();
+  if (PidControlService_SubmitCommand(&command, now) == 0U)
+  {
+    g_ethernet_uart_diag.control_payload_error_count++;
+    g_ethernet_uart_diag.control_reject_count++;
+    return;
+  }
+
+  /* PID 命令到来时释放旧 CONTROL19，防止两种 Ethernet 源同时有效。 */
+  taskENTER_CRITICAL();
+  g_ethernet_rx_message_flag = 0U;
+  g_ethernet_uart_readout_pack.eth_control_flag = 0U;
+  g_ethernet_control_policy = ETHERNET_UART_CONTROL_POLICY_NONE;
+  taskEXIT_CRITICAL();
+  g_ethernet_uart_diag.control_packet_count++;
+}
+//UGCP 参数块处理，分块接收，最后提交
 static void EthernetUartDriver_HandleParamBlock(
     const uint8_t *payload, uint16_t payload_length)
 {
@@ -618,7 +692,9 @@ static void EthernetUartDriver_HandleParamBlock(
   group = payload[0];
   transaction = payload[1];
   block = payload[2];
-  if (group != UGCP_PARAM_GROUP_MAG_CAL || block >= UGCP_PARAM_BLOCK_COUNT)
+  if ((group != UGCP_PARAM_GROUP_MAG_CAL &&
+       group != UGCP_PARAM_GROUP_PID) ||
+      block >= UGCP_PARAM_BLOCK_COUNT)
   {
     g_ethernet_uart_diag.parameter_reject_count++;
     return;
@@ -663,7 +739,8 @@ static void EthernetUartDriver_HandleParamCommit(
   }
 
   expected_crc = EthernetUartDriver_ReadLeU32(&payload[3]);
-  if (payload[0] != UGCP_PARAM_GROUP_MAG_CAL ||
+  if ((payload[0] != UGCP_PARAM_GROUP_MAG_CAL &&
+       payload[0] != UGCP_PARAM_GROUP_PID) ||
       payload[2] != UGCP_PARAM_BLOCK_COUNT ||
       s_param_stage.group != payload[0] ||
       s_param_stage.transaction != payload[1] ||
@@ -673,10 +750,23 @@ static void EthernetUartDriver_HandleParamCommit(
     return;
   }
 
-  if (EkfBridge_SubmitMagCalibration(s_param_stage.table, expected_crc) == 0U)
+  if (payload[0] == UGCP_PARAM_GROUP_MAG_CAL)
   {
-    g_ethernet_uart_diag.parameter_reject_count++;
-    return;
+    if (EkfBridge_SubmitMagCalibration(
+            s_param_stage.table, expected_crc) == 0U)
+    {
+      g_ethernet_uart_diag.parameter_reject_count++;
+      return;
+    }
+  }
+  else
+  {
+    if (PidControlService_SubmitConfigTable(
+            s_param_stage.table, expected_crc) == 0U)
+    {
+      g_ethernet_uart_diag.parameter_reject_count++;
+      return;
+    }
   }
 
   g_ethernet_uart_diag.parameter_commit_count++;
@@ -700,6 +790,10 @@ static void EthernetUartDriver_DispatchFrame(
           payload, payload_length, ETHERNET_UART_CONTROL_POLICY_LATCHED);
       break;
 
+    case ETHERNET_UART_MSG_CASCADE_COMMAND:
+      EthernetUartDriver_HandleCascadeCommand(payload, payload_length);
+      break;
+
     case ETHERNET_UART_MSG_TELEM_CONTROL:
       if (payload_length != 1U ||
           (payload[0] & (uint8_t)(~ETHERNET_UART_STREAM_ALL)) != 0U)
@@ -713,6 +807,8 @@ static void EthernetUartDriver_DispatchFrame(
             ((payload[0] & ETHERNET_UART_STREAM_EKF) != 0U) ? 1U : 0U;
         s_mag_telem_enabled =
             ((payload[0] & ETHERNET_UART_STREAM_MAG) != 0U) ? 1U : 0U;
+        s_ctl_telem_enabled =
+            ((payload[0] & ETHERNET_UART_STREAM_CTL) != 0U) ? 1U : 0U;
         g_ethernet_uart_diag.telemetry_control_count++;
       }
       break;
@@ -1053,6 +1149,15 @@ static int32_t EthernetUartDriver_ReadLeI32(const uint8_t *bytes)
   return value;
 }
 
+static float EthernetUartDriver_ReadLeFloat(const uint8_t *bytes)
+{
+  const uint32_t raw = EthernetUartDriver_ReadLeU32(bytes);
+  float value;
+
+  (void)memcpy(&value, &raw, sizeof(value));
+  return value;
+}
+
 /* CRC-32/ISO-HDLC：poly=0xEDB88320, init/xorout=0xFFFFFFFF，
  * 与 PC 端 zlib.crc32 完全一致。 */
 static uint32_t EthernetUartDriver_Crc32(const uint8_t *data, uint16_t length)
@@ -1096,6 +1201,7 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
   s_snapshot_pending = 0U;
   s_ekf_telem_enabled = 1U;
   s_mag_telem_enabled = 0U;
+  s_ctl_telem_enabled = 0U;
   (void)memset(s_ugcp_parse_buffer, 0, sizeof(s_ugcp_parse_buffer));
   (void)memset(&s_param_stage, 0, sizeof(s_param_stage));
   (void)memset((void *)&g_ethernet_uart_readout_pack,
@@ -1126,6 +1232,7 @@ void EthernetUartDriver_RunTask(void *argument)
   static size_t setup_index = 0U;
   static uint32_t s_last_ekf_tx_tick = 0U; /* EKF 遥测上次推送 tick */
   static uint32_t s_last_mag_tx_tick = 0U; /* MAG 遥测有自己的周期，不依赖 EKF */
+  static uint32_t s_last_ctl_tx_tick = 0U; /* PID 控制/ACK 独立周期 */
 
   for (;;)
   {
@@ -1177,8 +1284,8 @@ void EthernetUartDriver_RunTask(void *argument)
     }
     else
     {
-      /* AT 配置完成进入透传。TELEM_CONTROL 的 bit0/bit1 分别独立控制
-       * $UGEKF/$UGMAG；默认只发 EKF，磁标定脚本才请求 MAG。 */
+      /* AT 配置完成进入透传。TELEM_CONTROL bit0/1/2 分别控制
+       * $UGEKF/$UGMAG/$UGCTL；默认只发 EKF。 */
       if (s_snapshot_pending != 0U && s_tx_busy == 0U)
       {
         EthernetUartDriver_SendSystemSnapshot();
@@ -1202,6 +1309,15 @@ void EthernetUartDriver_RunTask(void *argument)
         if (EthernetUartDriver_SendMagTelemetry() == HAL_OK)
         {
           s_last_mag_tx_tick = now;
+        }
+      }
+      else if (s_tx_busy == 0U &&
+          (s_ctl_telem_enabled != 0U) &&
+          ((now - s_last_ctl_tx_tick) >= ETHERNET_UART_CTL_PERIOD_MS))
+      {
+        if (EthernetUartDriver_SendControlTelemetry() == HAL_OK)
+        {
+          s_last_ctl_tx_tick = now;
         }
       }
       /* 保留原心跳计数（AT 心跳本就注释掉，仅留 liveness 计数） */
@@ -1460,6 +1576,103 @@ void EthernetUartDriver_SendEkfTelemetry(void)
   {
     g_ekf_telem_tx_count++;
   }
+}
+
+/*
+ * PID 控制遥测/ACK（schema v1）：
+ * $UGCTL,schema,seq,t_ms,mode,phase,armed,output_valid,fault,core_fault,
+ * config_reject,command_id,age_ms,pid_valid,required_crc,active_crc,depth_seq,
+ * target_depth,depth,depth_error,target_pitch_deg,pitch_sp_deg,pitch_deg,
+ * pitch_error_deg,outer_P_deg,outer_I_deg,outer_D_deg,outer_out_deg,outer_sat,
+ * inner_P_rpm,inner_I_rpm,inner_D_rpm,inner_out_rpm,inner_sat,worm_rpm,
+ * pump_enable,pump_direction,thrust_pct,config_req,config_apply,config_reject*HH
+ */
+HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
+{
+  static const char hex_chars[] = "0123456789ABCDEF";
+  static char line[ETHERNET_UART_EKF_LINE_MAX];
+  PidControlStatus status;
+  const ZigzagControlOutput *o;
+  const float rad_to_deg = 57.2957795f;
+  uint8_t cks = 0U;
+  int i = 0;
+  int k;
+
+  if (s_uart == NULL)
+  {
+    return HAL_ERROR;
+  }
+  if (s_tx_busy != 0U)
+  {
+    g_ethernet_uart_diag.tx_busy_count++;
+    return HAL_BUSY;
+  }
+
+  (void)PidControlService_CopyStatus(&status);
+  o = &status.control_output;
+
+  line[i++] = '$';
+  line[i++] = 'U';
+  line[i++] = 'G';
+  line[i++] = 'C';
+  line[i++] = 'T';
+  line[i++] = 'L';
+
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 1UL, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.update_seq, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.update_tick_ms, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.requested_mode, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->phase, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.effectively_armed, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->output_valid, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.fault, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->fault, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.config_reject_reason, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.command_id, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.command_age_ms, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.pid_valid, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.required_pid_crc, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.active_pid_crc, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.depth_measurement_seq, 1);
+
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, status.requested_depth_m, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->measured_depth_m, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.error, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, status.requested_pitch_deg, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->desired_pitch_rad * rad_to_deg, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->measured_pitch_rad * rad_to_deg, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.error * rad_to_deg, 2);
+
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.p_term * rad_to_deg, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.i_term * rad_to_deg, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.d_term * rad_to_deg, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.output * rad_to_deg, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->depth_outer.saturated, 1);
+
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.p_term, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.i_term, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.d_term, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.output, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->pitch_inner.saturated, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)o->worm_motor_rpm, 0);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->pump_enable, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->pump_direction, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->signed_thrust_percent, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.config_request_count, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.config_apply_count, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.config_reject_count, 1);
+
+  for (k = 1; k < i; k++)
+  {
+    cks ^= (uint8_t)line[k];
+  }
+  line[i++] = '*';
+  line[i++] = hex_chars[(cks >> 4) & 0x0FU];
+  line[i++] = hex_chars[cks & 0x0FU];
+  line[i++] = '\r';
+  line[i++] = '\n';
+
+  return EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)i);
 }
 
 /* 磁力计原始值遥测（磁标定采集用，$UGMAG,seq,t_ms,mx,my,mz*HH）

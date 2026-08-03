@@ -1,6 +1,7 @@
 #include "glider_core.h"
 
 #include "cmsis_os.h"
+#include "displacement_sensor.h"
 #include "ethernet_uart_driver.h"
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
@@ -1235,6 +1236,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   PressureSensorDriver_OnRxComplete(huart);
   SbusDriver_OnRxComplete(huart);
   EthernetUartDriver_OnRxComplete(huart);
+  DisplacementSensor_OnRxComplete(huart);//线位移传感器中断回调
 
   /* Forward to IMU module if it matches the configured IMU UART. */
   IMU_OnUART_RxComplete(huart);

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""通过 UGCP v1 原子下发磁力计标定参数。
+"""通过 UGCP下发磁力计标定参数
+python tools\mag_cal_push.py logs\csv\mag_时间戳_calib.json --bind 192.168.57.100 --port 8800
 
 PC 是 TCP 服务端，网口模块作为客户端接入。每次尝试严格执行：关闭遥测、
 发送四个参数块、提交、重新打开遥测，再从新格式 $UGEKF 尾部等待 CRC/valid ACK。

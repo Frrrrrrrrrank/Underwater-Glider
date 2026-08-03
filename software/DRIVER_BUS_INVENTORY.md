@@ -12,7 +12,7 @@
 | `Glider-Core/glider_core.c` | RDSS AT/NMEA communication and short-message state machine | `StartUartRxTask` + `StartUartTxTask` | `UART7` | `PE8 TX`, `PE7 RX` | `115200`, `8N1` | Target platform card ID macro: `381127` |
 | `Glider-Core/glider_rdss_codec.c` | RDSS/NMEA frame parser only | Called by `glider_core` | No direct hardware | N/A | N/A | N/A |
 | `Glider-Core/imu_core.c` | IMU frame receive/parse/cache | `Start_IMU_Task` + `IMU_Core_Init(&huart5)` | `UART5` | `PB13 TX`, `PB12 RX` | `115200`, `8N1` | No bus address (point-to-point UART) |
-| `Glider-Core/displacement_sensor.c` | Linear displacement sensor for oil-out volume estimation (MODBUS-RTU) | `StartUsart3Task -> DisplacementSensor_Poll` | `USART3` RS485 / `RS485_Bus3` | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
+| `Glider-Core/displacement_sensor.c` | Linear displacement sensor for oil-out volume estimation (MODBUS-RTU) | `StartUsart3Task -> DisplacementSensor_Poll` + `USART3 IRQ -> DisplacementSensor_OnRxComplete` | `USART3` RS485 / `RS485_Bus3` | `PD8 TX`, `PD9 RX`, `PD12 DE` | `115200`, `8N1`, RS485 DE high | MODBUS slave ID `0x02` |
 | `Glider-Core/pump_driver.c` | Pump RS485 control logic retained for later reuse; GPIO pump control remains active | `IoControlPump_Init` + `IoControlPump_Poll` for GPIO only | GPIO pump control active; RS485 part disabled | `PB10` speed, `PD14` direction | GPIO level control via SBUS switches | N/A |
 | `Glider-Core/motor_driver.c` | Pump actuator motor control (MODBUS-RTU closed-loop stepper) | `StartUsart2Task -> UMotor_StartTask` | `USART2` RS485 | `PA2 TX`, `PA3 RX`, `PA1 DE` | `115200`, `8N1`, RS485 DE high | Default active node ID `0x01` |
 | `Glider-Core/stepper_driver.c` | Open-loop pulse/dir stepper control | Called by `StartServoTask` RC control loop (`Stepper_SetContinuousSignedRpm`) | `TIM1 CH2` + GPIO | `PE11` pulse, `PE13` dir, `PE10` PUL-, `PE12` DIR- | PWM pulse generation (timer-based) | No bus address |
@@ -69,6 +69,9 @@ Intended bus settings for this allocation:
 - MODBUS slave ID: `0x02`.
 - Poll period: `100 ms`.
 - Driver sends read frame for `0x0000` with count `0x0010` (16 regs).
+- Before sending, the driver arms a persistent 37-byte buffer with `HAL_UART_Receive_IT`.
+- The ISR only publishes completion/error events; `StartUsart3Task` parses CRC/data and owns the `100 ms` timeout/recovery.
+- Response length is `1 address + 1 function + 1 byte-count + 32 data + 2 CRC = 37 bytes`.
 - Parsed measurement source registers:
   - `0x0008` high word
   - `0x0009` low word
@@ -136,7 +139,8 @@ Intended bus settings for this allocation:
 - `StartUartRxTask` -> `GliderCore_RunRxTask`
 - `StartUartTxTask` -> `GliderCore_RunTxTask`
 - `Start_IMU_Task` -> IMU data update loop + `IMU_Core_RunRxTask`
-- `StartUsart3Task` -> `DisplacementSensor_Poll` (`Bus3` for linear displacement sensor) + `IoControlPump_Poll` (GPIO pump control)
+- `StartUsart3Task` -> displacement event parsing/timeout in `DisplacementSensor_Poll` + `IoControlPump_Poll` (GPIO pump control)
+- `USART3 IRQ -> HAL_UART_RxCpltCallback -> DisplacementSensor_OnRxComplete` only publishes the 37-byte receive-complete event
 - `StartUsart2Task` -> `UMotor_StartTask`
 - `PumpDriver_*` RS485 code is retained but not mounted by default
 - `StartServoTask` runs RC control state machine: OFF/all-up interlock + open-loop mode (CH5 mid), left stick Y controls `UMotor` node `0x01`, left stick X controls open-loop stepper.

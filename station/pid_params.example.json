@@ -1,0 +1,18 @@
+{
+  "depth_kp_deg_per_m": 2.0,
+  "depth_ki_deg_per_m_s": 0.0,
+  "depth_kd_deg_s_per_m": 0.0,
+  "depth_integral_limit_m_s": 0.0,
+  "depth_derivative_tau_s": 0.1,
+  "pitch_kp_rpm_per_deg": 25.0,
+  "pitch_ki_rpm_per_deg_s": 0.0,
+  "pitch_kd_rpm_s_per_deg": 0.0,
+  "pitch_integral_limit_deg_s": 0.0,
+  "pitch_derivative_tau_s": 0.1,
+  "max_pitch_deg": 10.0,
+  "max_worm_rpm": 300.0,
+  "max_thrust_percent": 20.0,
+  "surface_depth_m": 0.2,
+  "depth_switch_threshold_m": 0.3,
+  "pitch_actuator_sign": 1.0
+}

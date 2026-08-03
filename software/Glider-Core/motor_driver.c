@@ -11,7 +11,8 @@
 #include <string.h>
 
 extern UART_HandleTypeDef huart2;
-extern uint8_t g_limit_switch_states[4];
+/* main.c 里定义为 volatile（Usart3Task 每 10ms 写、电机任务读），此处必须同型。 */
+extern volatile uint8_t g_limit_switch_states[4];
 
 #define MOTOR_RS485_UART (&huart2)
 
@@ -166,10 +167,17 @@ typedef struct
   uint32_t last_cmd_tick[MOTOR_BUS_MAX_NODES];
   uint32_t last_poll_tick[MOTOR_BUS_MAX_NODES];
   uint8_t last_motor_enable[MOTOR_BUS_MAX_NODES];
+  /*
+   * 撞限位后强制释放使能的覆盖位（只有电机任务读写，不是状态机）。
+   * 1 = 无论应用层 motor_enable 是什么，对驱动器写 0x0039=0，让保持电流掉下来。
+   * 0 = 跟随应用层 motor_enable。
+   * 写失败不会卡住任何东西，下一拍自然重试；这是与旧状态机最本质的区别。
+   */
+  uint8_t limit_hold_release[MOTOR_BUS_MAX_NODES];
 } MotorInternal;
 
 static MotorInternal g_motor_internal = {
-  0U, 0U, {0}, {0U}, {0U}, {0U}
+  0U, 0U, {0}, {0U}, {0U}, {0U}, {0U}
 };
 
 static uint16_t Motor_Crc16(const uint8_t *data, uint16_t len)
@@ -239,6 +247,65 @@ static uint16_t Motor_BuildReadStatusFrame(uint8_t node_id,
   return 8U;
 }
 
+/*
+ * 发送新请求之前，必须把接收侧彻底清干净。
+ *
+ * 背景：huart2 关掉了 FIFO（main.c: HAL_UARTEx_DisableFifoMode），RDR 只能存 1 字节。
+ * 上一帧只要有一个字节没被及时读走，第二个字节就会置 ORE（溢出），而 HAL 的
+ * UART_WaitOnFlagUntilTimeout() 遇到 ORE 只清标志、不读走 RDR 里的残留字节。
+ * 结果是：下一次事务的第一个 HAL_UART_Receive 会立刻读到上一帧的残留字节，
+ * 第二个字节又立刻撞上 ORE 返回错误 —— 收发从此永久错开一帧且不会自愈，
+ * 表现为“每次都超时、但一次事务几乎不耗时”；这就是本次限位卡死的根因
+ *
+ * 所以这里在每次发送前：先清 ORE/NE/FE/PE，再把 RDR 里的残留字节全部读掉，
+ * 最后再清一次标志（读的过程中可能又来新字节）
+ */
+static void Motor_FlushRx(void)
+{
+  uint16_t guard = 0U;
+
+  __HAL_UART_CLEAR_FLAG(MOTOR_RS485_UART,
+                        UART_CLEAR_OREF | UART_CLEAR_NEF |
+                        UART_CLEAR_FEF | UART_CLEAR_PEF);
+
+  while ((__HAL_UART_GET_FLAG(MOTOR_RS485_UART, UART_FLAG_RXNE) != RESET) &&
+         (guard < 64U))
+  {
+    (void)MOTOR_RS485_UART->Instance->RDR;
+    guard++;
+  }
+
+  __HAL_UART_CLEAR_FLAG(MOTOR_RS485_UART,
+                        UART_CLEAR_OREF | UART_CLEAR_NEF |
+                        UART_CLEAR_FEF | UART_CLEAR_PEF);
+
+  /* 把 HAL 句柄状态也复位，避免上一次 HAL_ERROR 留下的残留状态*/
+  MOTOR_RS485_UART->ErrorCode = HAL_UART_ERROR_NONE;
+  MOTOR_RS485_UART->RxState = HAL_UART_STATE_READY;
+}
+
+/*
+ * 收包失败的统一处理：
+ * 1) 区分“溢出/帧错位”(ORE) 与“真的没人应答”(超时)。原来两者都记 last_error=3，
+ *    诊断上完全分不开，是上一轮排查方向被带偏的直接原因。
+ * 2) 失败时这一帧剩下的字节可能还在路上；等它到齐（3ms @115200 ≈ 34 字节，
+ *    比最长的 25 字节应答还长）再统一丢弃，避免污染下一次事务。
+ */
+static void Motor_RecordRxFailure(void)
+{
+  g_motor_bus_diag.total_timeout_count++;
+
+  if (MOTOR_RS485_UART->ErrorCode == HAL_UART_ERROR_ORE)
+  {
+    g_motor_bus_diag.overrun_count++;
+    g_motor_bus_diag.last_error = 24U; /* 接收溢出/帧错位 */
+  }
+  else
+  {
+    g_motor_bus_diag.last_error = 3U;  /* 超时无应答 */
+  }
+}
+
 static uint8_t Motor_ReceiveExact(uint8_t *buffer, uint16_t expected_len, uint32_t timeout_ms)
 {
   uint16_t index;
@@ -280,6 +347,10 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   }
 
   *rx_got_len = 0U;
+  g_motor_bus_diag.last_rx_len = 0U;
+
+  /* 修改点，发送前先把接收侧清干净，否则一次溢出会让收发永久错开一帧。 */
+  Motor_FlushRx();
 
   tx_status = HAL_UART_Transmit(MOTOR_RS485_UART, (uint8_t *)tx_frame, tx_len, MOTOR_UART_TX_TIMEOUT_MS);
   if (tx_status != HAL_OK)
@@ -296,14 +367,17 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   }
   memcpy((void *)g_motor_bus_diag.last_tx_frame, tx_frame, tx_len);
 
-  /* RS485 turnaround guard time */
-  osDelay(2U);
+  /*
+   * 这里不再 osDelay：HAL_UART_Transmit 返回时 TC 已置位，硬件 RS485 DE
+   * （main.c 的 HAL_RS485Ex_Init）此刻已释放总线，可以立刻开始收。
+   * 反而是延时期间应答先到、无人读取，会直接造成溢出。
+   * 115200 下 8 字节应答只有约 0.7ms，20ms 的接收超时足够宽裕。
+   */
 
   /* Read the fixed header first: addr + func + bytecount/exception code. */
   if (Motor_ReceiveExact(header, 3U, MOTOR_UART_RX_TIMEOUT_MS) == 0U)
   {
-    g_motor_bus_diag.total_timeout_count++;
-    g_motor_bus_diag.last_error = 3U;
+    Motor_RecordRxFailure();
     goto transfer_exit;
   }
 
@@ -335,8 +409,7 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   {
     if (Motor_ReceiveExact(&rx_frame[3], (uint16_t)(expected_len - 3U), MOTOR_UART_RX_TIMEOUT_MS) == 0U)
     {
-      g_motor_bus_diag.total_timeout_count++;
-      g_motor_bus_diag.last_error = 3U;
+      Motor_RecordRxFailure();
       goto transfer_exit;
     }
   }
@@ -353,6 +426,12 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
   transfer_ok = 1U;
 
 transfer_exit:
+  if (transfer_ok == 0U)
+  {
+    /* 失败时总线上可能还有半帧在路上：等齐后统一丢弃，保证下一次事务从干净状态开始。 */
+    osDelay(MOTOR_RX_DRAIN_MS);
+    Motor_FlushRx();
+  }
   return transfer_ok;
 }
 
@@ -646,6 +725,28 @@ uint8_t UMotor_SetNodeRegisterMap(uint8_t slot, const UMotorNodeRegisterMap *map
   return 1U;
 }
 
+/*
+ * 限位方向判定（唯一实现，setter 与电机任务共用）。
+ *
+ * 硬件事实
+ *   states[1] = PB4，被压时为 0 —— 挡 +RPM（上位机 S 方向）
+ *   states[3] = PD7，被压时为 0 —— 挡 -RPM（上位机 W 方向，即“前限位”）
+ * 只判当前电平、不做粘性锁存：滑块压住时一直挡，退出来就立刻放行，
+ * 这样“撞哪边挡哪边、反方向永远能走”，不存在需要解锁的状态。
+ */
+static uint8_t Motor_IsLimitBlocked(int32_t rpm)
+{
+  if ((rpm > 0) && (g_limit_switch_states[1] == 0U))
+  {
+    return 1U;
+  }
+  if ((rpm < 0) && (g_limit_switch_states[3] == 0U))
+  {
+    return 1U;
+  }
+  return 0U;
+}
+
 void UMotor_SetTargetSpeedById(uint8_t node_id, int32_t target_speed_rpm)
 {
   uint8_t i;
@@ -658,16 +759,15 @@ void UMotor_SetTargetSpeedById(uint8_t node_id, int32_t target_speed_rpm)
     target_speed_rpm = -32768;
   }
 
-  if (g_limit_switch_states[1] == 0 && target_speed_rpm > 0)
-  {
-    target_speed_rpm = 0;
-  }
-   if (g_limit_switch_states[3] == 0 && target_speed_rpm < 0)
-  {
-    target_speed_rpm = 0;
-  }
-
-
+  /*
+   * 这里不做限位钳位：target_speed_rpm 保存的是“应用层原始意图”。
+   * 限位判定全部集中在电机任务 Motor_ProcessOneNode()（唯一发帧的地方），
+   * 好处有二：
+   *  1) 单一判定点，不会出现“setter 已经钳成 0、任务侧再也看不出撞了限位”
+   *     从而无法触发释放使能的情况；
+   *  2) Ozone 里 target_speed_rpm 能如实反映上位机要什么，
+   *     和 g_motor_internal.last_sent_speed_rpm（实际发出去的）对照即可定位问题。
+   */
   for (i = 0U; i < UMOTOR_NODE_COUNT; i++)
   {
     if ((g_motor_nodes[i].enabled != 0U) && (g_motor_nodes[i].node_id == node_id))
@@ -696,6 +796,8 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
   uint8_t exception_func;
   uint8_t exception_code;
   uint8_t node_id;
+  uint8_t effective_enable;
+  int32_t requested_rpm;
   volatile UMotorNodeState *node;
   volatile UMotorNodeDebugInfo *dbg;
 
@@ -708,19 +810,83 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
   dbg = &node->debug;
   node_id = node->node_id;
 
+  /*
+   * 限位释放判定，每拍都重算，不锁存：
+   *  - 当前目标方向撞限位 => 置 1，下面的使能块会写 0x0039=0，保持电流掉下来；
+   *  - 目标非 0 且方向没被挡（例如撞前限位后上位机按 S 给 +200）=> 清 0，
+   *    使能块自动写 0x0039=1，随后速度块发 0x0033+0x0037，电机反向退出限位。
+   * 目标为 0 时保持当前释放状态不变，避免“松手就自动上电”。
+   */
+  /* 先取一次快照：ServoTask 随时可能改共享的 target_speed_rpm，两次读会读到不同值。 */
+  requested_rpm = node->target_speed_rpm;
+
+  if (Motor_IsLimitBlocked(requested_rpm) != 0U)
+  {
+    g_motor_internal.limit_hold_release[index] = 1U;
+  }
+  else if (requested_rpm != 0)
+  {
+    g_motor_internal.limit_hold_release[index] = 0U;
+  }
+  else
+  {
+    /* 目标 0：维持现状 */
+  }
+  //应用层意图与非限位释放
+  effective_enable =
+      ((node->motor_enable != 0U) &&
+       (g_motor_internal.limit_hold_release[index] == 0U)) ? 1U : 0U;
+
   if (g_motor_enable_write_cmd != 0U)
   {
-    /* Handle Manual Enable/Disable */
-    if (node->motor_enable != g_motor_internal.last_motor_enable[index])
+    /* Handle Manual Enable/Disable（叠加限位强制释放） */
+    if (effective_enable != g_motor_internal.last_motor_enable[index])
     {
       if ((now_tick - g_motor_internal.last_cmd_tick[index]) >= MOTOR_CMD_MIN_INTERVAL_MS)
       {
-        tx_len = Motor_BuildWriteSingleRegFrame(node_id, MOTOR_REG_ENABLE, node->motor_enable ? 0x0001U : 0x0000U, tx_frame);
-        if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U)
+        tx_len = Motor_BuildWriteSingleRegFrame(node_id, MOTOR_REG_ENABLE, (effective_enable != 0U) ? 0x0001U : 0x0000U, tx_frame);
+        if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U &&
+            Motor_ParseWriteAck(node_id, rx_frame, rx_len) != 0U)
         {
-          g_motor_internal.last_motor_enable[index] = node->motor_enable;
-          g_motor_internal.last_cmd_tick[index] = now_tick;
+          g_motor_internal.last_motor_enable[index] = effective_enable;
+          node->comm_ok = 1U;
         }
+        else
+        {
+          node->timeout_count++;
+          node->comm_ok = 0U;
+          /*
+           * 丢应答时的方向性处理（这是整个修复的安全核心）：
+           *  - 写“释放(0)”丢应答 => 不记账，下一拍继续重发。重复释放永远安全，
+           *    绝不会出现“以为已经释放、实际还带电”的旧状态机式死锁。
+           *  - 写“使能(1)”丢应答 => 记为已发，让流程继续走到速度+START。
+           *    万一驱动器其实没收到，后续速度/START 也会失败，电机保持不动，安全。
+           */
+          if (effective_enable != 0U)
+          {
+            g_motor_internal.last_motor_enable[index] = 1U;
+          }
+        }
+
+        if (effective_enable == 0U)
+        {
+          /* 已经（或正在）释放：本地速度记账清零，重新使能后必然重发速度+START。 */
+          g_motor_internal.last_sent_speed_rpm[index] = 0;
+        }
+
+        /* 无论成败都推进节流时刻：失败下一拍重试，绝不在这里挂住整个节点。 */
+        g_motor_internal.last_cmd_tick[index] = now_tick;
+
+        if (effective_enable == g_motor_internal.last_motor_enable[index])
+        {
+          /* 本拍已完成一次使能写：一拍一个事务，剩下的下一拍再说。 */
+          return;
+        }
+        /*
+         * 写失败(释放方向)时故意不 return：让后面的后台轮询照常跑，
+         * 否则总线一坏就连诊断都读不到，正是上一版死锁最难查的地方。
+         * 中间的停机/位置/速度块都被刚刷新的 last_cmd_tick 节流挡住，不会误发。
+         */
       }
     }
   }
@@ -783,11 +949,26 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
 
   if ((g_motor_enable_write_cmd != 0U) &&
       (node->enable_speed_ctrl != 0U) &&
+      /* 驱动器处于释放状态（含限位强制释放）时不下发速度/START。 */
+      (g_motor_internal.last_motor_enable[index] != 0U) &&
       ((now_tick - g_motor_internal.last_cmd_tick[index]) >= MOTOR_CMD_MIN_INTERVAL_MS))
   {
     if (g_motor_internal.last_sent_speed_rpm[index] != node->target_speed_rpm)
     {
+      /*
+       * 取一次快照后，本次事务全程只用 speed_cmd，绝不再重读共享的 target_speed_rpm。
+       * 基线的 bug 就在这里：下面记账时重读了一次共享变量，若 ServoTask 在两句之间
+       * 把目标从 -200 改成 0，就变成“实际发出去 -200、记账记成 0”，此后
+       * last_sent == target 恒成立，再也不会补发停止。这是限位失效的真正老 bug。
+       */
       speed_cmd = (int16_t)node->target_speed_rpm;
+
+      /* 第二道钳位：快照之后、真正发帧之前，用当前限位电平再判一次。 */
+      if (Motor_IsLimitBlocked((int32_t)speed_cmd) != 0U)
+      {
+        speed_cmd = 0;
+      }
+
       tx_len = Motor_BuildWriteSingleRegFrame(node_id,
                                               node->reg_map.reg_cmd_speed_rpm,
                                               (uint16_t)speed_cmd,
@@ -796,6 +977,18 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
       if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U &&
           Motor_ParseWriteAck(node_id, rx_frame, rx_len) != 0U)
       {
+        /*
+         * 第三道钳位：0x0033 已写入、START 尚未发出。这一小段窗口正是
+         * “限位刚好在此刻触发”的危险区，此时必须放弃 START。
+         * 不记账 last_sent_speed_rpm，下一拍会按已被钳为 0 的目标重来。
+         */
+        if (Motor_IsLimitBlocked((int32_t)speed_cmd) != 0U)
+        {
+          node->comm_ok = 1U;
+          g_motor_internal.last_cmd_tick[index] = now_tick;
+          return;
+        }
+
         tx_len = Motor_BuildWriteSingleRegFrame(node_id,
                                                 node->reg_map.reg_cmd_start,
                                                 node->reg_map.cmd_start_speed_mode_value,
@@ -804,7 +997,8 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
         if (Motor_Transfer(tx_frame, tx_len, rx_frame, (uint16_t)sizeof(rx_frame), &rx_len) != 0U &&
             Motor_ParseWriteAck(node_id, rx_frame, rx_len) != 0U)
         {
-          g_motor_internal.last_sent_speed_rpm[index] = node->target_speed_rpm;
+          /* 记账必须用真正发出去的 speed_cmd，不能重读共享变量。 */
+          g_motor_internal.last_sent_speed_rpm[index] = (int32_t)speed_cmd;
           node->tx_count++;
           node->comm_ok = 1U;
           node->last_exception_func = 0U;
@@ -1032,9 +1226,23 @@ void UMotor_StartTask(void *argument)
 {
   uint32_t now_tick;
 
+  uint8_t init_index;
+
   (void)argument;
   g_motor_internal.initialized = 1U;
   g_motor_bus_diag.initialized = 1U;
+
+  /*
+   * 只复位 MCU 而驱动器不断电时，驱动器可能还停在“已使能 + 上次速度”状态。
+   * 这里把本地记账置成一个不可能的值(0xFF)，强制第一拍必然写一次 0x0039，
+   * 把驱动器同步到已知的释放状态，避免上电瞬间按旧速度冲出去。
+   */
+  for (init_index = 0U; init_index < MOTOR_BUS_MAX_NODES; init_index++)
+  {
+    g_motor_internal.last_motor_enable[init_index] = 0xFFU;
+    g_motor_internal.last_sent_speed_rpm[init_index] = 0;
+    g_motor_internal.limit_hold_release[init_index] = 0U;
+  }
 
   /* ====== 测试代码：启动自动使能 ====== */
   /* 取消注释以下代码可开机自动转动测试 */

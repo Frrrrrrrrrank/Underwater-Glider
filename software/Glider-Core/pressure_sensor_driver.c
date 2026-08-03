@@ -158,18 +158,24 @@ static uint8_t PressureSensorDriver_DecodeFloat(const volatile uint8_t *src, flo
 
 static void PressureSensorDriver_CommitMeasurement(float value)
 {
+  const uint32_t now_ms = HAL_GetTick();
+
   if (s_active_request_kind == PRESSURE_SENSOR_REQ_PRESSURE)
   {
     g_pressure_sensor_readout.pressure_bar = value;
     g_pressure_sensor_readout.pressure_valid = 1U;
+    g_pressure_sensor_readout.pressure_update_tick = now_ms;
+    g_pressure_sensor_readout.pressure_update_seq++;
   }
   else
   {
     g_pressure_sensor_readout.temperature_c = value;
     g_pressure_sensor_readout.temperature_valid = 1U;
+    g_pressure_sensor_readout.temperature_update_tick = now_ms;
+    g_pressure_sensor_readout.temperature_update_seq++;
   }
 
-  g_pressure_sensor_readout.last_update_tick = HAL_GetTick();
+  g_pressure_sensor_readout.last_update_tick = now_ms;
 }
 
 static void PressureSensorDriver_HandleResponseFrame(uint16_t len)
@@ -362,8 +368,12 @@ void PressureSensorDriver_Init(UART_HandleTypeDef *huart)
   g_pressure_sensor_readout.ring_available_bytes = 0U;
   g_pressure_sensor_readout.pressure_valid = 0U;
   g_pressure_sensor_readout.pressure_bar = 0.0f;
+  g_pressure_sensor_readout.pressure_update_tick = 0U;
+  g_pressure_sensor_readout.pressure_update_seq = 0U;
   g_pressure_sensor_readout.temperature_valid = 0U;
   g_pressure_sensor_readout.temperature_c = 0.0f;
+  g_pressure_sensor_readout.temperature_update_tick = 0U;
+  g_pressure_sensor_readout.temperature_update_seq = 0U;
   g_pressure_sensor_readout.last_update_tick = 0U;
   g_pressure_sensor_readout.last_response_len = 0U;
 

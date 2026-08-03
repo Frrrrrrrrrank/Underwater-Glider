@@ -70,6 +70,38 @@ typedef struct
 #define IO_PUMP_DIR_PORT GPIOE
 #define IO_PUMP_DIR_PIN GPIO_PIN_4
 
+#define IO_PUMP_COMMAND_TIMEOUT_MS 100U
+#define IO_PUMP_DIRECTION_GUARD_MS 100U
+#define IO_PUMP_DISPLACEMENT_MIN_MM 48.0f
+#define IO_PUMP_DISPLACEMENT_MAX_MM 130.0f
+
+typedef enum
+{
+  IO_PUMP_SOURCE_OFF = 0U,
+  IO_PUMP_SOURCE_SBUS = 1U,
+  IO_PUMP_SOURCE_DIRECT_ETH = 2U,
+  IO_PUMP_SOURCE_PID_ETH = 3U
+} IoControlPumpSource;
+
+typedef enum
+{
+  IO_PUMP_INTERLOCK_NONE = 0U,
+  IO_PUMP_INTERLOCK_COMMAND_TIMEOUT = 1U,
+  IO_PUMP_INTERLOCK_DISPLACEMENT_INVALID = 2U,
+  IO_PUMP_INTERLOCK_MIN_LIMIT = 3U,
+  IO_PUMP_INTERLOCK_MAX_LIMIT = 4U,
+  IO_PUMP_INTERLOCK_DIRECTION_GUARD = 5U
+} IoControlPumpInterlock;
+
+typedef struct
+{
+  IoControlPumpSource source;
+  uint8_t enabled;
+  uint8_t direction_reversed;
+  uint32_t update_tick_ms;
+  uint32_t sequence;
+} IoControlPumpCommand;
+
 /* IO Control debug info */
 typedef struct
 {
@@ -77,6 +109,11 @@ typedef struct
   uint16_t left_mid2_switch;      /* CH6 raw value */
   uint8_t speed_triggered;        /* 1 when speed control active */
   uint8_t direction_reversed;     /* 1 when direction reversed */
+  uint8_t command_source;
+  uint8_t command_valid;
+  uint8_t interlock_reason;
+  uint8_t direction_guard_active;
+  uint32_t command_age_ms;
 } IoControlPumpDebugInfo;
 
 extern volatile IoControlPumpDebugInfo g_io_pump_debug;
@@ -95,8 +132,13 @@ uint8_t PumpDriver_ReadSpeed(int32_t *out_speed_rpm); /* 输出单位: RPM */
 
 /* IO 控制接口 */
 void IoControlPump_Init(void);
-void IoControlPump_Poll(uint32_t now_ms);
-void IoControlPump_SetSpeed(uint8_t enabled);      /* 1=drive PC13 high, 0=drive PC13 low */
-void IoControlPump_SetDirection(uint8_t reversed); /* 1=drive PE4 low, 0=drive PE4 high */
+/* ServoTask 提交解析后的唯一命令；本函数不写 GPIO。 */
+uint8_t IoControlPump_SubmitCommand(
+    IoControlPumpSource source,
+    uint8_t enabled,
+    uint8_t direction_reversed,
+    uint32_t now_ms);
+/* PumpTask 唯一调用者：执行超时、位移限位和换向保护后写 GPIO。 */
+void IoControlPump_Poll(void);
 
 #endif

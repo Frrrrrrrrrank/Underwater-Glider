@@ -35,6 +35,7 @@
 #define ETHERNET_UART_MSG_TELEM_CONTROL     0x02U
 #define ETHERNET_UART_MSG_SNAPSHOT_REQ      0x03U
 #define ETHERNET_UART_MSG_CONTROL19_LATCHED 0x04U
+#define ETHERNET_UART_MSG_CASCADE_COMMAND   0x05U
 #define ETHERNET_UART_MSG_PARAM_BLOCK     0x10U
 #define ETHERNET_UART_MSG_PARAM_COMMIT    0x11U
 
@@ -46,13 +47,16 @@
 /* TELEM_CONTROL 的 1 字节 payload 是完整状态掩码，不是增量命令。 */
 #define ETHERNET_UART_STREAM_EKF 0x01U
 #define ETHERNET_UART_STREAM_MAG 0x02U
-#define ETHERNET_UART_STREAM_ALL (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG)
+#define ETHERNET_UART_STREAM_CTL 0x04U
+#define ETHERNET_UART_STREAM_ALL \
+  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL)
 
 /* EKF 遥测定义，单行 ASCII 帧上限（NMEA 风格 $UGEKF,...*HH），以及周期(ms)。
  * 行内全部字段定点格式化，正常约 200B，留足余量到 512；100ms=10Hz。 */
 #define ETHERNET_UART_EKF_LINE_MAX 512U
-#define ETHERNET_UART_EKF_PERIOD_MS 100U
+#define ETHERNET_UART_EKF_PERIOD_MS 100U//遥测频率定义
 #define ETHERNET_UART_MAG_PERIOD_MS 100U
+#define ETHERNET_UART_CTL_PERIOD_MS 100U
 
 typedef struct
 {
@@ -211,6 +215,8 @@ void EthernetUartDriver_SendEkfTelemetry(void);
 /* 拼一行 $UGMAG,seq,t_ms,mx,my,mz*HH 的原始磁力计遥测并发送（磁标定采集用；
  * 线程上下文，由独立 MAG 遥测开关和周期调度，~10Hz）。 */
 HAL_StatusTypeDef EthernetUartDriver_SendMagTelemetry(void);
+/* PID 调参与命令 ACK：$UGCTL 独立于 $UGEKF，避免破坏旧字段解析。 */
+HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void);
 /* 控制/泵任务每周期先整体复制一次，避免逐字段散读时跨越一次新包发布。 */
 bool EthernetUartDriver_CopyControlPack(
     EthernetUartReadoutPack *out_pack,
