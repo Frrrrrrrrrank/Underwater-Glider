@@ -1,3 +1,4 @@
+from encodings import hz
 import socket
 import threading
 import time
@@ -5,49 +6,87 @@ import sys
 import ctypes
 import json
 import os
+import shlex
 from datetime import datetime
 
 try:
     from .ugcp_protocol import (
+        CASCADE_MODE_DEPTH,
+        CASCADE_MODE_OFF,
+        CASCADE_MODE_PITCH_HOLD,
         MSG_CONTROL19_LATCHED,
         MSG_CONTROL19_STREAM,
+        MSG_CASCADE_COMMAND,
+        MSG_PARAM_BLOCK,
+        MSG_PARAM_COMMIT,
         MSG_SNAPSHOT_REQUEST,
         MSG_STREAM_CONTROL,
+        PARAM_BLOCK_COUNT,
+        PARAM_GROUP_PID,
+        PID_PARAM_FIELDS,
         STREAM_EKF,
+        STREAM_CTL,
         SequenceCounter,
         build_frame,
+        crc32_iso_hdlc,
+        pack_cascade_command_payload,
         pack_control_payload,
+        pack_param_block_payload,
+        pack_param_commit_payload,
+        pack_pid_param_table,
         pack_snapshot_request_payload,
         pack_stream_control_payload,
         pack_telem_control_payload,
+        split_param_table,
     )
 except ImportError:
     from ugcp_protocol import (
+        CASCADE_MODE_DEPTH,
+        CASCADE_MODE_OFF,
+        CASCADE_MODE_PITCH_HOLD,
         MSG_CONTROL19_LATCHED,
         MSG_CONTROL19_STREAM,
+        MSG_CASCADE_COMMAND,
+        MSG_PARAM_BLOCK,
+        MSG_PARAM_COMMIT,
         MSG_SNAPSHOT_REQUEST,
         MSG_STREAM_CONTROL,
+        PARAM_BLOCK_COUNT,
+        PARAM_GROUP_PID,
+        PID_PARAM_FIELDS,
         STREAM_EKF,
+        STREAM_CTL,
         SequenceCounter,
         build_frame,
+        crc32_iso_hdlc,
+        pack_cascade_command_payload,
         pack_control_payload,
+        pack_param_block_payload,
+        pack_param_commit_payload,
+        pack_pid_param_table,
         pack_snapshot_request_payload,
         pack_stream_control_payload,
         pack_telem_control_payload,
+        split_param_table,
     )
 
 # ==================== 全局标志 ====================
 running = True          # 控制线程退出
 UGCP_TX_SEQUENCE = SequenceCounter()
 UGCP_TX_LOCK = threading.Lock()
+TELEMETRY_STREAM_LOCK = threading.Lock()
+TELEMETRY_STREAM_MASK = 0
 
-AUTO_SEND_PERIOD_S = 1.0
+AUTO_SEND_PERIOD_S = 1.0 #Auto模式的下发频率
 AUTO_KEY_POLL_S = 0.02
 THRUST_SPEED_MIN = 0.0
 THRUST_SPEED_MAX = 30.0
 THRUST_SPEED_INIT = 10.0
 THRUST_SPEED_REARM_AFTER_RESET = 10.0
 THRUST_DIFF_RATE_PER_S = 20.0
+
+PID_COMMAND_PERIOD_S = 0.10     #10hz PID控制心跳包
+PID_ACK_TIMEOUT_S = 3.0
 
 UMOTOR_NODE_COUNT = 4
 UMOTOR_MAX_READ_REG_COUNT = 16
@@ -631,14 +670,15 @@ def print_snapshot_struct(snap):
     print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
 
 # 控制包发送函数
-def send_ugcp_frame(conn, msg_type, payload, label='UGCP'):
+def send_ugcp_frame(conn, msg_type, payload, label='UGCP', verbose=True):
     """串行化一次完整 UGCP 发送，保证多线程下 seq 顺序与线上顺序一致。"""
     try:
         with UGCP_TX_LOCK:
             seq = UGCP_TX_SEQUENCE.next()
             frame = build_frame(msg_type, payload, seq)
             conn.sendall(frame)
-        print(f'[{label}] 已发送 seq={seq}，payload={len(payload)}B，总长={len(frame)}B')
+        if verbose:
+            print(f'[{label}] 已发送 seq={seq}，payload={len(payload)}B，总长={len(frame)}B')
         return True
     except Exception as e:
         print(f'[发送错误] {e}')
@@ -652,7 +692,7 @@ def send_control_packet(conn, pitchmotor_enable, pitchmotor_speed_rpm,
                         backup_for_thrust,
                         pump_direction, pump_on_off,
                         ask_for_status, eth_control_flag, latched=False):
-    """编码同一份 CONTROL19；latched=False 是连续租约，True 是键盘锁存。"""
+    """编码同一份 CONTROL19；latched=False 是连续心跳包，True 是键盘锁存。"""
     try:
         payload = pack_control_payload(
             pitchmotor_enable, pitchmotor_speed_rpm,
@@ -670,24 +710,31 @@ def send_control_packet(conn, pitchmotor_enable, pitchmotor_speed_rpm,
     return send_ugcp_frame(conn, msg_type, payload, label)
 
 
-def send_stream_control(conn, mask):
-    """设置完整遥测状态：bit0=$UGEKF，bit1=$UGMAG。"""
-    return send_ugcp_frame(
+def send_stream_control(conn, mask, label='遥测流控制'):
+    """设置完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL。"""
+    global TELEMETRY_STREAM_MASK
+    ok = send_ugcp_frame(
         conn,
         MSG_STREAM_CONTROL,
         pack_stream_control_payload(mask),
-        '遥测流控制',
+        label,
     )
+    if ok:
+        with TELEMETRY_STREAM_LOCK:
+            TELEMETRY_STREAM_MASK = int(mask)
+    return ok
+
+
+def get_stream_control_mask():
+    with TELEMETRY_STREAM_LOCK:
+        return TELEMETRY_STREAM_MASK
 
 
 def send_telem_control(conn, enabled):
     """兼容交互命令：off=全关，on=只开 EKF。"""
-    return send_ugcp_frame(
-        conn,
-        MSG_STREAM_CONTROL,
-        pack_telem_control_payload(enabled),
-        'EKF 遥测控制',
-    )
+    # 保留旧布尔语义，同时让 PID 子界面能正确记住并恢复流掩码。
+    payload = pack_telem_control_payload(enabled)
+    return send_stream_control(conn, payload[0], 'EKF 遥测控制')
 
 
 def send_neutral_and_release(conn):
@@ -714,6 +761,57 @@ def send_neutral_and_release(conn):
 def send_snapshot_request(conn):
     return send_ugcp_frame(
         conn, MSG_SNAPSHOT_REQUEST, pack_snapshot_request_payload(), '快照请求')
+
+
+def send_cascade_command(conn, mode, armed, command_id,
+                         target_depth_m, target_pitch_deg,
+                         signed_thrust_percent, required_pid_crc,
+                         verbose=False):
+    """发送 PID/双环命令；持续刷新时默认静默，错误始终显示。"""
+    try:
+        payload = pack_cascade_command_payload(
+            mode,
+            armed,
+            command_id,
+            target_depth_m,
+            target_pitch_deg,
+            signed_thrust_percent,
+            required_pid_crc,
+        )
+    except Exception as exc:
+        print(f'[PID 命令字段错误] {exc}')
+        return False
+    return send_ugcp_frame(
+        conn,
+        MSG_CASCADE_COMMAND,
+        payload,
+        'PID 控制命令',
+        verbose=verbose,
+    )
+
+
+def send_pid_param_table(conn, table, transaction):
+    """发送 PID 参数的 4 个数据块和 1 个提交块，返回表 CRC 或 None。"""
+    table = bytes(table)
+    blocks = split_param_table(table)
+    table_crc = crc32_iso_hdlc(table)
+    transaction = int(transaction) & 0xFF
+    for index, block in enumerate(blocks):
+        payload = pack_param_block_payload(
+            PARAM_GROUP_PID, transaction, index, block)
+        if not send_ugcp_frame(
+                conn, MSG_PARAM_BLOCK, payload,
+                f'PID 参数块 {index + 1}/{PARAM_BLOCK_COUNT}'):
+            return None
+    commit = pack_param_commit_payload(
+        PARAM_GROUP_PID,
+        transaction,
+        PARAM_BLOCK_COUNT,
+        table_crc,
+    )
+    if not send_ugcp_frame(conn, MSG_PARAM_COMMIT, commit, 'PID 参数提交'):
+        return None
+    return table_crc
 
 # ==================== 控制包输入交互 ====================
 def input_control_packet(conn):
@@ -1079,6 +1177,56 @@ EKF_CSV_HEADER = (["host_iso"]
                      "healthy", "valid", "still", "finite", "aligned"]
                   + EKF_FIELDS[4:])
 
+# PID 控制遥测；顺序必须与板端 EthernetUartDriver_SendControlTelemetry 一致。
+UGCTL_FIELDS = [
+    "schema", "seq", "t_ms", "mode", "phase", "armed", "output_valid",
+    "fault", "core_fault", "config_reject", "command_id", "age_ms",
+    "pid_valid", "required_crc", "active_crc", "depth_seq",
+    "target_depth", "depth", "depth_error", "target_pitch_deg",
+    "pitch_sp_deg", "pitch_deg", "pitch_error_deg",
+    "outer_p_deg", "outer_i_deg", "outer_d_deg", "outer_out_deg",
+    "outer_sat", "inner_p_rpm", "inner_i_rpm", "inner_d_rpm",
+    "inner_out_rpm", "inner_sat", "worm_rpm", "pump_enable",
+    "pump_direction", "thrust_pct", "config_req", "config_apply",
+    "config_reject_count",
+]
+UGCTL_INT_FIELDS = {
+    "schema", "seq", "t_ms", "mode", "phase", "armed", "output_valid",
+    "fault", "core_fault", "config_reject", "command_id", "age_ms",
+    "pid_valid", "required_crc", "active_crc", "depth_seq", "outer_sat",
+    "inner_sat", "worm_rpm", "pump_enable", "pump_direction", "config_req",
+    "config_apply", "config_reject_count",
+}
+UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
+PID_MODE_NAMES = {0: "OFF", 1: "PITCH_HOLD", 2: "DEPTH_CASCADE"}
+PID_PHASE_NAMES = {0: "DIVE", 1: "CLIMB"}
+PID_FAULT_NAMES = {
+    0: "NONE",
+    1: "DISARMED",
+    2: "COMMAND_TIMEOUT",
+    3: "PID_NOT_VALID",
+    4: "PID_CRC_MISMATCH",
+    5: "EKF_INVALID",
+    6: "DEPTH_STALE",
+    7: "BAD_COMMAND",
+    8: "CORE_REJECTED",
+}
+PID_CORE_FAULT_NAMES = {
+    0: "NONE",
+    1: "DISARMED",
+    2: "EKF_INVALID",
+    3: "BAD_CONFIG",
+    4: "BAD_COMMAND",
+    5: "BAD_DT",
+    6: "DEPTH_SAMPLE_INVALID",
+}
+PID_CONFIG_REJECT_NAMES = {
+    0: "NONE",
+    1: "ARMED",
+    2: "CRC",
+    3: "VALUE",
+}
+
 
 def ekf_checksum_ok(line):
     """校验 $...*HH：异或 $ 与 * 之间所有字符。"""
@@ -1118,6 +1266,66 @@ def ekf_parse(line):
     return row
 
 
+def ugctl_parse(line):
+    """严格解析 schema v1 的 40 字段 $UGCTL。"""
+    if not ekf_checksum_ok(line):
+        return None
+    star = line.rfind("*")
+    parts = line[1:star].split(",")
+    if not parts or parts[0] != "UGCTL":
+        return None
+    values = parts[1:]
+    if len(values) != len(UGCTL_FIELDS):
+        return None
+    row = {}
+    try:
+        for name, raw in zip(UGCTL_FIELDS, values):
+            row[name] = int(raw) if name in UGCTL_INT_FIELDS else float(raw)
+    except ValueError:
+        return None
+    if row["schema"] != 1:
+        return None
+    return row
+
+
+def ugctl_csv_row(row):
+    return [datetime.now().isoformat(timespec="milliseconds")] + [
+        row[name] for name in UGCTL_FIELDS]
+
+
+class UgctlStore:
+    """由唯一 socket 接收线程发布，PID 界面只等待/读取，不直接 recv。"""
+
+    def __init__(self):
+        self._condition = threading.Condition()
+        self._generation = 0
+        self._latest = None
+
+    def publish(self, row):
+        with self._condition:
+            self._latest = dict(row)
+            self._generation += 1
+            self._condition.notify_all()
+
+    def snapshot(self):
+        with self._condition:
+            latest = None if self._latest is None else dict(self._latest)
+            return self._generation, latest
+
+    def wait_for(self, predicate, after_generation, timeout_s):
+        deadline = time.monotonic() + float(timeout_s)
+        with self._condition:
+            while True:
+                if (self._generation > after_generation and
+                        self._latest is not None and
+                        predicate(self._latest)):
+                    return dict(self._latest)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    return None
+                self._condition.wait(remaining)
+
+
 def ekf_csv_row(row):
     """把解析结果 + fl 位展开成与 EKF_CSV_HEADER 对齐的列表。"""
     fl = row["fl"]
@@ -1129,14 +1337,563 @@ def ekf_csv_row(row):
     return out
 
 
-# ==================== 接收线程函数 ====================
+def print_ugctl_status(row):
+    if row is None:
+        print("[PID] 尚未收到 $UGCTL；不能确认参数或 ARM 状态")
+        return
+    print(
+        "[PID/板端] mode=%s phase=%s armed=%d valid=%d "
+        "fault=%s core=%s age=%dms cmd=%d"
+        % (
+            PID_MODE_NAMES.get(row["mode"], "?"),
+            PID_PHASE_NAMES.get(row["phase"], "?"),
+            row["armed"],
+            row["output_valid"],
+            PID_FAULT_NAMES.get(row["fault"], str(row["fault"])),
+            PID_CORE_FAULT_NAMES.get(
+                row["core_fault"], str(row["core_fault"])),
+            row["age_ms"],
+            row["command_id"],
+        )
+    )
+    print(
+        "  depth target/meas/error = %.3f / %.3f / %.3f m; "
+        "pitch target/meas/error = %.2f / %.2f / %.2f deg"
+        % (
+            row["target_depth"], row["depth"], row["depth_error"],
+            row["pitch_sp_deg"], row["pitch_deg"], row["pitch_error_deg"],
+        )
+    )
+    print(
+        "  outer P/I/D/out = %.3f / %.3f / %.3f / %.3f deg; "
+        "inner P/I/D/out = %.2f / %.2f / %.2f / %.2f RPM"
+        % (
+            row["outer_p_deg"], row["outer_i_deg"],
+            row["outer_d_deg"], row["outer_out_deg"],
+            row["inner_p_rpm"], row["inner_i_rpm"],
+            row["inner_d_rpm"], row["inner_out_rpm"],
+        )
+    )
+    print(
+        "  worm=%d RPM pump=(%d,%d) thrust=%+.2f%% sat=(outer:%d inner:%d)"
+        % (
+            row["worm_rpm"], row["pump_enable"], row["pump_direction"],
+            row["thrust_pct"], row["outer_sat"], row["inner_sat"],
+        )
+    )
+    print(
+        "  PID valid=%d required_crc=0x%08X active_crc=0x%08X "
+        "config(req/apply/reject)=%d/%d/%d reject_reason=%s"
+        % (
+            row["pid_valid"], row["required_crc"], row["active_crc"],
+            row["config_req"], row["config_apply"],
+            row["config_reject_count"],
+            PID_CONFIG_REJECT_NAMES.get(
+                row["config_reject"], str(row["config_reject"])),
+        )
+    )
+
+
+class PidSession:
+    """PID 子界面的命令租约，即心跳包、参数事务和安全状态。"""
+
+    def __init__(self, conn, ctl_store, send_period_s=PID_COMMAND_PERIOD_S):
+        self.conn = conn
+        self.ctl_store = ctl_store
+        self.send_period_s = float(send_period_s)
+        self._state_lock = threading.Lock()
+        self._send_lock = threading.Lock()
+        self._wake = threading.Event()
+        self._stop = threading.Event()
+        self._worker = None
+        self._command_id = 0
+        self._transaction = int(time.time()) & 0xFF
+        self._mode = CASCADE_MODE_PITCH_HOLD
+        self._armed = False
+        self._board_may_be_armed = False
+        self._target_depth_m = 0.0
+        self._target_pitch_deg = 0.0
+        self._signed_thrust_percent = 0.0
+        self._loaded_path = None
+        self._parameters = None
+        self._parameter_table = None
+        self._loaded_crc = None
+        self._confirmed_crc = None
+
+    def start(self):
+        if self._worker is None:
+            self._worker = threading.Thread(
+                target=self._worker_loop,
+                name="pid-command-lease",
+                daemon=True,
+            )
+            self._worker.start()
+
+    def _next_command_id_locked(self):
+        self._command_id = (self._command_id + 1) & 0xFFFF
+        return self._command_id
+
+    def _snapshot_command_locked(self, force_off=False):
+        return {
+            "mode": CASCADE_MODE_OFF if force_off else self._mode,
+            "armed": False if force_off else self._armed,
+            "command_id": self._command_id,
+            "target_depth_m": self._target_depth_m,
+            "target_pitch_deg": self._target_pitch_deg,
+            "signed_thrust_percent": (
+                0.0 if force_off else self._signed_thrust_percent),
+            "required_pid_crc": self._confirmed_crc or 0,
+        }
+
+    def local_snapshot(self):
+        with self._state_lock:
+            return {
+                "mode": self._mode,
+                "armed": self._armed,
+                "command_id": self._command_id,
+                "target_depth_m": self._target_depth_m,
+                "target_pitch_deg": self._target_pitch_deg,
+                "signed_thrust_percent": self._signed_thrust_percent,
+                "loaded_path": self._loaded_path,
+                "loaded_crc": self._loaded_crc,
+                "confirmed_crc": self._confirmed_crc,
+                "parameters": (
+                    None if self._parameters is None
+                    else dict(self._parameters)),
+            }
+
+    def _send_command_dict(self, command, verbose=False):
+        return send_cascade_command(
+            self.conn,
+            command["mode"],
+            command["armed"],
+            command["command_id"],
+            command["target_depth_m"],
+            command["target_pitch_deg"],
+            command["signed_thrust_percent"],
+            command["required_pid_crc"],
+            verbose=verbose,
+        )
+
+    def _worker_loop(self):
+        while not self._stop.is_set():
+            self._wake.wait(self.send_period_s)
+            self._wake.clear()
+            if self._stop.is_set():
+                break
+            with self._send_lock:
+                with self._state_lock:
+                    if not self._armed:
+                        continue
+                    command = self._snapshot_command_locked()
+                if not self._send_command_dict(command, verbose=False):
+                    with self._state_lock:
+                        self._armed = False
+                    print("\n[PID 安全停机] 命令刷新发送失败，停止本地心跳包；板端将在 500ms 内超时归零")
+
+    def _mark_semantic_change(self):
+        with self._state_lock:
+            self._next_command_id_locked()
+        self._wake.set()
+
+    def load_parameters(self, path):
+        with self._state_lock:
+            if self._armed:
+                raise RuntimeError("请先 disarm，再加载或修改参数")
+        path = os.path.abspath(os.path.expanduser(path))
+        with open(path, "r", encoding="utf-8") as handle:
+            parameters = json.load(handle)
+        table = pack_pid_param_table(parameters)
+        normalized = {
+            name: float(parameters[name]) for name in PID_PARAM_FIELDS}
+        crc = crc32_iso_hdlc(table)
+        with self._state_lock:
+            self._loaded_path = path
+            self._parameters = normalized
+            self._parameter_table = table
+            self._loaded_crc = crc
+            if self._confirmed_crc != crc:
+                self._confirmed_crc = None
+        return crc
+
+    def set_parameter(self, name, value):
+        with self._state_lock:
+            if self._armed:
+                raise RuntimeError("请先 disarm，再修改 PID 参数")
+            if self._parameters is None:
+                raise RuntimeError("请先 load 一个 PID 参数 JSON")
+            candidate = dict(self._parameters)
+        if name not in PID_PARAM_FIELDS:
+            raise ValueError(
+                "未知参数；可用 params 查看 16 个合法字段名")
+        candidate[name] = float(value)
+        table = pack_pid_param_table(candidate)
+        crc = crc32_iso_hdlc(table)
+        with self._state_lock:
+            self._parameters = candidate
+            self._parameter_table = table
+            self._loaded_crc = crc
+            self._confirmed_crc = None
+        return crc
+
+    def save_parameters(self, path):
+        with self._state_lock:
+            if self._parameters is None:
+                raise RuntimeError("当前没有可保存的参数；请先 load")
+            parameters = dict(self._parameters)
+        path = os.path.abspath(os.path.expanduser(path))
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(parameters, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        return path
+     #通过上位机显式切换双/内环PID控制两个模式
+    def set_pitch_target(self, target_pitch_deg):
+        target = float(target_pitch_deg)
+        if not -90.0 <= target <= 90.0:
+            raise ValueError("俯仰目标必须在 -90..90 deg")
+        with self._state_lock:
+            if (self._parameters is not None and
+                    abs(target) > self._parameters["max_pitch_deg"]):
+                raise ValueError(
+                    "俯仰目标超过当前 max_pitch_deg=%.2f"
+                    % self._parameters["max_pitch_deg"])
+            self._mode = CASCADE_MODE_PITCH_HOLD
+            self._target_pitch_deg = target
+            self._next_command_id_locked()
+        self._wake.set()
+
+    def set_depth_target(self, target_depth_m):
+        target = float(target_depth_m)
+        if not 0.0 <= target <= 1000.0:
+            raise ValueError("深度目标必须在 0..1000 m")
+        with self._state_lock:
+            if self._parameters is not None:
+                minimum = (
+                    self._parameters["surface_depth_m"] +
+                    self._parameters["depth_switch_threshold_m"])
+                if target <= minimum:
+                    raise ValueError(
+                        "最大下潜深度必须大于 surface_depth + threshold = %.3f m"
+                        % minimum)
+            self._mode = CASCADE_MODE_DEPTH
+            self._target_depth_m = target
+            self._next_command_id_locked()
+        self._wake.set()
+
+    def set_thrust(self, signed_percent):
+        value = float(signed_percent)
+        if not -100.0 <= value <= 100.0:
+            raise ValueError("推进器输出必须在 -100..100%")
+        with self._state_lock:
+            if (self._parameters is not None and
+                    abs(value) > self._parameters["max_thrust_percent"]):
+                raise ValueError(
+                    "推进器输出超过当前 max_thrust_percent=%.2f%%"
+                    % self._parameters["max_thrust_percent"])
+            self._signed_thrust_percent = value
+            self._next_command_id_locked()
+        self._wake.set()
+
+    def disarm(self, verbose=True, force=False):
+        with self._send_lock:
+            with self._state_lock:
+                if not force and not self._board_may_be_armed:
+                    self._armed = False
+                    return True
+                self._armed = False
+                self._next_command_id_locked()
+                command = self._snapshot_command_locked(force_off=True)
+            ok = self._send_command_dict(command, verbose=verbose)
+            if ok:
+                with self._state_lock:
+                    self._board_may_be_armed = False
+            return ok
+
+    def _ensure_board_off(self):
+        generation, row = self.ctl_store.snapshot()
+        with self._state_lock:
+            may_be_armed = self._board_may_be_armed
+        need_off = (may_be_armed or row is None or row["mode"] != 0 or
+                    row["armed"] != 0)
+        if need_off and not self.disarm(verbose=True, force=True):
+            return None
+        if not need_off:
+            return row
+        return self.ctl_store.wait_for(
+            lambda value: value["mode"] == 0 and value["armed"] == 0,
+            generation,
+            PID_ACK_TIMEOUT_S,
+        )
+
+    def push_parameters(self):
+        with self._state_lock:
+            if self._parameter_table is None:
+                raise RuntimeError("请先 load PID 参数 JSON")
+            table = bytes(self._parameter_table)
+            expected_crc = self._loaded_crc
+
+        off_row = self._ensure_board_off()
+        if off_row is None:
+            print("[PID 参数] 未收到 OFF 的 $UGCTL 确认，取消参数下发")
+            return False
+
+        with self._state_lock:
+            self._transaction = (self._transaction + 1) & 0xFF
+            transaction = self._transaction
+        generation, before = self.ctl_store.snapshot()
+        before_apply = before["config_apply"] if before else None
+        before_reject = before["config_reject_count"] if before else None
+
+        sent_crc = send_pid_param_table(self.conn, table, transaction)
+        if sent_crc is None:
+            return False
+        if sent_crc != expected_crc:
+            print("[PID 参数] 本地 CRC 在发送期间发生变化，拒绝确认")
+            return False
+
+        def transaction_finished(row):
+            if before_apply is None or before_reject is None:
+                return (row["active_crc"] == expected_crc and
+                        row["pid_valid"] == 1)
+            return (row["config_apply"] != before_apply or
+                    row["config_reject_count"] != before_reject)
+
+        ack = self.ctl_store.wait_for(
+            transaction_finished,
+            generation,
+            PID_ACK_TIMEOUT_S,
+        )
+        if ack is None:
+            print("[PID 参数] 等待 $UGCTL ACK 超时；参数身份未确认，禁止 ARM")
+            return False
+        if (ack["pid_valid"] != 1 or
+                ack["active_crc"] != expected_crc or
+                (before_reject is not None and
+                 ack["config_reject_count"] != before_reject)):
+            print(
+                "[PID 参数] 板端拒绝或 CRC 不匹配：active=0x%08X reason=%s"
+                % (
+                    ack["active_crc"],
+                    PID_CONFIG_REJECT_NAMES.get(
+                        ack["config_reject"], str(ack["config_reject"])),
+                )
+            )
+            return False
+        with self._state_lock:
+            if self._loaded_crc != expected_crc:
+                print("[PID 参数] ACK 到达时本地参数已变化，必须重新 push")
+                return False
+            self._confirmed_crc = expected_crc
+        print("[PID 参数] 已原子应用并确认 active_crc=0x%08X" % expected_crc)
+        return True
+
+    def arm(self):
+        with self._send_lock:
+            with self._state_lock:
+                if self._confirmed_crc is None or self._parameters is None:
+                    print("[PID] 必须先 load + push，并收到 CRC ACK 后才能 arm")
+                    return False
+                if (abs(self._signed_thrust_percent) >
+                        self._parameters["max_thrust_percent"]):
+                    print("[PID] 当前推进器输出超过已确认参数限幅")
+                    return False
+                if (self._mode == CASCADE_MODE_PITCH_HOLD and
+                        abs(self._target_pitch_deg) >
+                        self._parameters["max_pitch_deg"]):
+                    print("[PID] 当前俯仰目标超过已确认参数限幅")
+                    return False
+                if self._mode == CASCADE_MODE_DEPTH:
+                    minimum = (
+                        self._parameters["surface_depth_m"] +
+                        self._parameters["depth_switch_threshold_m"])
+                    if self._target_depth_m <= minimum:
+                        print("[PID] 深度目标必须大于 %.3f m" % minimum)
+                        return False
+                _, board = self.ctl_store.snapshot()
+                if (board is None or board["pid_valid"] != 1 or
+                        board["active_crc"] != self._confirmed_crc):
+                    print("[PID] 板端当前 CRC/valid 与本地确认不一致，拒绝 arm")
+                    return False
+                self._armed = True
+                self._next_command_id_locked()
+                command = self._snapshot_command_locked()
+                command_id = self._command_id
+            generation, _ = self.ctl_store.snapshot()
+            if not self._send_command_dict(command, verbose=True):
+                with self._state_lock:
+                    self._armed = False
+                return False
+            with self._state_lock:
+                self._board_may_be_armed = True
+
+        ack = self.ctl_store.wait_for(
+            lambda row: row["command_id"] == command_id,
+            generation,
+            PID_ACK_TIMEOUT_S,
+        )
+        if ack is None or ack["armed"] != 1 or ack["fault"] != 0:
+            if ack is None:
+                print("[PID] ARM ACK 超时，立即发送 OFF")
+            else:
+                print(
+                    "[PID] ARM 被板端拒绝：fault=%s core=%s，立即发送 OFF"
+                    % (
+                        PID_FAULT_NAMES.get(ack["fault"], str(ack["fault"])),
+                        PID_CORE_FAULT_NAMES.get(
+                            ack["core_fault"], str(ack["core_fault"])),
+                    )
+                )
+            self.disarm(verbose=True, force=True)
+            return False
+        print("[PID] ARM 已确认；10Hz 命令心跳包已启动")
+        self._wake.set()
+        return True
+
+    def close(self):
+        with self._state_lock:
+            need_off = self._board_may_be_armed
+        if need_off:
+            self.disarm(verbose=True, force=True)
+        self._stop.set()
+        self._wake.set()
+        if self._worker is not None:
+            self._worker.join(timeout=1.0)
+
+
+def print_pid_help():
+    print("\n========== PID 调试界面 ==========")
+    print("  load <json>          加载并校验 16 个 PID 参数,不下发")
+    print("  set <field> <value>  修改内存参数,应用则必须重新 push")
+    print("  save <json>          保存当前内存参数")
+    print("  params               显示当前 16 个参数及 CRC")
+    print("  push                 OFF 后发送 4+1 参数帧并等待 CRC ACK")
+    print("  pitch <deg>          选择俯仰内环；负值低头，不会启动泵")
+    print("  depth <m>            选择深度外环+俯仰内环；启动油泵状态机")
+    print("  thrust <signed %>    推进器；+ 为 AUTO-I 方向，- 为 AUTO-K")
+    print("  thrust off           推进器目标设为 0（仍需心跳包帧送达）")
+    print("  arm / disarm         启动闭环心跳包 / 立即发送一次 OFF")
+    print("  status               显示上位机目标与最新板端 P/I/D/执行器状态")
+    print("  help / back          显示帮助 / 安全退出 PID 界面")
+    print("注意：推进器正负对应实物前进/后退的命名，必须先在台架确认。")
+    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n")
+
+
+def run_pid_mode(conn, ctl_store):
+    previous_stream_mask = get_stream_control_mask()
+    required_stream_mask = previous_stream_mask | STREAM_EKF | STREAM_CTL
+    if not send_stream_control(conn, required_stream_mask, 'PID 遥测流控制'):
+        print("[PID] 无法开启 EKF+UGCTL 遥测，取消进入")
+        return
+
+    session = PidSession(conn, ctl_store)
+    session.start()
+    print_pid_help()
+    generation, _ = ctl_store.snapshot()
+    session.disarm(verbose=True, force=True)
+    first_status = ctl_store.wait_for(
+        lambda row: row["mode"] == 0 and row["armed"] == 0,
+        generation,
+        PID_ACK_TIMEOUT_S,
+    )
+    if first_status is None:
+        print("[PID 警告] 未收到初始 OFF 回执；可查看 status，但 ARM 会被拒绝")
+    else:
+        print(
+            "[PID] 板端已处于 OFF；pid_valid=%d active_crc=0x%08X"
+            % (first_status["pid_valid"], first_status["active_crc"]))
+
+    try:
+        while True:
+            try:
+                tokens = shlex.split(input("pid> ").strip())
+            except ValueError as exc:
+                print(f"[PID 输入错误] {exc}")
+                continue
+            if not tokens:
+                continue
+            command = tokens[0].lower()
+            try:
+                if command in ("back", "quit", "exit"):
+                    break
+                if command == "help":
+                    print_pid_help()
+                elif command == "load" and len(tokens) == 2:
+                    crc = session.load_parameters(tokens[1])
+                    print("[PID 参数] 已加载，未下发，crc=0x%08X" % crc)
+                elif command == "set" and len(tokens) == 3:
+                    crc = session.set_parameter(tokens[1], tokens[2])
+                    print("[PID 参数] 已修改，旧 ACK 失效，新 crc=0x%08X" % crc)
+                elif command == "save" and len(tokens) == 2:
+                    print("[PID 参数] 已保存 -> %s" % session.save_parameters(tokens[1]))
+                elif command == "params" and len(tokens) == 1:
+                    local = session.local_snapshot()
+                    if local["parameters"] is None:
+                        print("[PID 参数] 尚未 load")
+                    else:
+                        print(json.dumps(
+                            local["parameters"], ensure_ascii=False, indent=2))
+                        print(
+                            "loaded_crc=0x%08X confirmed_crc=%s"
+                            % (
+                                local["loaded_crc"],
+                                ("无" if local["confirmed_crc"] is None else
+                                 "0x%08X" % local["confirmed_crc"]),
+                            )
+                        )
+                elif command == "push" and len(tokens) == 1:
+                    session.push_parameters()
+                elif command == "pitch" and len(tokens) == 2:
+                    session.set_pitch_target(tokens[1])
+                    print("[PID] 已选择 PITCH_HOLD；泵关闭，俯仰目标=%s deg" % tokens[1])
+                elif command == "depth" and len(tokens) == 2:
+                    session.set_depth_target(tokens[1])
+                    print("[PID] 已选择 DEPTH_CASCADE；最大下潜深度=%s m" % tokens[1])
+                elif command == "thrust" and len(tokens) == 2:
+                    value = 0.0 if tokens[1].lower() == "off" else float(tokens[1])
+                    session.set_thrust(value)
+                    print("[PID] 开环推进器目标=%+.2f%%" % value)
+                elif command == "arm" and len(tokens) == 1:
+                    session.arm()
+                elif command == "disarm" and len(tokens) == 1:
+                    if session.disarm(verbose=True, force=True):
+                        print("[PID] 已发送 OFF；蜗杆、泵、推进器目标归零")
+                elif command == "status" and len(tokens) == 1:
+                    local = session.local_snapshot()
+                    print(
+                        "[PID/本地] mode=%s armed=%d cmd=%d depth=%.3f m "
+                        "pitch=%+.2f deg thrust=%+.2f%% confirmed_crc=%s"
+                        % (
+                            PID_MODE_NAMES.get(local["mode"], "?"),
+                            local["armed"], local["command_id"],
+                            local["target_depth_m"], local["target_pitch_deg"],
+                            local["signed_thrust_percent"],
+                            ("无" if local["confirmed_crc"] is None else
+                             "0x%08X" % local["confirmed_crc"]),
+                        )
+                    )
+                    _, board = ctl_store.snapshot()
+                    print_ugctl_status(board)
+                else:
+                    print("[PID 命令] 格式错误；输入 help 查看用法")
+            except (OSError, ValueError, RuntimeError) as exc:
+                print(f"[PID 操作拒绝] {exc}")
+    except KeyboardInterrupt:
+        print("\n[PID] Ctrl+C：安全退出 PID 界面")
+    finally:
+        session.close()
+        send_stream_control(conn, previous_stream_mask, '恢复遥测流')
+
+
+#接收线程函数
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 EKF_LOG_DIR = os.path.join(REPO_ROOT, "logs", "csv")
 
 
-def receive_thread(conn):
+def receive_thread(conn, ctl_store=None):
     """负责不断接收并打印来自客户端的数据"""
     global running
+    if ctl_store is None:
+        ctl_store = UgctlStore()
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
     line_buffer = ""
 
@@ -1148,13 +1905,40 @@ def receive_thread(conn):
     ekf_csv.flush()
     print(f"[EKF] 状态遥测记录（非磁标定） -> {ekf_csv_path}")
     ekf_stat = {"ok": 0, "bad": 0, "last_print": 0.0, "last_key": None}
+    ctl_csv = None
+    ctl_csv_path = None
+    ctl_stat = {"ok": 0, "bad": 0}
 
     def handle_line(raw_line):
+        nonlocal ctl_csv, ctl_csv_path
         line = raw_line.strip()
         if not line:
             return
 
-        # —— EKF 遥测行：始终落 CSV；仅在 状态/健康/就绪 变化时打印，平时静默 ——
+        # PID 遥测由本线程独占解析，再发布给 UgctlStore；PID 界面禁止 recv。
+        if line.startswith("$UGCTL"):
+            row = ugctl_parse(line)
+            if row is None:
+                ctl_stat["bad"] += 1
+                return
+            if ctl_csv is None:
+                ctl_csv_path = os.path.join(
+                    EKF_LOG_DIR,
+                    "ctl_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
+                )
+                ctl_csv = open(
+                    ctl_csv_path, "w", encoding="utf-8", newline="")
+                ctl_csv.write(",".join(UGCTL_CSV_HEADER) + "\n")
+                ctl_csv.flush()
+                print(f"\n[PID] 控制遥测记录 -> {ctl_csv_path}")
+            ctl_csv.write(
+                ",".join(str(value) for value in ugctl_csv_row(row)) + "\n")
+            ctl_csv.flush()
+            ctl_stat["ok"] += 1
+            ctl_store.publish(row)
+            return
+
+        # EKF 遥测行：始终落 CSV；仅在 状态/健康/就绪 变化时打印，平时静默
         #     （另留 30s 心跳确认链路存活；想完全静默把 HB 设成很大，如 1e9）
         if line.startswith("$UGEKF"):
             if not ekf_checksum_ok(line):
@@ -1236,6 +2020,11 @@ def receive_thread(conn):
         ekf_csv.close()
     except Exception:
         pass
+    try:
+        if ctl_csv is not None:
+            ctl_csv.close()
+    except Exception:
+        pass
     conn.close()
     print("[接收线程] 已退出。")
 
@@ -1257,8 +2046,10 @@ def main():
     else:
         print("[遥测警告] EKF-only 声明发送失败，请检查连接后重试 ekfon")
 
-    # 启动接收线程
-    recv_thread = threading.Thread(target=receive_thread, args=(conn,), daemon=True)
+    # 全程序只有这个线程调用 recv；PID 界面通过 ctl_store 等待 $UGCTL。
+    ctl_store = UgctlStore()
+    recv_thread = threading.Thread(
+        target=receive_thread, args=(conn, ctl_store), daemon=True)
     recv_thread.start()
 
     # ========== 主线程负责输入和发送 ==========
@@ -1266,6 +2057,7 @@ def main():
     print("仅接受下列命令；未知文本不会发送到板端")
     print("输入 'pack' 发送锁存控制包（保持到下一条命令，没有看门狗保护）")
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
+    print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'snapshot' 请求一次系统状态快照")
     print("输入 'quit' 或 'exit' 退出程序")
@@ -1284,6 +2076,8 @@ def main():
                 input_control_packet(conn)
             elif user_input.lower() == 'auto':
                 run_auto_mode(conn)
+            elif user_input.lower() == 'pid':
+                run_pid_mode(conn, ctl_store)
             elif user_input.lower() == 'ekfoff':
                 send_telem_control(conn, 0)
                 print("[EKF] 已请求板子停发遥测")
@@ -1293,7 +2087,7 @@ def main():
             elif user_input.lower() == 'snapshot':
                 send_snapshot_request(conn)
             else:
-                print("[命令] 未识别，未发送；可用 pack/auto/ekfon/ekfoff/snapshot/quit")
+                print("[命令] 未识别，未发送；可用 pack/auto/pid/ekfon/ekfoff/snapshot/quit")
     except KeyboardInterrupt:
         print("\n检测到 Ctrl+C，退出。")
     finally:

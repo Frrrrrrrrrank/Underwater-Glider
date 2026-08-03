@@ -20,24 +20,56 @@ MSG_STREAM_CONTROL = 0x02
 MSG_TELEM_CONTROL = MSG_STREAM_CONTROL
 MSG_SNAPSHOT_REQUEST = 0x03
 MSG_CONTROL19_LATCHED = 0x04
+MSG_CASCADE_COMMAND = 0x05
 MSG_PARAM_BLOCK = 0x10
 MSG_PARAM_COMMIT = 0x11
 
 STREAM_EKF = 0x01
 STREAM_MAG = 0x02
-STREAM_ALL = STREAM_EKF | STREAM_MAG
+STREAM_CTL = 0x04
+STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL
 
 PARAM_GROUP_MAG_CAL = 1
+PARAM_GROUP_PID = 2
 PARAM_BLOCK_COUNT = 4
 PARAM_BLOCK_DATA_SIZE = 16
+PARAM_TABLE_SIZE = PARAM_BLOCK_COUNT * PARAM_BLOCK_DATA_SIZE
 MAG_CAL_TABLE_SIZE = 64
+PID_PARAM_TABLE_SIZE = 64
+
+CASCADE_SCHEMA_V1 = 1
+CASCADE_MODE_OFF = 0
+CASCADE_MODE_PITCH_HOLD = 1
+CASCADE_MODE_DEPTH = 2
+CASCADE_FLAG_ARM = 0x01
+
+PID_PARAM_FIELDS = (
+    "depth_kp_deg_per_m",
+    "depth_ki_deg_per_m_s",
+    "depth_kd_deg_s_per_m",
+    "depth_integral_limit_m_s",
+    "depth_derivative_tau_s",
+    "pitch_kp_rpm_per_deg",
+    "pitch_ki_rpm_per_deg_s",
+    "pitch_kd_rpm_s_per_deg",
+    "pitch_integral_limit_deg_s",
+    "pitch_derivative_tau_s",
+    "max_pitch_deg",
+    "max_worm_rpm",
+    "max_thrust_percent",
+    "surface_depth_m",
+    "depth_switch_threshold_m",
+    "pitch_actuator_sign",
+)
 
 _CORE_HEADER = struct.Struct("<BBHH")
 _CRC32 = struct.Struct("<I")
 _CONTROL19 = struct.Struct("<BiBiBBBBBBBBB")
+_CASCADE_COMMAND = struct.Struct("<BBBBHHfffI")
 _PARAM_BLOCK = struct.Struct("<BBB16s")
 _PARAM_COMMIT = struct.Struct("<BBBI")
 _MAG_CAL_TABLE = struct.Struct("<16f")
+_PID_PARAM_TABLE = struct.Struct("<16f")
 
 
 class UgcpProtocolError(ValueError):
@@ -119,6 +151,13 @@ def _require_u8(value, name):
     return value
 
 
+def _require_u16(value, name):
+    value = int(value)
+    if not 0 <= value <= 0xFFFF:
+        raise UgcpProtocolError("%s 必须在 0..65535" % name)
+    return value
+
+
 def _require_bit(value, name):
     value = int(value)
     if value not in (0, 1):
@@ -169,6 +208,77 @@ def pack_control_payload(pitchmotor_enable, pitchmotor_speed_rpm,
         _require_bit(ask_for_status, "ask_for_status"),
         _require_bit(eth_control_flag, "eth_control_flag"),
     )
+
+
+def pack_cascade_command_payload(
+        mode, armed, command_id, target_depth_m, target_pitch_deg,
+        signed_thrust_percent, required_pid_crc):
+    """编码双环控制命令；角度在线路上用度，板端服务层再转换为弧度。"""
+    mode = _require_u8(mode, "mode")
+    if mode not in (
+            CASCADE_MODE_OFF, CASCADE_MODE_PITCH_HOLD, CASCADE_MODE_DEPTH):
+        raise UgcpProtocolError("mode 只能是 OFF/PITCH_HOLD/DEPTH")
+
+    values = _float_vector(
+        (target_depth_m, target_pitch_deg, signed_thrust_percent),
+        3,
+        "cascade_command",
+    )
+    if not 0.0 <= values[0] <= 1000.0:
+        raise UgcpProtocolError("target_depth_m 必须在 0..1000")
+    if abs(values[1]) > 90.0:
+        raise UgcpProtocolError("target_pitch_deg 绝对值不能超过 90")
+    if abs(values[2]) > 100.0:
+        raise UgcpProtocolError("signed_thrust_percent 绝对值不能超过 100")
+
+    flags = CASCADE_FLAG_ARM if _require_bit(armed, "armed") else 0
+    return _CASCADE_COMMAND.pack(
+        CASCADE_SCHEMA_V1,
+        mode,
+        flags,
+        0,
+        _require_u16(command_id, "command_id"),
+        0,
+        values[0],
+        values[1],
+        values[2],
+        _require_u32(required_pid_crc, "required_pid_crc"),
+    )
+
+
+def unpack_cascade_command_payload(payload):
+    """严格解码 24 字节双环控制命令，主要供界面显示和回归测试。"""
+    payload = bytes(payload)
+    if len(payload) != _CASCADE_COMMAND.size:
+        raise UgcpProtocolError("双环控制命令必须是 24 字节")
+
+    (schema, mode, flags, reserved8, command_id, reserved16,
+     target_depth_m, target_pitch_deg, signed_thrust_percent,
+     required_pid_crc) = _CASCADE_COMMAND.unpack(payload)
+    if schema != CASCADE_SCHEMA_V1:
+        raise UgcpProtocolError("不支持的双环控制命令 schema=%d" % schema)
+    if reserved8 != 0 or reserved16 != 0 or flags & ~CASCADE_FLAG_ARM:
+        raise UgcpProtocolError("双环控制命令保留位必须为 0")
+
+    # 复用编码器的全部有限值和安全范围校验。
+    pack_cascade_command_payload(
+        mode,
+        bool(flags & CASCADE_FLAG_ARM),
+        command_id,
+        target_depth_m,
+        target_pitch_deg,
+        signed_thrust_percent,
+        required_pid_crc,
+    )
+    return {
+        "mode": mode,
+        "armed": bool(flags & CASCADE_FLAG_ARM),
+        "command_id": command_id,
+        "target_depth_m": target_depth_m,
+        "target_pitch_deg": target_pitch_deg,
+        "signed_thrust_percent": signed_thrust_percent,
+        "required_pid_crc": required_pid_crc,
+    }
 
 
 def _float_vector(values, expected_length, name):
@@ -254,10 +364,55 @@ def unpack_mag_cal_table(table):
     return hard, matrix, values[12:16]
 
 
+def pack_pid_param_table(parameters):
+    """编码 PID 参数组 2；输入可为按 ``PID_PARAM_FIELDS`` 排列的序列或字典。"""
+    if hasattr(parameters, "keys"):
+        missing = [name for name in PID_PARAM_FIELDS if name not in parameters]
+        extra = [name for name in parameters if name not in PID_PARAM_FIELDS]
+        if missing or extra:
+            raise UgcpProtocolError(
+                "PID 参数字段不匹配，缺少=%s，多余=%s" % (missing, extra))
+        source = [parameters[name] for name in PID_PARAM_FIELDS]
+    else:
+        source = parameters
+
+    values = _float_vector(source, len(PID_PARAM_FIELDS), "pid_parameters")
+    if any(value < 0.0 for value in values[:10]):
+        raise UgcpProtocolError("PID 增益、积分限幅和微分滤波时间不得为负")
+    if not 0.0 < values[10] <= 90.0:
+        raise UgcpProtocolError("max_pitch_deg 必须在 (0, 90]")
+    if not 0.0 < values[11] <= 600.0:
+        raise UgcpProtocolError("max_worm_rpm 必须在 (0, 600]")
+    if not 0.0 <= values[12] <= 100.0:
+        raise UgcpProtocolError("max_thrust_percent 必须在 [0, 100]")
+    if values[13] < 0.0 or values[14] < 0.0:
+        raise UgcpProtocolError("深度阈值不得为负")
+    if values[15] not in (-1.0, 1.0):
+        raise UgcpProtocolError("pitch_actuator_sign 只能是 -1 或 +1")
+
+    try:
+        table = _PID_PARAM_TABLE.pack(*values)
+    except (OverflowError, struct.error) as exc:
+        raise UgcpProtocolError("PID 参数不能表示为 float32") from exc
+    if not all(math.isfinite(value) for value in _PID_PARAM_TABLE.unpack(table)):
+        raise UgcpProtocolError("PID 参数转换为 float32 后出现 NaN/Inf")
+    return table
+
+
+def unpack_pid_param_table(table):
+    table = bytes(table)
+    if len(table) != PID_PARAM_TABLE_SIZE:
+        raise UgcpProtocolError("PID 参数表必须是 64 字节")
+    values = _PID_PARAM_TABLE.unpack(table)
+    # 通过同一入口验证板端会接受该表，再返回带单位的字段名。
+    pack_pid_param_table(values)
+    return dict(zip(PID_PARAM_FIELDS, values))
+
+
 def split_param_table(table):
     table = bytes(table)
-    if len(table) != MAG_CAL_TABLE_SIZE:
-        raise UgcpProtocolError("当前参数表必须是 64 字节")
+    if len(table) != PARAM_TABLE_SIZE:
+        raise UgcpProtocolError("参数表必须是 64 字节")
     return tuple(
         table[offset:offset + PARAM_BLOCK_DATA_SIZE]
         for offset in range(0, len(table), PARAM_BLOCK_DATA_SIZE)
@@ -286,10 +441,10 @@ def pack_param_commit_payload(group, transaction, block_count, table_crc):
 
 
 def pack_stream_control_payload(mask):
-    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG。"""
+    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL。"""
     mask = _require_u8(mask, "stream_mask")
     if mask & ~STREAM_ALL:
-        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG 两个 bit（0..3）")
+        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL 三个 bit（0..7）")
     return bytes((mask,))
 
 
@@ -304,6 +459,8 @@ def pack_snapshot_request_payload():
 
 
 assert _CONTROL19.size == 19
+assert _CASCADE_COMMAND.size == 24
 assert _PARAM_BLOCK.size == 19
 assert _PARAM_COMMIT.size == 7
 assert _MAG_CAL_TABLE.size == MAG_CAL_TABLE_SIZE
+assert _PID_PARAM_TABLE.size == PID_PARAM_TABLE_SIZE

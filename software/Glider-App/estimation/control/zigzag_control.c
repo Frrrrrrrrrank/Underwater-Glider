@@ -1,237 +1,561 @@
-/* zigzag_control.c 定义见 zigzag_control.h */
-#include "zigzag_control.h"
-
-#include "ekf_bridge.h"
-#include "pump_driver.h"
-#include "motor_driver.h"
-#include "stepper_driver.h"
+/* 深度—俯仰级联控制器纯计算实现，接口与单位见 zigzag_control.h。 */
+#include <zigzag_control.h>
 
 #include <math.h>
+#include <string.h>
 
-#define ZIGZAG_DEPTH_SURFACE_M       0.2f
-#define ZIGZAG_RAD2DEG               57.29577951308232f
+#define ZIGZAG_PI_F 3.14159265358979323846f
+#define ZIGZAG_DEFAULT_MAX_PITCH_RAD (ZIGZAG_PI_F / 6.0f)
+#define ZIGZAG_COMMAND_EPSILON 1.0e-6f
 
-#define RC_WORM_MOTOR_NODE_ID        0x01U
-#define RC_WORM_MOTOR_SLOT           0U
-#define RC_WORM_MOTOR_MAX_RPM_PID    50
-#define RC_STEPPER_MAX_RPM_PID       50
-
-typedef struct {
-  float kp;
-  float ki;
-  float kd;
-  float integral;
-  float prev_error;
-} ZigzagPid;
-
-static ZigzagPhase s_up_down_flag = ZIGZAG_PHASE_DIVE;
-
-static float s_target_depth_m = 0.0f;
-static float s_target_pitch_dive_deg = 0.0f;
-static float s_target_pitch_climb_deg = 0.0f;
-static float s_target_yaw_deg = 0.0f;
-
-static ZigzagPid s_pitch_pid = {0};
-static ZigzagPid s_roll_pid = {0};
-static ZigzagPid s_yaw_pid = {0};
-static float s_yaw_pid_output = 0.0f;
-static ZigzagPid s_depth_pid = {0};
-
-static int32_t ZigzagControl_ClampSigned(int32_t value, int32_t limit)
+static float ZigzagControl_Clamp(float value, float low, float high)
 {
-  if (limit < 0)
+  if (value < low)
   {
-    limit = -limit;
+    return low;
   }
-
-  if (value > limit)
+  if (value > high)
   {
-    return limit;
+    return high;
   }
-
-  if (value < -limit)
-  {
-    return -limit;
-  }
-
   return value;
 }
 
-static float ZigzagPid_Update(ZigzagPid *pid, float setpoint, float measurement, float dt_s)
+static int32_t ZigzagControl_RoundToI32(float value)
 {
-  float error;
-  float derivative;
-  float output;
+  return (value >= 0.0f)
+             ? (int32_t)(value + 0.5f)
+             : (int32_t)(value - 0.5f);
+}
 
-  if (dt_s <= 0.0f)
+static uint8_t ZigzagControl_IsPidConfigValid(const ZigzagPidConfig *config)
+{
+  if (config == NULL ||
+      !isfinite(config->kp) ||
+      !isfinite(config->ki) ||
+      !isfinite(config->kd) ||
+      !isfinite(config->integral_limit) ||
+      !isfinite(config->derivative_tau_s))
   {
-    return 0.0f;
+    return 0U;
   }
 
-  error = setpoint - measurement;
-  pid->integral += error * dt_s;
-  derivative = (error - pid->prev_error) / dt_s;
-  pid->prev_error = error;
-
-  output = (pid->kp * error) + (pid->ki * pid->integral) + (pid->kd * derivative);
-
-  return output;
+  return (config->kp >= 0.0f &&
+          config->ki >= 0.0f &&
+          config->kd >= 0.0f &&
+          config->integral_limit >= 0.0f &&
+          config->derivative_tau_s >= 0.0f)
+             ? 1U
+             : 0U;
 }
 
-void ZigzagControl_Init(void)
+uint8_t ZigzagControl_ValidateConfig(
+    const ZigzagControlConfig *config)
 {
-  s_up_down_flag = ZIGZAG_PHASE_DIVE;
-
-  s_target_depth_m = 5.0f;
-  s_target_pitch_dive_deg = (3.14f / 6.0f) * ZIGZAG_RAD2DEG;
-  s_target_pitch_climb_deg = (3.14f / 6.0f) * ZIGZAG_RAD2DEG;
-  s_target_yaw_deg = 0.0f;
-
-  s_pitch_pid.kp = 1.0f;
-  s_pitch_pid.ki = 0.0f;
-  s_pitch_pid.kd = 0.0f;
-  s_pitch_pid.integral = 0.0f;
-  s_pitch_pid.prev_error = 0.0f;
-
-  s_roll_pid.kp = 1.0f;
-  s_roll_pid.ki = 0.0f;
-  s_roll_pid.kd = 0.0f;
-  s_roll_pid.integral = 0.0f;
-  s_roll_pid.prev_error = 0.0f;
-
-  s_yaw_pid.kp = 1.0f;
-  s_yaw_pid.ki = 0.0f;
-  s_yaw_pid.kd = 0.0f;
-  s_yaw_pid.integral = 0.0f;
-  s_yaw_pid.prev_error = 0.0f;
-  s_yaw_pid_output = 0.0f;
-
-  s_depth_pid.kp = 1.0f;
-  s_depth_pid.ki = 0.0f;
-  s_depth_pid.kd = 0.0f;
-  s_depth_pid.integral = 0.0f;
-  s_depth_pid.prev_error = 0.0f;
-
-  UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 1U);
-}
-
-void ZigzagControl_SetTargets(float target_depth_m,
-                              float target_pitch_dive_deg,
-                              float target_pitch_climb_deg,
-                              float target_yaw_deg)
-{
-  s_target_depth_m = target_depth_m;
-  s_target_pitch_dive_deg = target_pitch_dive_deg;
-  s_target_pitch_climb_deg = target_pitch_climb_deg;
-  s_target_yaw_deg = target_yaw_deg;
-}
-
-void ZigzagControl_SetPitchPidGains(float kp, float ki, float kd)
-{
-  s_pitch_pid.kp = kp;
-  s_pitch_pid.ki = ki;
-  s_pitch_pid.kd = kd;
-}
-
-void ZigzagControl_SetRollPidGains(float kp, float ki, float kd)
-{
-  s_roll_pid.kp = kp;
-  s_roll_pid.ki = ki;
-  s_roll_pid.kd = kd;
-}
-
-void ZigzagControl_SetYawPidGains(float kp, float ki, float kd)
-{
-  s_yaw_pid.kp = kp;
-  s_yaw_pid.ki = ki;
-  s_yaw_pid.kd = kd;
-}
-
-float ZigzagControl_GetYawPidOutput(void)
-{
-  return s_yaw_pid_output;
-}
-
-void ZigzagControl_SetDepthPidGains(float kp, float ki, float kd)
-{
-  s_depth_pid.kp = kp;
-  s_depth_pid.ki = ki;
-  s_depth_pid.kd = kd;
-}
-
-void ZigzagControl_SetPhase(ZigzagPhase phase)
-{
-  s_up_down_flag = phase;
-}
-
-ZigzagPhase ZigzagControl_GetPhase(void)
-{
-  return s_up_down_flag;
-}
-
-void ZigzagControl_Step(float dt_s)
-{
-  StateEstimate snapshot;
-  float pitch_deg;
-  float roll_deg;
-  float yaw_deg;
-  float depth_m;
-  float pitch_setpoint_deg;
-  float pitch_pid_output;
-  float roll_pid_output;
-  int32_t worm_cmd_rpm_PID;
-  int32_t stepper_cmd_rpm_PID;
-
-  (void)EkfBridge_CopyState(&snapshot);
-
-  pitch_deg = snapshot.out.pitch * ZIGZAG_RAD2DEG;
-  roll_deg = snapshot.out.roll * ZIGZAG_RAD2DEG;
-  yaw_deg = snapshot.out.yaw * ZIGZAG_RAD2DEG;
-  depth_m = snapshot.out.depth_m;
-
-  /* 航向 PID：只计算，输出暂不接执行器 */
-  s_yaw_pid_output = ZigzagPid_Update(&s_yaw_pid, s_target_yaw_deg, yaw_deg, dt_s);
-
-  /* roll 期望值恒为 0：与 up_down_flag 无关，始终运行 */
-  roll_pid_output = ZigzagPid_Update(&s_roll_pid, 0.0f, roll_deg, dt_s);
-  stepper_cmd_rpm_PID = ZigzagControl_ClampSigned((int32_t)roll_pid_output, RC_STEPPER_MAX_RPM_PID);
-  Stepper_SetContinuousSignedRpm(stepper_cmd_rpm_PID);
-
-  if (s_up_down_flag == ZIGZAG_PHASE_DIVE)
+  if (config == NULL ||
+      ZigzagControl_IsPidConfigValid(&config->depth_outer) == 0U ||
+      ZigzagControl_IsPidConfigValid(&config->pitch_inner) == 0U ||
+      !isfinite(config->max_pitch_rad) ||
+      !isfinite(config->max_worm_rpm) ||
+      !isfinite(config->max_thrust_percent) ||
+      !isfinite(config->surface_depth_m) ||
+      !isfinite(config->depth_switch_threshold_m) ||
+      !isfinite(config->pitch_actuator_sign))
   {
-    if (depth_m >= s_target_depth_m)
-    {
-      s_up_down_flag = ZIGZAG_PHASE_CLIMB;
-    }
-  }
-  else if (s_up_down_flag == ZIGZAG_PHASE_CLIMB)
-  {
-    if (depth_m < ZIGZAG_DEPTH_SURFACE_M)
-    {
-      s_up_down_flag = ZIGZAG_PHASE_DIVE;
-    }
+    return 0U;
   }
 
-  if (s_up_down_flag == ZIGZAG_PHASE_DIVE)
+  if (config->max_pitch_rad <= 0.0f ||
+      config->max_pitch_rad > (ZIGZAG_PI_F / 2.0f) ||
+      config->max_worm_rpm <= 0.0f ||
+      config->max_worm_rpm > 600.0f ||
+      config->max_thrust_percent < 0.0f ||
+      config->max_thrust_percent > 100.0f ||
+      config->surface_depth_m < 0.0f ||
+      config->depth_switch_threshold_m < 0.0f)
   {
-    IoControlPump_SetSpeed(1U);
-    IoControlPump_SetDirection(1U);
-    pitch_setpoint_deg = s_target_pitch_dive_deg;
+    return 0U;
   }
-  else if (s_up_down_flag == ZIGZAG_PHASE_CLIMB)
+
+  return (fabsf(fabsf(config->pitch_actuator_sign) - 1.0f) <=
+          ZIGZAG_COMMAND_EPSILON)
+             ? 1U
+             : 0U;
+}
+
+static void ZigzagPid_Reset(ZigzagPidState *state)
+{
+  if (state == NULL)
   {
-    IoControlPump_SetSpeed(1U);
-    IoControlPump_SetDirection(0U);
-    pitch_setpoint_deg = s_target_pitch_climb_deg;
-  }
-  else
-  {
-    /* ZIGZAG_PHASE_MANUAL：泵与俯仰电机交由外部逻辑控制，本模块不下发指令 */
     return;
   }
 
-  pitch_pid_output = ZigzagPid_Update(&s_pitch_pid, pitch_setpoint_deg, pitch_deg, dt_s);
-  worm_cmd_rpm_PID = ZigzagControl_ClampSigned((int32_t)pitch_pid_output, RC_WORM_MOTOR_MAX_RPM_PID);
+  state->integral = 0.0f;
+  state->filtered_derivative = 0.0f;
+  state->first_run = 1U;
+}
 
-  UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, worm_cmd_rpm_PID);
+static void ZigzagControl_ResetLoops(ZigzagControl *control)
+{
+  ZigzagPid_Reset(&control->depth_outer_state);
+  ZigzagPid_Reset(&control->pitch_inner_state);
+  (void)memset(
+      &control->depth_outer_telemetry,
+      0,
+      sizeof(control->depth_outer_telemetry));
+  control->last_depth_update_seq = 0U;
+  control->depth_outer_elapsed_s = 0.0f;
+  control->held_desired_pitch_rad = 0.0f;
+  control->previous_pitch_rad = 0.0f;
+  control->have_depth_sample = 0U;
+  control->have_previous_pitch = 0U;
+}
+
+static float ZigzagPid_Update(
+    const ZigzagPidConfig *config,
+    ZigzagPidState *state,
+    float error,
+    float raw_error_derivative,
+    float dt_s,
+    float output_min,
+    float output_max,
+    ZigzagPidTelemetry *telemetry)
+{
+  float previous_integral;
+  float candidate_integral;
+  float alpha;
+  float output;
+  uint8_t reject_integral = 0U;
+
+  (void)memset(telemetry, 0, sizeof(*telemetry));
+  telemetry->error = error;
+
+  previous_integral = state->integral;
+  candidate_integral = previous_integral + error * dt_s;
+  candidate_integral = ZigzagControl_Clamp(
+      candidate_integral,
+      -config->integral_limit,
+      config->integral_limit);
+
+  if (state->first_run != 0U)
+  {
+    state->filtered_derivative = 0.0f;
+    state->first_run = 0U;
+  }
+  else if (config->derivative_tau_s > 0.0f)
+  {
+    alpha = dt_s / (config->derivative_tau_s + dt_s);
+    state->filtered_derivative +=
+        alpha * (raw_error_derivative - state->filtered_derivative);
+  }
+  else
+  {
+    state->filtered_derivative = raw_error_derivative;
+  }
+
+  telemetry->p_term = config->kp * error;
+  telemetry->i_term = config->ki * candidate_integral;
+  telemetry->d_term = config->kd * state->filtered_derivative;
+  telemetry->unclamped_output =
+      telemetry->p_term + telemetry->i_term + telemetry->d_term;
+  output = ZigzagControl_Clamp(
+      telemetry->unclamped_output, output_min, output_max);
+
+  /* 条件积分抗饱和：只撤销继续把输出推向饱和方向的本次积分。 */
+  if (output >= output_max &&
+      telemetry->unclamped_output > output_max &&
+      (config->ki * error) > 0.0f)
+  {
+    reject_integral = 1U;
+  }
+  else if (output <= output_min &&
+           telemetry->unclamped_output < output_min &&
+           (config->ki * error) < 0.0f)
+  {
+    reject_integral = 1U;
+  }
+
+  if (reject_integral != 0U)
+  {
+    candidate_integral = previous_integral;
+    telemetry->i_term = config->ki * candidate_integral;
+    telemetry->unclamped_output =
+        telemetry->p_term + telemetry->i_term + telemetry->d_term;
+    output = ZigzagControl_Clamp(
+        telemetry->unclamped_output, output_min, output_max);
+  }
+
+  state->integral = candidate_integral;
+  telemetry->output = output;
+  telemetry->saturated =
+      (fabsf(output - telemetry->unclamped_output) >
+       ZIGZAG_COMMAND_EPSILON)
+          ? 1U
+          : 0U;
+  return output;
+}
+
+static uint8_t ZigzagControl_IsCommandValid(
+    const ZigzagControl *control,
+    const ZigzagControlCommand *command)
+{
+  if (control == NULL ||
+      command == NULL ||
+      !isfinite(command->target_depth_m) ||
+      !isfinite(command->target_pitch_rad) ||
+      !isfinite(command->signed_thrust_percent) ||
+      command->mode > ZIGZAG_MODE_DEPTH_CASCADE)
+  {
+    return 0U;
+  }
+
+  if (fabsf(command->signed_thrust_percent) >
+      control->config.max_thrust_percent)
+  {
+    return 0U;
+  }
+
+  if (command->mode == ZIGZAG_MODE_PITCH_HOLD &&
+      fabsf(command->target_pitch_rad) > control->config.max_pitch_rad)
+  {
+    return 0U;
+  }
+
+  if (command->mode == ZIGZAG_MODE_DEPTH_CASCADE &&
+      command->target_depth_m <=
+          (control->config.surface_depth_m +
+           control->config.depth_switch_threshold_m))
+  {
+    return 0U;
+  }
+
+  return 1U;
+}
+
+void ZigzagControl_DefaultConfig(ZigzagControlConfig *out_config)
+{
+  if (out_config == NULL)
+  {
+    return;
+  }
+
+  (void)memset(out_config, 0, sizeof(*out_config));
+
+  /*
+   * 外环初值只参考 Glider_sim 的量纲和结构，不视为实机已整定参数。
+   * 内环 Kp=57.2958 RPM/rad 等价于旧代码的 1 RPM/deg。
+   */
+  out_config->depth_outer.kp = 0.03f;
+  out_config->depth_outer.ki = 0.0f;
+  out_config->depth_outer.kd = 0.1f;
+  out_config->depth_outer.integral_limit = 2.0f;
+  out_config->depth_outer.derivative_tau_s = 0.20f;
+
+  out_config->pitch_inner.kp = 57.2957795f;
+  out_config->pitch_inner.ki = 0.0f;
+  out_config->pitch_inner.kd = 0.0f;
+  out_config->pitch_inner.integral_limit = 1.0f;
+  out_config->pitch_inner.derivative_tau_s = 0.05f;
+
+  out_config->max_pitch_rad = ZIGZAG_DEFAULT_MAX_PITCH_RAD;
+  out_config->max_worm_rpm = 50.0f;
+  out_config->max_thrust_percent = 30.0f;
+  out_config->surface_depth_m = 0.2f;
+  out_config->depth_switch_threshold_m = 0.1f;
+  out_config->pitch_actuator_sign = 1.0f;
+}
+
+uint8_t ZigzagControl_Init(
+    ZigzagControl *control, const ZigzagControlConfig *config)
+{
+  if (control == NULL)
+  {
+    return 0U;
+  }
+
+  (void)memset(control, 0, sizeof(*control));
+  control->phase = ZIGZAG_PHASE_DIVE;
+  ZigzagControl_ResetLoops(control);
+
+  if (ZigzagControl_ValidateConfig(config) == 0U)
+  {
+    control->config_valid = 0U;
+    return 0U;
+  }
+
+  control->config = *config;
+  control->config_valid = 1U;
+  control->command.mode = ZIGZAG_MODE_OFF;
+  return 1U;
+}
+
+uint8_t ZigzagControl_SetConfig(
+    ZigzagControl *control, const ZigzagControlConfig *config)
+{
+  if (control == NULL || ZigzagControl_ValidateConfig(config) == 0U)
+  {
+    if (control != NULL)
+    {
+      control->config_valid = 0U;
+      ZigzagControl_Disarm(control);
+    }
+    return 0U;
+  }
+
+  control->config = *config;
+  control->config_valid = 1U;
+  control->phase = ZIGZAG_PHASE_DIVE;
+  ZigzagControl_ResetLoops(control);
+
+  if (ZigzagControl_IsCommandValid(control, &control->command) == 0U)
+  {
+    ZigzagControl_Disarm(control);
+  }
+  return 1U;
+}
+
+uint8_t ZigzagControl_SetCommand(
+    ZigzagControl *control, const ZigzagControlCommand *command)
+{
+  uint8_t reset_required;
+
+  if (control == NULL ||
+      control->config_valid == 0U ||
+      ZigzagControl_IsCommandValid(control, command) == 0U)
+  {
+    if (control != NULL)
+    {
+      ZigzagControl_Disarm(control);
+    }
+    return 0U;
+  }
+
+  reset_required =
+      (control->command.mode != command->mode ||
+       control->command.armed != command->armed ||
+       fabsf(control->command.target_depth_m - command->target_depth_m) >
+           ZIGZAG_COMMAND_EPSILON ||
+       fabsf(control->command.target_pitch_rad - command->target_pitch_rad) >
+           ZIGZAG_COMMAND_EPSILON)
+          ? 1U
+          : 0U;
+
+  control->command = *command;
+  control->command.armed = (command->armed != 0U) ? 1U : 0U;
+
+  if (control->command.mode == ZIGZAG_MODE_OFF ||
+      control->command.armed == 0U ||
+      reset_required != 0U)
+  {
+    control->phase = ZIGZAG_PHASE_DIVE;
+    ZigzagControl_ResetLoops(control);
+  }
+
+  return 1U;
+}
+
+void ZigzagControl_Disarm(ZigzagControl *control)
+{
+  if (control == NULL)
+  {
+    return;
+  }
+
+  control->command.armed = 0U;
+  control->command.mode = ZIGZAG_MODE_OFF;
+  control->command.signed_thrust_percent = 0.0f;
+  control->phase = ZIGZAG_PHASE_DIVE;
+  ZigzagControl_ResetLoops(control);
+}
+
+void ZigzagControl_Step(
+    ZigzagControl *control,
+    const ZigzagControlInput *input,
+    float dt_s,
+    ZigzagControlOutput *output)
+{
+  float depth_pid_output = 0.0f;
+  float desired_pitch_rad = 0.0f;
+  float pitch_error_derivative = 0.0f;
+  float pitch_pid_output;
+  uint8_t new_depth_sample;
+
+  if (output == NULL)
+  {
+    return;
+  }
+
+  (void)memset(output, 0, sizeof(*output));
+  output->fault = ZIGZAG_FAULT_BAD_COMMAND;
+
+  if (control == NULL || input == NULL)
+  {
+    return;
+  }
+
+  output->mode = control->command.mode;
+  output->phase = control->phase;
+  output->armed = control->command.armed;
+  output->command_id = control->command.command_id;
+  output->measured_depth_m = input->depth_m;
+  output->measured_pitch_rad = input->pitch_rad;
+
+  if (control->config_valid == 0U)
+  {
+    output->fault = ZIGZAG_FAULT_BAD_CONFIG;
+    return;
+  }
+
+  if (control->command.mode == ZIGZAG_MODE_OFF ||
+      control->command.armed == 0U)
+  {
+    output->fault = ZIGZAG_FAULT_DISARMED;
+    return;
+  }
+
+  if (input->valid_for_control == 0U || !isfinite(input->pitch_rad))
+  {
+    ZigzagControl_ResetLoops(control);
+    output->fault = ZIGZAG_FAULT_EKF_INVALID;
+    return;
+  }
+
+  if (!isfinite(dt_s) || dt_s <= 0.0f || dt_s > 0.2f)
+  {
+    ZigzagControl_ResetLoops(control);
+    output->fault = ZIGZAG_FAULT_BAD_DT;
+    return;
+  }
+
+  if (control->command.mode == ZIGZAG_MODE_DEPTH_CASCADE)
+  {
+    if (input->depth_sample_valid == 0U ||
+        input->depth_update_seq == 0U ||
+        !isfinite(input->depth_m) ||
+        !isfinite(input->vertical_velocity_mps))
+    {
+      ZigzagControl_ResetLoops(control);
+      output->fault = ZIGZAG_FAULT_DEPTH_SAMPLE_INVALID;
+      return;
+    }
+
+    if (control->phase == ZIGZAG_PHASE_DIVE &&
+        input->depth_m >=
+            (control->command.target_depth_m -
+             control->config.depth_switch_threshold_m))
+    {
+      control->phase = ZIGZAG_PHASE_CLIMB;
+      ZigzagControl_ResetLoops(control);
+    }
+    else if (control->phase == ZIGZAG_PHASE_CLIMB &&
+             input->depth_m <=
+                 (control->config.surface_depth_m +
+                  control->config.depth_switch_threshold_m))
+    {
+      control->phase = ZIGZAG_PHASE_DIVE;
+      ZigzagControl_ResetLoops(control);
+    }
+
+    output->phase = control->phase;
+    output->target_depth_m =
+        (control->phase == ZIGZAG_PHASE_DIVE)
+            ? control->command.target_depth_m
+            : control->config.surface_depth_m;
+
+    control->depth_outer_elapsed_s += dt_s;
+    new_depth_sample =
+        (control->have_depth_sample == 0U ||
+         input->depth_update_seq != control->last_depth_update_seq)
+            ? 1U
+            : 0U;
+
+    if (new_depth_sample != 0U)
+    {
+      /*
+       * depth 向下为正，目标更深时误差为正；期望低头必须为负，
+       * 因此外环输出后显式取负号。D 项直接用 -vD，避免换相时
+       * 目标深度阶跃造成微分冲击。外环 dt 是两帧真实压力之间
+       * 累计的时间，不是 50Hz 内环的固定 20ms。
+       */
+      depth_pid_output = ZigzagPid_Update(
+          &control->config.depth_outer,
+          &control->depth_outer_state,
+          output->target_depth_m - input->depth_m,
+          -input->vertical_velocity_mps,
+          control->depth_outer_elapsed_s,
+          -control->config.max_pitch_rad,
+          control->config.max_pitch_rad,
+          &control->depth_outer_telemetry);
+      control->held_desired_pitch_rad = -depth_pid_output;
+      control->last_depth_update_seq = input->depth_update_seq;
+      control->depth_outer_elapsed_s = 0.0f;
+      control->have_depth_sample = 1U;
+    }
+
+    output->depth_outer = control->depth_outer_telemetry;
+    desired_pitch_rad = control->held_desired_pitch_rad;
+
+    if (control->phase == ZIGZAG_PHASE_DIVE)
+    {
+      desired_pitch_rad = ZigzagControl_Clamp(
+          desired_pitch_rad, -control->config.max_pitch_rad, 0.0f);
+      output->pump_enable = 1U;
+      output->pump_direction = 1U;
+    }
+    else
+    {
+      desired_pitch_rad = ZigzagControl_Clamp(
+          desired_pitch_rad, 0.0f, control->config.max_pitch_rad);
+      output->pump_enable = 1U;
+      output->pump_direction = 0U;
+    }
+  }
+  else if (control->command.mode == ZIGZAG_MODE_PITCH_HOLD)
+  {
+    output->target_depth_m = input->depth_m;
+    desired_pitch_rad = ZigzagControl_Clamp(
+        control->command.target_pitch_rad,
+        -control->config.max_pitch_rad,
+        control->config.max_pitch_rad);
+    output->pump_enable = 0U;
+    output->pump_direction = 0U;
+  }
+  else
+  {
+    output->fault = ZIGZAG_FAULT_BAD_COMMAND;
+    return;
+  }
+
+  if (control->have_previous_pitch != 0U)
+  {
+    /* 对测量值微分，避免外环改变 pitch setpoint 时产生 D 项冲击。 */
+    pitch_error_derivative =
+        -(input->pitch_rad - control->previous_pitch_rad) / dt_s;
+  }
+  control->previous_pitch_rad = input->pitch_rad;
+  control->have_previous_pitch = 1U;
+
+  output->desired_pitch_rad = desired_pitch_rad;
+  pitch_pid_output = ZigzagPid_Update(
+      &control->config.pitch_inner,
+      &control->pitch_inner_state,
+      desired_pitch_rad - input->pitch_rad,
+      pitch_error_derivative,
+      dt_s,
+      -control->config.max_worm_rpm,
+      control->config.max_worm_rpm,
+      &output->pitch_inner);
+
+  pitch_pid_output *= control->config.pitch_actuator_sign;
+  output->worm_motor_rpm = ZigzagControl_RoundToI32(
+      ZigzagControl_Clamp(
+          pitch_pid_output,
+          -control->config.max_worm_rpm,
+          control->config.max_worm_rpm));
+  output->signed_thrust_percent = ZigzagControl_Clamp(
+      control->command.signed_thrust_percent,
+      -control->config.max_thrust_percent,
+      control->config.max_thrust_percent);
+  output->output_valid = 1U;
+  output->fault = ZIGZAG_FAULT_NONE;
 }

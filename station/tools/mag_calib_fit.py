@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-磁力计硬铁/软铁标定：椭球拟合（离线，PC 端）
+磁力计硬铁/软铁标定,椭球拟合,离线,PC 端
+python tools\mag_calib_fit.py logs\csv\mag_时间戳.csv
 
 输入：mag_logger.py 采集的 mag_*.csv（列 mx,my,mz，模块系/FLU，uT）
 输出：硬铁偏置 b(3) + 软铁矩阵 A(3x3)，使  m_cal = A @ (m_raw - b)  近似落在
       半径 B_target(=去心后平均模长) 的球面上。同时打印可直接粘贴进
-      ekf_bridge.c 的 C 数组、质量判据，并（若装了 matplotlib）保存对比图。
+      ekf_bridge.c 的 C 数组、质量判据，并（若装了 matplotlib）保存对比图
 
-原理简述：
+原理简述
   硬铁 = 机体固连恒定偏置 -> 球心平移；软铁 = 机体软磁对外场的线性畸变 -> 球变椭球。
   对样本拟合一般二次曲面 (代数最小二乘, SVD 取最小奇异向量):
       a x^2 + b y^2 + c z^2 + 2f yz + 2g xz + 2h xy + 2p x + 2q y + 2r z + d = 0
   取 M=[[a,h,g],[h,b,f],[g,f,c]], 球心 b = -M^{-1} [p,q,r]，归一化成
       (m-b)^T Q (m-b) = 1,  Q = M / (b^T M b - d)
-  Q 对称正定时 A = B_target * Q^{1/2}（对称平方根），即白化矩阵。
+  Q 对称正定时 A = B_target * Q^{1/2}（对称平方根），即白化矩阵
 
 覆盖度检查：
   方向单位向量的二阶矩最小特征值过小说明数据近似共面（比如只转了水平圈），
-  完整椭球 9 参数不可辨识 -> 自动/手动退化到 --simple（仅硬铁 + 每轴 scale）。
+  完整椭球 9 参数不可辨识 -> 自动/手动退化到 --simple（仅硬铁 + 每轴 scale）
 
-用法：
     python mag_calib_fit.py <mag_*.csv> [更多csv ...] [--simple] [--no-plot]
 """
 

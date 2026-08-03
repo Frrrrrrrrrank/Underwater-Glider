@@ -5,10 +5,10 @@
 #include <stdint.h>
 
 #define PRESSURE_SENSOR_RX_RING_SIZE 512U
-/* 压力计深度更新率：调用 PressureSensorDriver_Poll 的任务为 osDelay(100)=10Hz。
- * 请求门限取 90ms(略小于 100ms 循环周期)，保证每次循环都触发、稳定 ~10Hz，
- * 不会因 tick 取整偶尔跳成 5Hz。EKF 侧按 last_update_tick 变化自动 push，无需改动。
- * 若要再提速到 30Hz，需把 Poll 调用任务的 osDelay 也降到 ≤33ms（或独立压力任务）。 */
+/* 调用 PressureSensorDriver_Poll 的任务为 osDelay(100)，Modbus 请求约 10Hz。
+ * 当前驱动交替请求压力和温度，因此两类有效新样本各约 5Hz。pressure_update_seq
+ * 与 temperature_update_seq 必须分开：温度响应不能被 EKF 误判成新压力。
+ * 若要提高深度外环频率，应单独调整请求调度，不能只缩短本门限。 */
 #define PRESSURE_SENSOR_MODBUS_REQUEST_PERIOD_MS 90U
 /* 响应超时必须 < 请求周期；Keller @115200 实际响应仅几 ms，60ms 留 10× 余量 */
 #define PRESSURE_SENSOR_MODBUS_RESPONSE_TIMEOUT_MS 60U
@@ -45,8 +45,13 @@ typedef struct
 
   uint32_t pressure_valid;
   float pressure_bar;
+  uint32_t pressure_update_tick;
+  uint32_t pressure_update_seq;
   uint32_t temperature_valid;
   float temperature_c;
+  uint32_t temperature_update_tick;
+  uint32_t temperature_update_seq;
+  /* 任意一种测量更新的时刻，仅保留作通用诊断，闭环不得用它判新压力。 */
   uint32_t last_update_tick;
 
   uint8_t last_tx_data[16];

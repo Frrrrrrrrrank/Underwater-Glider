@@ -1,6 +1,6 @@
 #include "limit_switch.h"
 
-void LimitSwitch_ReadStates(uint8_t states[LIMIT_SWITCH_COUNT])
+void LimitSwitch_ReadStates( volatile uint8_t states[LIMIT_SWITCH_COUNT])
 {
   if (states == NULL)
   {

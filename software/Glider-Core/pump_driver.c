@@ -1,10 +1,11 @@
 #include "pump_driver.h"
-#include "sbus_driver.h"
 #include "cmsis_os.h"
 #include "stm32h7xx_hal.h"
 #include "displacement_sensor.h"
-#include "ethernet_uart_driver.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
+#include <math.h>
 #include <string.h>
 
 static UART_HandleTypeDef *s_huart = NULL;
@@ -428,6 +429,11 @@ typedef struct
 } IoControlPumpState;
 
 static IoControlPumpState s_io_pump_state = {0};
+static IoControlPumpCommand s_io_pump_command = {0};
+static uint32_t s_io_pump_command_seq = 0U;
+static uint32_t s_io_pump_direction_change_tick = 0U;
+static uint8_t s_io_pump_applied_direction = 0U;
+static uint8_t s_io_pump_direction_guard_active = 0U;
 
 void IoControlPump_Init(void)
 {
@@ -436,6 +442,11 @@ void IoControlPump_Init(void)
   s_io_pump_state.speed_bit1_low = 1U;
   s_io_pump_state.stp_high = 1U;
   s_io_pump_state.direction_reversed = 0U;
+  (void)memset(&s_io_pump_command, 0, sizeof(s_io_pump_command));
+  s_io_pump_command_seq = 0U;
+  s_io_pump_direction_change_tick = 0U;
+  s_io_pump_applied_direction = 0U;
+  s_io_pump_direction_guard_active = 0U;
   
   /* Keep pump stopped by default: B0 low, B1 low, STP high. */
   if (IO_PUMP_SPEED_PORT != NULL)
@@ -457,9 +468,14 @@ void IoControlPump_Init(void)
 
   g_io_pump_debug.speed_triggered = 0U;
   g_io_pump_debug.direction_reversed = 0U;
+  g_io_pump_debug.command_source = IO_PUMP_SOURCE_OFF;
+  g_io_pump_debug.command_valid = 0U;
+  g_io_pump_debug.interlock_reason = IO_PUMP_INTERLOCK_COMMAND_TIMEOUT;
+  g_io_pump_debug.direction_guard_active = 0U;
+  g_io_pump_debug.command_age_ms = 0U;
 }
 
-void IoControlPump_SetSpeed(uint8_t enabled)
+static void IoControlPump_SetSpeed(uint8_t enabled)
 {
   if (s_io_pump_state.initialized == 0U)
   {
@@ -489,7 +505,7 @@ void IoControlPump_SetSpeed(uint8_t enabled)
   }
 }
 
-void IoControlPump_SetDirection(uint8_t reversed)
+static void IoControlPump_SetDirection(uint8_t reversed)
 {
   if (s_io_pump_state.initialized == 0U)
   {
@@ -505,135 +521,129 @@ void IoControlPump_SetDirection(uint8_t reversed)
   }
 }
 
-void IoControlPump_Poll(uint32_t now_ms)
+uint8_t IoControlPump_SubmitCommand(
+    IoControlPumpSource source,
+    uint8_t enabled,
+    uint8_t direction_reversed,
+    uint32_t now_ms)
 {
-  uint16_t channels[18] = {0U};
-  uint32_t frame_lost = 0U;
-  uint32_t failsafe = 0U;
-  uint32_t last_update_tick = 0U;
-  uint32_t channel_count = 0U;
-  uint16_t right_outer_switch = 0U;
-  uint16_t left_mid2_switch = 0U;
-  const uint32_t run_threshold = 1400U;
-  const uint32_t mid_low = 800U;         /* Mid position lower bound */
-  const uint32_t mid_high = 1200U;       /* Mid position upper bound */
-  EthernetUartReadoutPack ethernet_pack = {0};
-  uint8_t ethernet_control_flag = 0U;
+  if (s_io_pump_state.initialized == 0U ||
+      source > IO_PUMP_SOURCE_PID_ETH ||
+      enabled > 1U ||
+      direction_reversed > 1U)
+  {
+    return 0U;
+  }
 
-  /* SBUS 的 last_update_tick 来自 HAL_GetTick()；不能与 RTOS task tick 混算。 */
-  (void)now_ms;
-  
+  taskENTER_CRITICAL();
+  s_io_pump_command.source = source;
+  s_io_pump_command.enabled = enabled;
+  s_io_pump_command.direction_reversed = direction_reversed;
+  s_io_pump_command.update_tick_ms = now_ms;
+  s_io_pump_command.sequence = ++s_io_pump_command_seq;
+  taskEXIT_CRITICAL();
+  return 1U;
+}
+
+void IoControlPump_Poll(void)
+{
+  IoControlPumpCommand command;
+  uint32_t now_ms;//让泵自己取时间，不在Task里传
+  float displacement_mm;
+
   if (s_io_pump_state.initialized == 0U)
   {
     return;
   }
-  (void)EthernetUartDriver_CopyControlPack(
-      &ethernet_pack, &ethernet_control_flag);
-  if (ethernet_control_flag == 0U)
+
+  taskENTER_CRITICAL();
+  command = s_io_pump_command;
+  taskEXIT_CRITICAL();
+//必须在取得命令快照后再取当前时间;即使之后 ServoTask 更新全局邮箱，本函数使用的仍是旧快照，所以 now_ms 不会早于该快照的 update_tick_ms
+  now_ms = HAL_GetTick();
+
+  g_io_pump_debug.right_outer_switch = 0U;
+  g_io_pump_debug.left_mid2_switch = 0U;
+  g_io_pump_debug.command_source = (uint8_t)command.source;
+  g_io_pump_debug.command_age_ms =
+      (command.sequence != 0U) ? (now_ms - command.update_tick_ms) : 0U;//要处理后再取时刻，否则会下溢误触发超时
+  g_io_pump_debug.command_valid = 0U;
+  g_io_pump_debug.interlock_reason = IO_PUMP_INTERLOCK_NONE;
+  g_io_pump_debug.direction_guard_active =
+      s_io_pump_direction_guard_active;
+
+  if (command.sequence == 0U ||
+      (now_ms - command.update_tick_ms) > IO_PUMP_COMMAND_TIMEOUT_MS)
   {
-  /* Get current SBUS channels */
-  channel_count = SbusDriver_GetChannels(channels, 18U, &frame_lost, &failsafe, &last_update_tick);
-  
-  if (channel_count < 18U ||
-      SbusDriver_IsFrameFresh(HAL_GetTick(), SBUS_FRAME_FRESH_DEFAULT_MS) == 0U ||
-      frame_lost != 0U || failsafe != 0U)
-  {
-    /* 无新鲜且有效的 RC 帧：不能沿用断线前缓存的 RUN 开关。 */
     IoControlPump_SetSpeed(0U);
-    IoControlPump_SetDirection(0U);
-    g_io_pump_debug.right_outer_switch = 0U;
-    g_io_pump_debug.left_mid2_switch = 0U;
     g_io_pump_debug.speed_triggered = 0U;
-    g_io_pump_debug.direction_reversed = 0U;
+    g_io_pump_debug.interlock_reason = IO_PUMP_INTERLOCK_COMMAND_TIMEOUT;
     return;
   }
 
-  /* Get right outer switch (CH7) - rightmost switch */
-  right_outer_switch = channels[7U];  /* SBUS_CH_SWITCH_RIGHT_OUTER */
-  
-  /* Get left mid-2 switch (CH6) - second from right */
-  left_mid2_switch = channels[6U];  /* SBUS_CH_SWITCH_LEFT_MID_2 */
+  g_io_pump_debug.command_valid = 1U;
 
-  /* Update debug info with raw channel values */
-  g_io_pump_debug.right_outer_switch = right_outer_switch;
-  g_io_pump_debug.left_mid2_switch = left_mid2_switch;
-
-  /* Speed control: right outer switch RUN side drives speed bit0 HIGH (PC13). */
-  if (right_outer_switch > run_threshold)
+  if (command.direction_reversed != s_io_pump_applied_direction)
   {
-    IoControlPump_SetSpeed(1U);
-    g_io_pump_debug.speed_triggered = 1U;
+    /* 必须先断开速度，再切 DIR；随后等待保护时间才允许重新带电。 */
+    IoControlPump_SetSpeed(0U);
+    IoControlPump_SetDirection(command.direction_reversed);
+    s_io_pump_applied_direction = command.direction_reversed;
+    s_io_pump_direction_change_tick = now_ms;
+    s_io_pump_direction_guard_active = 1U;
   }
-  else
+
+  g_io_pump_debug.direction_reversed = s_io_pump_applied_direction;
+  if (s_io_pump_direction_guard_active != 0U)
+  {
+    if ((now_ms - s_io_pump_direction_change_tick) <
+        IO_PUMP_DIRECTION_GUARD_MS)
+    {
+      IoControlPump_SetSpeed(0U);
+      g_io_pump_debug.speed_triggered = 0U;
+      g_io_pump_debug.direction_guard_active = 1U;
+      g_io_pump_debug.interlock_reason = IO_PUMP_INTERLOCK_DIRECTION_GUARD;
+      return;
+    }
+    s_io_pump_direction_guard_active = 0U;
+    g_io_pump_debug.direction_guard_active = 0U;
+  }
+
+  if (command.enabled == 0U)
   {
     IoControlPump_SetSpeed(0U);
     g_io_pump_debug.speed_triggered = 0U;
+    return;
   }
 
-  /* Direction control: left-mid-2 switch in MIDDLE position (~1024) drives DIR low (PE4). */
-  if (left_mid2_switch > mid_low && left_mid2_switch < mid_high)
-  {
-    IoControlPump_SetDirection(1U);
-    g_io_pump_debug.direction_reversed = 1U;
-    if(g_displacement_sensor.displacement_mm < 48.0f)
-    {
-      /* If currently extended, reverse direction to retract. */
-      IoControlPump_SetSpeed(0U);
-      g_io_pump_debug.speed_triggered = 0U;
-    }
-   
+  displacement_mm = g_displacement_sensor.displacement_mm;
+  if (!isfinite(displacement_mm))//暂时删除对线位移传感器值有效性的审查
+  {//  if (g_displacement_sensor.valid == 0U || !isfinite(displacement_mm))
+    IoControlPump_SetSpeed(0U);
+    g_io_pump_debug.speed_triggered = 0U;
+    g_io_pump_debug.interlock_reason =
+        IO_PUMP_INTERLOCK_DISPLACEMENT_INVALID;
+    return;
   }
-  else
-  {
-    IoControlPump_SetDirection(0U);
-    g_io_pump_debug.direction_reversed = 0U;
-     if(g_displacement_sensor.displacement_mm > 130.0f)
-    {
-      /* If currently extended, reverse direction to retract. */
-      IoControlPump_SetSpeed(0U);
-      g_io_pump_debug.speed_triggered = 0U;
-    }
-  }
-  }
-  else
-  {
-    g_io_pump_debug.right_outer_switch = 0U;
-    g_io_pump_debug.left_mid2_switch = 0U;
 
-    if (ethernet_pack.pump_on_off == 1U)
-  {
-    IoControlPump_SetSpeed(1U);
-    g_io_pump_debug.speed_triggered = 1U;
-  }
-  else
+  if (command.direction_reversed != 0U &&
+      displacement_mm < IO_PUMP_DISPLACEMENT_MIN_MM)
   {
     IoControlPump_SetSpeed(0U);
     g_io_pump_debug.speed_triggered = 0U;
+    g_io_pump_debug.interlock_reason = IO_PUMP_INTERLOCK_MIN_LIMIT;
+    return;
+  }
+  if (command.direction_reversed == 0U &&
+      displacement_mm > IO_PUMP_DISPLACEMENT_MAX_MM)
+  {
+    IoControlPump_SetSpeed(0U);
+    g_io_pump_debug.speed_triggered = 0U;
+    g_io_pump_debug.interlock_reason = IO_PUMP_INTERLOCK_MAX_LIMIT;
+    return;
   }
 
-  if (ethernet_pack.pump_direction == 1U)
-  {
-    IoControlPump_SetDirection(1U);
-    g_io_pump_debug.direction_reversed = 1U;
-    if(g_displacement_sensor.displacement_mm < 48.0f)
-    {
-      /* If currently extended, reverse direction to retract. */
-      IoControlPump_SetSpeed(0U);
-      g_io_pump_debug.speed_triggered = 0U;
-    }
-   
-  }
-  else
-  {
-    IoControlPump_SetDirection(0U);
-    g_io_pump_debug.direction_reversed = 0U;
-     if(g_displacement_sensor.displacement_mm > 130.0f)
-    {
-      /* If currently extended, reverse direction to retract. */
-      IoControlPump_SetSpeed(0U);
-      g_io_pump_debug.speed_triggered = 0U;
-    }
-  }
-  }
+  IoControlPump_SetSpeed(1U);
+  g_io_pump_debug.speed_triggered = 1U;
 }
 

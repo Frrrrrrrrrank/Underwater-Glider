@@ -30,9 +30,9 @@
 #define IMU_CMD_RESET_USER_DATA 0xA0U  /* 重置用户数据 */
 
 /* IMU 串口协议规定的输出频率范围，以及我们要求的目标频率。 */
-#define IMU_OUTPUT_FREQ_MIN_HZ       10U    //最低频率
-#define IMU_OUTPUT_FREQ_MAX_HZ      100U    //最高频率
-#define IMU_OUTPUT_FREQ_TARGET_HZ   100U    //期望频率
+#define IMU_OUTPUT_FREQ_MIN_HZ       25U    //最低频率
+#define IMU_OUTPUT_FREQ_MAX_HZ      25U    //最高频率
+#define IMU_OUTPUT_FREQ_TARGET_HZ   25U    //期望频率
 
 /* Frame structure constants */
 #define IMU_FRAME_MIN_LENGTH  5U   /* HEAD1 + HEAD2 + LENGTH + FUNCTION + CHECKSUM */

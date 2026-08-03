@@ -25,6 +25,8 @@
 #define MOTOR_POLL_INTERVAL_MS         100U
 #define MOTOR_UART_TX_TIMEOUT_MS       20U
 #define MOTOR_UART_RX_TIMEOUT_MS       20U
+/* 事务失败后等待半帧到齐再排空的时间：3ms @115200 ≈ 34 字节 > 最长应答 25 字节。 */
+#define MOTOR_RX_DRAIN_MS              3U
 
 /*
  * Default MODBUS register map (adjust to your motor manual).
@@ -181,6 +183,7 @@ typedef struct
   uint32_t total_tx_count;
   uint32_t total_rx_count;
   uint32_t total_timeout_count;
+  uint32_t overrun_count;      /* 其中属于接收溢出/帧错位的次数(last_error=24) */
   uint32_t total_crc_error_count;
   uint32_t total_protocol_error_count;
   uint8_t last_tx_frame[16];

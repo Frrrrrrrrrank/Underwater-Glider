@@ -62,7 +62,8 @@ typedef struct {
 static EkfImuInput s_imu_in;             /* 临界区保护 */
 static uint32_t    s_imu_in_seq = 0;     /* 最新投喂序号 */
 static uint32_t    s_imu_last_seq = 0;   /* EKF 已处理序号 */
-static uint32_t    s_pressure_last_tick = 0;
+static uint32_t    s_pressure_last_seq = 0;
+static uint32_t    s_depth_measurement_tick_ms = 0;
 
 // 暴露给OZone的输出快照，观察参数用
 StateEstimate     g_state_estimate;
@@ -290,7 +291,8 @@ void EkfBridge_Init(void)
   memset(&s_imu_in, 0, sizeof(s_imu_in));
   s_imu_in_seq = 0;
   s_imu_last_seq = 0;
-  s_pressure_last_tick = 0;
+  s_pressure_last_seq = 0;
+  s_depth_measurement_tick_ms = 0;
   g_ekf_depth_meas = 0.0f;
   memset(&s_mag_cal_pending, 0, sizeof(s_mag_cal_pending));
   s_mag_cal_pending_seq = 0U;
@@ -397,13 +399,25 @@ void EkfBridge_Step(void)//在EKF的task里调用
     }
   }
 
-  /* 2) 压力：仅在 valid 且 last_update_tick 变化时 push（对齐前 wrapper 内部会忽略）。
+  /* 2) 压力：仅在 valid 且 pressure_update_seq 变化时 push（对齐前 wrapper 内部会忽略）。
    *    本板深度计是【表压】(空气≈0)：depth = bar*1e5/(ρg)，不减大气压，
-   *    故绕过 UgEkf_PushPressureBar（它按绝对压减 p_atm，会多出 -10m 偏置）。 */
-  if (g_pressure_sensor_readout.pressure_valid &&
-      g_pressure_sensor_readout.last_update_tick != s_pressure_last_tick) {
-    s_pressure_last_tick = g_pressure_sensor_readout.last_update_tick;
-    g_ekf_depth_meas = g_pressure_sensor_readout.pressure_bar * 1.0e5f / (kWaterRho * kGravity);
+   *    故绕过 UgEkf_PushPressureBar（它按绝对压减 p_atm，会多出 -10m 偏置）。
+   *    先在临界区拷出同一版 pressure/value/tick/seq，避免任务切换造成字段跨帧。 */
+  uint32_t pressure_valid;
+  uint32_t pressure_seq;
+  uint32_t pressure_tick_ms;
+  float pressure_bar;
+  taskENTER_CRITICAL();
+  pressure_valid = g_pressure_sensor_readout.pressure_valid;
+  pressure_seq = g_pressure_sensor_readout.pressure_update_seq;
+  pressure_tick_ms = g_pressure_sensor_readout.pressure_update_tick;
+  pressure_bar = g_pressure_sensor_readout.pressure_bar;
+  taskEXIT_CRITICAL();
+
+  if (pressure_valid != 0U && pressure_seq != s_pressure_last_seq) {
+    s_pressure_last_seq = pressure_seq;
+    s_depth_measurement_tick_ms = pressure_tick_ms;
+    g_ekf_depth_meas = pressure_bar * 1.0e5f / (kWaterRho * kGravity);
     UgEkf_PushDepth(g_ekf_depth_meas, GliderTime_NowUs());
     g_ekf_pressure_push_count++;
   }
@@ -416,6 +430,8 @@ void EkfBridge_Step(void)//在EKF的task里调用
   taskENTER_CRITICAL();//嵌入式的保护读写
   g_state_estimate.out = out;
   g_state_estimate.update_seq = ++s_snap_seq;
+  g_state_estimate.depth_measurement_seq = g_ekf_pressure_push_count;
+  g_state_estimate.depth_measurement_tick_ms = s_depth_measurement_tick_ms;
   taskEXIT_CRITICAL();
 }
 
