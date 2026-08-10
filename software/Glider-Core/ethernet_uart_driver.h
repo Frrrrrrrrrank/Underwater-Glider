@@ -6,9 +6,9 @@
 
 #define ETHERNET_UART_RX_RING_SIZE 256U
 #define ETHERNET_UART_RX_LINE_MAX 96U
-#define ETHERNET_UART_TX_LINE_MAX 576U
-#define ETHERNET_UART_TX_QUEUE_DEPTH 4U
+#define ETHERNET_UART_TX_LINE_MAX 160U
 #define ETHERNET_UART_TASK_PERIOD_MS 20U
+#define ETHERNET_UART_HEARTBEAT_PERIOD_MS 1000U
 
 typedef struct
 {
@@ -36,13 +36,6 @@ typedef struct
   uint32_t command_help_count;
   uint32_t command_unknown_count;
   uint32_t heartbeat_count;
-
-  uint32_t rdss_forward_enabled;
-  uint32_t rdss_forward_command_count;
-  uint32_t rdss_forward_enqueued_count;
-  uint32_t rdss_forward_sent_count;
-  uint32_t rdss_forward_drop_count;
-  uint32_t tx_queue_depth;
 
   uint32_t ring_available_bytes;
   uint32_t last_rx_tick;
@@ -74,7 +67,6 @@ extern volatile EthernetUartState g_ethernet_uart_state;
 void EthernetUartDriver_Init(UART_HandleTypeDef *huart);
 void EthernetUartDriver_RunTask(void *argument);
 void EthernetUartDriver_SendText(const char *text);
-void EthernetUartDriver_ForwardRdssLine(const char *line);
 void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart);
 void EthernetUartDriver_OnTxComplete(UART_HandleTypeDef *huart);
 void EthernetUartDriver_OnError(UART_HandleTypeDef *huart);

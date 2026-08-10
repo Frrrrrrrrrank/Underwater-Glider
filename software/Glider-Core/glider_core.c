@@ -762,8 +762,6 @@ static void process_line(const char *line)
     return;
   }
 
-  EthernetUartDriver_ForwardRdssLine(line);
-
   if (!GliderRdssCodec_TryDecodeLine(line, &s_decoded_frame))
   {
     return;
