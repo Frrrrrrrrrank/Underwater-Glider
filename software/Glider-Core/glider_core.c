@@ -54,6 +54,8 @@ static volatile uint32_t s_bdpwi_signal_available = 0;
 static char s_last_tx_text[32] = {0};
 static char s_last_shortmsg_payload[96] = {0};
 
+volatile GliderTargetCoordinate g_target_coordinate = {0};
+
 typedef struct
 {
   volatile uint32_t signal_good;
@@ -147,6 +149,29 @@ static const char *s_boot_test_cmds[] = {
 };
 
 static void update_local_card_id(const char *parsed);
+
+static void cache_target_coordinate(const GliderRdssDecodedFrame *frame)
+{
+  size_t i = 0U;
+
+  if (frame == NULL || !frame->is_bds_command || !frame->bds_command.valid)
+  {
+    return;
+  }
+
+  g_target_coordinate.valid = 0U;
+  for (i = 0U; i < sizeof(g_target_coordinate.source_card); i++)
+  {
+    g_target_coordinate.source_card[i] = frame->bds_command.sender_card[i];
+  }
+  g_target_coordinate.latitude_deg_e7 = frame->bds_command.latitude_deg_e7;
+  g_target_coordinate.longitude_deg_e7 = frame->bds_command.longitude_deg_e7;
+  g_target_coordinate.latitude_deg = ((float)frame->bds_command.latitude_deg_e7) / 10000000.0f;
+  g_target_coordinate.longitude_deg = ((float)frame->bds_command.longitude_deg_e7) / 10000000.0f;
+  g_target_coordinate.last_update_tick = HAL_GetTick();
+  g_target_coordinate.update_count++;
+  g_target_coordinate.valid = 1U;
+}
 
 static void request_rd_mode_soft(uint32_t now)
 {
@@ -737,12 +762,15 @@ static void process_line(const char *line)
     return;
   }
 
+  EthernetUartDriver_ForwardRdssLine(line);
+
   if (!GliderRdssCodec_TryDecodeLine(line, &s_decoded_frame))
   {
     return;
   }
 
   s_rx_line_count++;
+  cache_target_coordinate(&s_decoded_frame);
   if (s_mode_switch_cooldown > 0U)
   {
     s_mode_switch_cooldown--;
@@ -976,6 +1004,7 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_cached_shortmsg_payload[0] = '\0';
   s_local_card_id[0] = '\0';
   s_current_target_card[0] = '\0';
+  memset((void *)&g_target_coordinate, 0, sizeof(g_target_coordinate));
 
   if (s_uart != NULL)
   {

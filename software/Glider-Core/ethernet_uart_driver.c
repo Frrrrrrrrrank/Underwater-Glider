@@ -12,7 +12,19 @@ static volatile uint8_t s_rx_ring[ETHERNET_UART_RX_RING_SIZE];
 static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static volatile uint32_t s_tx_busy = 0U;
-static uint32_t s_last_command_tick = 0U;
+
+typedef struct
+{
+  uint16_t length;
+  uint8_t is_rdss;
+  char data[ETHERNET_UART_TX_LINE_MAX];
+} EthernetUartTxQueueItem;
+
+static EthernetUartTxQueueItem s_tx_queue[ETHERNET_UART_TX_QUEUE_DEPTH];
+static volatile uint8_t s_tx_queue_head = 0U;
+static volatile uint8_t s_tx_queue_tail = 0U;
+static volatile uint8_t s_tx_from_queue = 0U;
+static osMutexId_t s_tx_queue_mutex = NULL;
 
 static void EthernetUartDriver_RearmReceive(void);
 static void EthernetUartDriver_RingPush(uint8_t byte);
@@ -20,6 +32,91 @@ static bool EthernetUartDriver_RingPop(uint8_t *byte);
 static void EthernetUartDriver_ProcessReceivedData(void);
 static void EthernetUartDriver_ProcessLine(const char *line);
 static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_t length);
+static bool EthernetUartDriver_QueueText(const char *text, uint8_t is_rdss);
+static void EthernetUartDriver_TrySendQueued(void);
+
+static void EthernetUartDriver_UpdateQueueDepth(void)
+{
+  g_ethernet_uart_diag.tx_queue_depth =
+      (s_tx_queue_head >= s_tx_queue_tail)
+          ? (uint32_t)(s_tx_queue_head - s_tx_queue_tail)
+          : (uint32_t)(ETHERNET_UART_TX_QUEUE_DEPTH - s_tx_queue_tail + s_tx_queue_head);
+}
+
+static bool EthernetUartDriver_QueueText(const char *text, uint8_t is_rdss)
+{
+  size_t length;
+  uint8_t next;
+  EthernetUartTxQueueItem *item;
+
+  if (text == NULL)
+  {
+    return false;
+  }
+
+  length = strlen(text);
+  if (length == 0U || length >= ETHERNET_UART_TX_LINE_MAX)
+  {
+    return false;
+  }
+
+  if (s_tx_queue_mutex == NULL || osMutexAcquire(s_tx_queue_mutex, 0U) != osOK)
+  {
+    return false;
+  }
+
+  next = (uint8_t)(s_tx_queue_head + 1U);
+  if (next >= ETHERNET_UART_TX_QUEUE_DEPTH)
+  {
+    next = 0U;
+  }
+  if (next == s_tx_queue_tail)
+  {
+    (void)osMutexRelease(s_tx_queue_mutex);
+    return false;
+  }
+
+  item = &s_tx_queue[s_tx_queue_head];
+  memcpy(item->data, text, length + 1U);
+  item->length = (uint16_t)length;
+  item->is_rdss = is_rdss;
+  s_tx_queue_head = next;
+  EthernetUartDriver_UpdateQueueDepth();
+  (void)osMutexRelease(s_tx_queue_mutex);
+  return true;
+}
+
+static void EthernetUartDriver_TrySendQueued(void)
+{
+  EthernetUartTxQueueItem *item;
+  HAL_StatusTypeDef status;
+
+  if (s_tx_busy != 0U || s_tx_queue_head == s_tx_queue_tail)
+  {
+    return;
+  }
+
+  item = &s_tx_queue[s_tx_queue_tail];
+  s_tx_from_queue = 1U;
+  status = EthernetUartDriver_SendRaw((const uint8_t *)item->data, item->length);
+  if (status != HAL_OK)
+  {
+    s_tx_from_queue = 0U;
+    if (status != HAL_BUSY)
+    {
+      if (item->is_rdss != 0U)
+      {
+        g_ethernet_uart_diag.rdss_forward_drop_count++;
+      }
+      s_tx_queue_tail = (uint8_t)(s_tx_queue_tail + 1U);
+      if (s_tx_queue_tail >= ETHERNET_UART_TX_QUEUE_DEPTH)
+      {
+        s_tx_queue_tail = 0U;
+      }
+      EthernetUartDriver_UpdateQueueDepth();
+    }
+  }
+}
 
 static void EthernetUartDriver_RearmReceive(void)
 {
@@ -112,10 +209,35 @@ static void EthernetUartDriver_ProcessLine(const char *line)
     return;
   }
 
-  memcpy(g_ethernet_uart_readout.last_rx_line, line, len + 1U);
+  memcpy((void *)g_ethernet_uart_readout.last_rx_line, line, len + 1U);
   g_ethernet_uart_readout.last_rx_byte = (uint32_t)line[len - 1U];
   g_ethernet_uart_diag.rx_line_count++;
   g_ethernet_uart_diag.last_rx_tick = HAL_GetTick();
+
+  if (strcmp(line, "RDSS_FORWARD=1") == 0)
+  {
+    g_ethernet_uart_diag.rdss_forward_enabled = 1U;
+    g_ethernet_uart_diag.rdss_forward_command_count++;
+    (void)EthernetUartDriver_QueueText("OK RDSS_FORWARD=1\r\n", 0U);
+    return;
+  }
+  if (strcmp(line, "RDSS_FORWARD=0") == 0)
+  {
+    g_ethernet_uart_diag.rdss_forward_enabled = 0U;
+    g_ethernet_uart_diag.rdss_forward_command_count++;
+    (void)EthernetUartDriver_QueueText("OK RDSS_FORWARD=0\r\n", 0U);
+    return;
+  }
+  if (strcmp(line, "RDSS_FORWARD?") == 0)
+  {
+    g_ethernet_uart_diag.rdss_forward_command_count++;
+    (void)EthernetUartDriver_QueueText(
+        (g_ethernet_uart_diag.rdss_forward_enabled != 0U)
+            ? "RDSS_FORWARD=1\r\n"
+            : "RDSS_FORWARD=0\r\n",
+        0U);
+    return;
+  }
 
   if (strstr(line, "CONNECT") != NULL || strstr(line, "OK") != NULL)
   {
@@ -160,6 +282,8 @@ static void EthernetUartDriver_ProcessReceivedData(void)
 
 static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_t length)
 {
+  uint16_t copy_len;
+
   if (s_uart == NULL || data == NULL || length == 0U || length > ETHERNET_UART_TX_LINE_MAX)
   {
     return HAL_ERROR;
@@ -170,6 +294,12 @@ static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_
     g_ethernet_uart_diag.tx_busy_count++;
     return HAL_BUSY;
   }
+
+  copy_len = (length < ETHERNET_UART_TX_LINE_MAX)
+                 ? length
+                 : (uint16_t)(ETHERNET_UART_TX_LINE_MAX - 1U);
+  memcpy((void *)g_ethernet_uart_readout.last_tx_line, data, copy_len);
+  g_ethernet_uart_readout.last_tx_line[copy_len] = '\0';
 
   HAL_StatusTypeDef status = HAL_UART_Transmit_IT(s_uart, data, length);
   if (status == HAL_OK)
@@ -202,7 +332,10 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
   s_rx_tail = 0U;
   s_rx_byte = 0U;
   s_tx_busy = 0U;
-  s_last_command_tick = 0U;
+  s_tx_queue_head = 0U;
+  s_tx_queue_tail = 0U;
+  s_tx_from_queue = 0U;
+  s_tx_queue_mutex = NULL;
 
   EthernetUartDriver_RearmReceive();
   if (g_ethernet_uart_diag.last_error == 0U)
@@ -214,38 +347,19 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
 void EthernetUartDriver_RunTask(void *argument)
 {
   (void)argument;
-  const uint32_t setup_period = ETHERNET_UART_HEARTBEAT_PERIOD_MS;
-  const char *setup_commands[] = {
-      "AT\r\n",
-      "AT+IPR=115200\r\n",
-      "AT+NETP=1,0,12345,0\r\n",
-      "AT+ENTM\r\n"
-  };
-  const size_t setup_count = sizeof(setup_commands) / sizeof(setup_commands[0]);
-  static size_t setup_index = 0U;
+
+  s_tx_queue_mutex = osMutexNew(NULL);
+  if (s_tx_queue_mutex == NULL)
+  {
+    g_ethernet_uart_diag.last_error = 6U;
+  }
 
   for (;;)
   {
-    const uint32_t now = HAL_GetTick();
     g_ethernet_uart_diag.task_loop_count++;
 
     EthernetUartDriver_ProcessReceivedData();
-
-    if (setup_index < setup_count)
-    {
-      if ((now - s_last_command_tick) >= setup_period)
-      {
-        EthernetUartDriver_SendText(setup_commands[setup_index]);
-        s_last_command_tick = now;
-        setup_index++;
-      }
-    }
-    else if ((now - g_ethernet_uart_diag.last_tx_tick) >= ETHERNET_UART_HEARTBEAT_PERIOD_MS)
-    {
-      EthernetUartDriver_SendText("AT\r\n");
-      g_ethernet_uart_diag.heartbeat_count++;
-      g_ethernet_uart_diag.last_tx_tick = now;
-    }
+    EthernetUartDriver_TrySendQueued();
 
     g_ethernet_uart_readout.ring_available_bytes = g_ethernet_uart_diag.ring_available_bytes;
     osDelay(ETHERNET_UART_TASK_PERIOD_MS);
@@ -266,6 +380,34 @@ void EthernetUartDriver_SendText(const char *text)
   }
 
   (void)EthernetUartDriver_SendRaw((const uint8_t *)text, length);
+}
+
+void EthernetUartDriver_ForwardRdssLine(const char *line)
+{
+  char message[ETHERNET_UART_TX_LINE_MAX];
+  size_t line_len;
+  int written;
+
+  if (g_ethernet_uart_diag.rdss_forward_enabled == 0U || line == NULL)
+  {
+    return;
+  }
+
+  line_len = strlen(line);
+  while (line_len > 0U && (line[line_len - 1U] == '\r' || line[line_len - 1U] == '\n'))
+  {
+    line_len--;
+  }
+
+  written = snprintf(message, sizeof(message), "RDSS_RX:%.*s\r\n", (int)line_len, line);
+  if (written <= 0 || (size_t)written >= sizeof(message) ||
+      !EthernetUartDriver_QueueText(message, 1U))
+  {
+    g_ethernet_uart_diag.rdss_forward_drop_count++;
+    return;
+  }
+
+  g_ethernet_uart_diag.rdss_forward_enqueued_count++;
 }
 
 void EthernetUartDriver_OnRxComplete(UART_HandleTypeDef *huart)
@@ -291,6 +433,21 @@ void EthernetUartDriver_OnTxComplete(UART_HandleTypeDef *huart)
   g_ethernet_uart_diag.tx_complete_count++;
   g_ethernet_uart_diag.tx_in_flight = 0U;
   g_ethernet_uart_diag.last_tx_tick = HAL_GetTick();
+
+  if (s_tx_from_queue != 0U && s_tx_queue_head != s_tx_queue_tail)
+  {
+    if (s_tx_queue[s_tx_queue_tail].is_rdss != 0U)
+    {
+      g_ethernet_uart_diag.rdss_forward_sent_count++;
+    }
+    s_tx_queue_tail = (uint8_t)(s_tx_queue_tail + 1U);
+    if (s_tx_queue_tail >= ETHERNET_UART_TX_QUEUE_DEPTH)
+    {
+      s_tx_queue_tail = 0U;
+    }
+    EthernetUartDriver_UpdateQueueDepth();
+  }
+  s_tx_from_queue = 0U;
 }
 
 void EthernetUartDriver_OnError(UART_HandleTypeDef *huart)

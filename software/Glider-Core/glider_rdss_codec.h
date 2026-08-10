@@ -11,7 +11,8 @@ typedef enum
   GLIDER_RDSS_FRAME_PLAIN_TEXT,
   GLIDER_RDSS_FRAME_NMEA_TEXT,
   GLIDER_RDSS_FRAME_AT_RESPONSE,
-  GLIDER_RDSS_FRAME_HEX_BINARY
+  GLIDER_RDSS_FRAME_HEX_BINARY,
+  GLIDER_RDSS_FRAME_BDS_COMMAND
 } GliderRdssFrameType;
 
 typedef struct
@@ -101,12 +102,25 @@ typedef struct
 
 typedef struct
 {
+  bool valid;                 /* True for a complete "go to" command */
+  char sender_card[24];       /* Card number after "$BDS:", empty for payload-only RX */
+  char latitude_raw[20];      /* Decimal-degree latitude text */
+  char latitude_ns[4];        /* N/S */
+  char longitude_raw[20];     /* Decimal-degree longitude text */
+  char longitude_ew[4];       /* E/W */
+  int32_t latitude_deg_e7;    /* Signed latitude in degree * 1e7 */
+  int32_t longitude_deg_e7;   /* Signed longitude in degree * 1e7 */
+} GliderRdssBdsCommandInfo;
+
+typedef struct
+{
   GliderRdssFrameType type;   /* High-level classification */
   bool is_rd_mode;            /* True when text exactly equals "RD Mode!" */
   bool is_rn_mode;            /* True when text exactly equals RNMODE!/RN Mode! */
   bool is_bdpwi;              /* True when sentence id is BDPWI */
   bool is_bdepi;              /* True when sentence id is BDEPI */
   bool is_gnrmc;              /* True when sentence id is GNRMC */
+  bool is_bds_command;        /* True for an enveloped or payload-only go-to command */
   bool has_checksum;          /* NMEA '*' checksum existed */
   bool checksum_valid;        /* XOR checksum result */
   uint8_t checksum_rx;        /* Checksum from sentence */
@@ -121,6 +135,7 @@ typedef struct
   GliderRdssBdpwiInfo bdpwi;  /* Detailed BDPWI decode */
   GliderRdssBdepiInfo bdepi;  /* Detailed BDEPI decode */
   GliderRdssGnrmcInfo gnrmc;  /* Detailed GNRMC decode */
+  GliderRdssBdsCommandInfo bds_command; /* Ground-station target command */
   char text[512];             /* Full normalized text line */
   uint8_t payload[128];       /* Raw payload bytes/text */
   size_t payload_len;         /* Payload length */
