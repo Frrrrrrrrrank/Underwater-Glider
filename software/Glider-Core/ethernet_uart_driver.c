@@ -229,7 +229,8 @@ static volatile uint8_t s_rx_rearm_pending = 0U;
 #define UGCP_CASCADE_SCHEMA_V1      1U
 #define UGCP_PARAM_GROUP_MAG_CAL    1U
 #define UGCP_PARAM_GROUP_PID        2U
-#define UGCP_PARAM_BLOCK_COUNT      4U
+#define UGCP_MAG_PARAM_BLOCK_COUNT  4U
+#define UGCP_PID_PARAM_BLOCK_COUNT  5U
 #define UGCP_PARAM_BLOCK_DATA_SIZE 16U
 #define UGCP_PARAM_BLOCK_PAYLOAD_SIZE 19U
 #define UGCP_PARAM_COMMIT_PAYLOAD_SIZE 7U
@@ -243,7 +244,8 @@ static uint8_t s_snapshot_pending = 0U;
 
 typedef struct
 {
-  uint8_t table[EKF_MAG_CAL_TABLE_BYTES];
+  /* PID 表 80 B 大于磁标定表 64 B，暂存区按两者最大值分配。 */
+  uint8_t table[PID_CONTROL_PARAM_TABLE_BYTES];
   uint8_t group;
   uint8_t transaction;
   uint8_t received_mask;
@@ -681,6 +683,7 @@ static void EthernetUartDriver_HandleParamBlock(
   uint8_t group;
   uint8_t transaction;
   uint8_t block;
+  uint8_t expected_block_count;
 
   if (payload == NULL || payload_length != UGCP_PARAM_BLOCK_PAYLOAD_SIZE)
   {
@@ -692,9 +695,17 @@ static void EthernetUartDriver_HandleParamBlock(
   group = payload[0];
   transaction = payload[1];
   block = payload[2];
-  if ((group != UGCP_PARAM_GROUP_MAG_CAL &&
-       group != UGCP_PARAM_GROUP_PID) ||
-      block >= UGCP_PARAM_BLOCK_COUNT)
+  if (group != UGCP_PARAM_GROUP_MAG_CAL &&
+      group != UGCP_PARAM_GROUP_PID)
+  {
+    g_ethernet_uart_diag.parameter_reject_count++;
+    return;
+  }
+  expected_block_count =
+      (group == UGCP_PARAM_GROUP_PID)
+          ? UGCP_PID_PARAM_BLOCK_COUNT
+          : UGCP_MAG_PARAM_BLOCK_COUNT;
+  if (block >= expected_block_count)
   {
     g_ethernet_uart_diag.parameter_reject_count++;
     return;
@@ -728,8 +739,8 @@ static void EthernetUartDriver_HandleParamCommit(
     const uint8_t *payload, uint16_t payload_length)
 {
   uint32_t expected_crc;
-  const uint8_t all_blocks_mask =
-      (uint8_t)((1U << UGCP_PARAM_BLOCK_COUNT) - 1U);
+  uint8_t expected_block_count;
+  uint8_t all_blocks_mask;
 
   if (payload == NULL || payload_length != UGCP_PARAM_COMMIT_PAYLOAD_SIZE)
   {
@@ -739,9 +750,19 @@ static void EthernetUartDriver_HandleParamCommit(
   }
 
   expected_crc = EthernetUartDriver_ReadLeU32(&payload[3]);
-  if ((payload[0] != UGCP_PARAM_GROUP_MAG_CAL &&
-       payload[0] != UGCP_PARAM_GROUP_PID) ||
-      payload[2] != UGCP_PARAM_BLOCK_COUNT ||
+  if (payload[0] != UGCP_PARAM_GROUP_MAG_CAL &&
+      payload[0] != UGCP_PARAM_GROUP_PID)
+  {
+    g_ethernet_uart_diag.parameter_reject_count++;
+    return;
+  }
+  expected_block_count =
+      (payload[0] == UGCP_PARAM_GROUP_PID)
+          ? UGCP_PID_PARAM_BLOCK_COUNT
+          : UGCP_MAG_PARAM_BLOCK_COUNT;
+  all_blocks_mask =
+      (uint8_t)((1U << expected_block_count) - 1U);
+  if (payload[2] != expected_block_count ||
       s_param_stage.group != payload[0] ||
       s_param_stage.transaction != payload[1] ||
       s_param_stage.received_mask != all_blocks_mask)
@@ -1579,12 +1600,13 @@ void EthernetUartDriver_SendEkfTelemetry(void)
 }
 
 /*
- * PID 控制遥测/ACK（schema v1）：
+ * PID 控制遥测/ACK（schema v2）：
  * $UGCTL,schema,seq,t_ms,mode,phase,armed,output_valid,fault,core_fault,
  * config_reject,command_id,age_ms,pid_valid,required_crc,active_crc,depth_seq,
  * target_depth,depth,depth_error,target_pitch_deg,pitch_sp_deg,pitch_deg,
- * pitch_error_deg,outer_P_deg,outer_I_deg,outer_D_deg,outer_out_deg,outer_sat,
- * inner_P_rpm,inner_I_rpm,inner_D_rpm,inner_out_rpm,inner_sat,worm_rpm,
+ * pitch_error_deg,outer_P_mm,outer_I_mm,outer_D_mm,outer_out_mm,outer_sat,
+ * target_x_mm,x_mm,x_error_mm,inner_P_rpm,inner_I_rpm,inner_D_rpm,
+ * inner_out_rpm,inner_sat,worm_rpm,
  * pump_enable,pump_direction,thrust_pct,config_req,config_apply,config_reject*HH
  */
 HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
@@ -1618,7 +1640,7 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
   line[i++] = 'T';
   line[i++] = 'L';
 
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 1UL, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 2UL, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.update_seq, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.update_tick_ms, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.requested_mode, 1);
@@ -1643,11 +1665,14 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->measured_pitch_rad * rad_to_deg, 2);
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.error * rad_to_deg, 2);
 
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.p_term * rad_to_deg, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.i_term * rad_to_deg, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.d_term * rad_to_deg, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.output * rad_to_deg, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.p_term, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.i_term, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.d_term, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.output, 3);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->depth_outer.saturated, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->target_displacement_mm, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->measured_displacement_mm, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->displacement_error_mm, 3);
 
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.p_term, 2);
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.i_term, 2);

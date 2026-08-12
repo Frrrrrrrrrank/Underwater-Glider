@@ -16,7 +16,7 @@ static const float kWaterRho = 1028.0f;   /* 水密度 kg/m^3 */
 static const float kGravity  = 9.81f;     /* 重力 m/s^2 */
 
 /* 磁力计硬铁/软铁标定（模块系/FLU，uT）
- * 目前版本为 2026-07-17 14:29采样标定版本, 样本 7966, station/tools/mag_calib_fit.py（logs/csv/mag_20260717_141522）。
+ * 目前版本为 2026-07-17 14:29采样标定版本, 样本 7966, station/tools/mag_calib_fit.py（station/logs/mag/mag_20260717_141522.csv）。
  * 校正算法：m_cal = A * (m_raw - b)，【必须在模块系、mount_R 之前】算，
  *       再交给 UgEkf_PushMag（其内部 toFrd 做 FLU→FRD）。
  * 质量: 校正后 |m_cal| std/mean≈2.9%，机体带磁部件变动后必须重标。

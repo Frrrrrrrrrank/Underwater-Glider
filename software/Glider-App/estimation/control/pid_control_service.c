@@ -6,6 +6,7 @@
 
 #include <math.h>
 #include <string.h>
+#include <pump_driver.h>
 
 #define PID_CONTROL_PI_F 3.14159265358979323846f
 #define PID_CONTROL_DEG_TO_RAD (PID_CONTROL_PI_F / 180.0f)
@@ -140,7 +141,7 @@ static uint8_t PidControlService_TakePendingConfig(
   return got;
 }
 //单位转换函数
-static uint8_t PidControlService_DecodeConfig(
+static PidControlConfigRejectReason PidControlService_DecodeConfig(
     const uint8_t table[PID_CONTROL_PARAM_TABLE_BYTES],
     ZigzagControlConfig *config)
 {
@@ -149,7 +150,7 @@ static uint8_t PidControlService_DecodeConfig(
 
   if (table == NULL || config == NULL)
   {
-    return 0U;
+    return PID_CONTROL_CONFIG_REJECT_VALUE;
   }
 
   for (i = 0U; i < PID_CONTROL_PARAM_FLOAT_COUNT; i++)
@@ -157,17 +158,17 @@ static uint8_t PidControlService_DecodeConfig(
     wire[i] = PidControlService_ReadLeFloat(&table[i * sizeof(float)]);
     if (!isfinite(wire[i]))
     {
-      return 0U;
+      return PID_CONTROL_CONFIG_REJECT_VALUE;
     }
   }
 
   /*
-   * wire 侧外环输出为 deg、内环误差为 deg；核心统一使用 rad。
-   * 0..4 depth PID，5..9 pitch PID，10..15 六个公共限制量。
+   * 0..4 浮力 PID（输出 mm），5..9 俯仰 PID，10 为 Alpha，
+   * 11..17 为公共量和中性位置，18..19 必须保留为 0。
    */
-  config->depth_outer.kp = wire[0] * PID_CONTROL_DEG_TO_RAD;
-  config->depth_outer.ki = wire[1] * PID_CONTROL_DEG_TO_RAD;
-  config->depth_outer.kd = wire[2] * PID_CONTROL_DEG_TO_RAD;
+  config->depth_outer.kp = wire[0];
+  config->depth_outer.ki = wire[1];
+  config->depth_outer.kd = wire[2];
   config->depth_outer.integral_limit = wire[3];
   config->depth_outer.derivative_tau_s = wire[4];
 
@@ -177,20 +178,38 @@ static uint8_t PidControlService_DecodeConfig(
   config->pitch_inner.integral_limit = wire[8] * PID_CONTROL_DEG_TO_RAD;
   config->pitch_inner.derivative_tau_s = wire[9];
 
-  config->max_pitch_rad = wire[10] * PID_CONTROL_DEG_TO_RAD;
-  config->max_worm_rpm = wire[11];
-  config->max_thrust_percent = wire[12];
-  config->surface_depth_m = wire[13];
-  config->depth_switch_threshold_m = wire[14];
-  config->pitch_actuator_sign = wire[15];
+  config->depth_to_pitch_alpha_rad_per_m =
+      wire[10] * PID_CONTROL_DEG_TO_RAD;
+  config->max_pitch_rad = wire[11] * PID_CONTROL_DEG_TO_RAD;
+  config->max_worm_rpm = wire[12];
+  config->max_thrust_percent = wire[13];
+  config->surface_depth_m = wire[14];
+  config->depth_switch_threshold_m = wire[15];
+  config->pitch_actuator_sign = wire[16];
+  config->displacement_min_mm = IO_PUMP_DISPLACEMENT_MIN_MM;
+  config->displacement_neutral_mm = wire[17];
+  config->displacement_max_mm = IO_PUMP_DISPLACEMENT_MAX_MM;
+  config->displacement_deadzone_mm = IO_PUMP_DISPLACEMENT_DEADZONE_MM;
 
-  return ZigzagControl_ValidateConfig(config);
+  if (wire[18] != 0.0f || wire[19] != 0.0f)
+  {
+    return PID_CONTROL_CONFIG_REJECT_VALUE;
+  }
+  if (config->displacement_neutral_mm <= config->displacement_min_mm ||
+      config->displacement_neutral_mm >= config->displacement_max_mm)
+  {
+    return PID_CONTROL_CONFIG_REJECT_NEUTRAL_DISPLACEMENT;
+  }
+  return (ZigzagControl_ValidateConfig(config) != 0U)
+             ? PID_CONTROL_CONFIG_REJECT_NONE
+             : PID_CONTROL_CONFIG_REJECT_VALUE;
 }
 
 static void PidControlService_ProcessPendingConfig(void)
 {
   PidControlPendingConfig pending;
   ZigzagControlConfig candidate;
+  PidControlConfigRejectReason decode_result;
   uint32_t actual_crc;
 
   if (PidControlService_TakePendingConfig(&pending) == 0U)
@@ -217,11 +236,12 @@ static void PidControlService_ProcessPendingConfig(void)
     return;
   }
 
-  if (PidControlService_DecodeConfig(
-          pending.table_bytes, &candidate) == 0U)
+  decode_result = PidControlService_DecodeConfig(
+      pending.table_bytes, &candidate);
+  if (decode_result != PID_CONTROL_CONFIG_REJECT_NONE)
   {
     s_config_reject_count++;
-    s_config_reject_reason = PID_CONTROL_CONFIG_REJECT_VALUE;
+    s_config_reject_reason = decode_result;
     return;
   }
 
@@ -349,6 +369,8 @@ uint8_t PidControlService_SubmitConfigTable(
 
 void PidControlService_Step(
     const StateEstimate *state,
+    uint8_t displacement_valid,
+    float displacement_mm,
     uint32_t now_ms,
     float dt_s,
     ZigzagControlOutput *output)
@@ -436,6 +458,9 @@ void PidControlService_Step(
     fault = PID_CONTROL_FAULT_DEPTH_STALE;
     goto publish;
   }
+
+  input.displacement_valid = (displacement_valid != 0U) ? 1U : 0U;
+  input.displacement_mm = displacement_mm;
 
   (void)memset(&core_command, 0, sizeof(core_command));
   core_command.mode = s_active_command.mode;

@@ -2733,6 +2733,7 @@ void StartServoTask(void *argument)
   EthernetUartReadoutPack ethernet_pack = {0};
   uint8_t ethernet_control_flag = 0U;
   StateEstimate state_estimate;
+  DisplacementSensorData displacement_snapshot;
   ZigzagControlOutput pid_output;
   PidControlStatus pid_status;
 
@@ -2749,8 +2750,17 @@ void StartServoTask(void *argument)
     (void)EthernetUartDriver_CopyControlPack(
         &ethernet_pack, &ethernet_control_flag);
     (void)EkfBridge_CopyState(&state_estimate);//ServoTask每轮调用PID
+    /* 位移数据由 USART3Task 更新，这里整体取一次快照供本轮控制使用。 */
+    taskENTER_CRITICAL();
+    displacement_snapshot.displacement_mm =
+        g_displacement_sensor.displacement_mm;
+    displacement_snapshot.sensor_id = g_displacement_sensor.sensor_id;
+    displacement_snapshot.valid = g_displacement_sensor.valid;
+    taskEXIT_CRITICAL();
     PidControlService_Step(
         &state_estimate,
+        (uint8_t)(displacement_snapshot.valid != 0U),
+        displacement_snapshot.displacement_mm,
         now_tick,
         ((float)RC_CONTROL_PERIOD_MS) * 0.001f,
         &pid_output);//调用PID服务
