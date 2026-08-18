@@ -16,10 +16,10 @@
   - seq 丢帧/板重启检测。
 
 用法：
-    python mag_logger.py [绑定IP] [--port 8800] [--outdir logs/csv]
+    python station/tools/mag_logger.py [绑定IP] [--port 8800] [--outdir DIR]
 例：
-    python mag_logger.py                       # 绑定 0.0.0.0:8800
-    python mag_logger.py 192.168.57.100
+    python station/tools/mag_logger.py                       # 绑定 0.0.0.0:8800
+    python station/tools/mag_logger.py 192.168.57.100
 采集完 Ctrl+C 退出，然后用 mag_calib_fit.py 拟合。
 """
 
@@ -33,7 +33,6 @@ from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATION_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
-REPO_ROOT = os.path.abspath(os.path.join(STATION_DIR, os.pardir))
 if STATION_DIR not in sys.path:
     sys.path.insert(0, STATION_DIR)
 
@@ -46,7 +45,7 @@ from ugcp_protocol import (  # noqa: E402
 )
 
 
-DEFAULT_OUTDIR = os.path.join(REPO_ROOT, "logs", "csv")
+DEFAULT_OUTDIR = os.path.join(STATION_DIR, "logs", "mag")
 
 CSV_HEADER = ["host_iso", "host_epoch", "seq", "t_ms", "mx", "my", "mz", "norm"]
 
@@ -159,7 +158,7 @@ def main():
     ap.add_argument("bind", nargs="?", default="0.0.0.0",
                     help="本机绑定IP，默认0.0.0.0(所有网卡)；也可填 192.168.57.100")
     ap.add_argument("--port", type=int, default=8800, help="TCP 端口(默认8800)")
-    ap.add_argument("--outdir", default=DEFAULT_OUTDIR, help="日志输出目录(默认 logs/csv)")
+    ap.add_argument("--outdir", default=DEFAULT_OUTDIR, help="日志输出目录(默认 station/logs/mag)")
     args = ap.parse_args()
 
     os.makedirs(args.outdir, exist_ok=True)

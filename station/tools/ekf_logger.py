@@ -17,13 +17,13 @@ EKF 状态估计遥测记录器（上位机 / 电脑端）
   - 掉帧 / 重启检测：用 seq 连续性判丢帧，用 seq 归零判板子重启。
 
 用法：
-    python ekf_logger.py [PC本机绑定IP] [--port 8800] [--outdir logs/csv]
+    python station/tools/ekf_logger.py [PC本机绑定IP] [--port 8800] [--outdir DIR]
 说明：
     [...] 表示可选参数，不要照抄方括号；端口用 --port 指定。
-    --outdir 是日志输出目录，不填默认 logs/csv（脚本自动创建）。
+    --outdir 是日志输出目录，不填默认 station/logs/ekf（脚本自动创建）。
 例：
-    python ekf_logger.py 0.0.0.0 --port 8800
-    python ekf_logger.py 192.168.57.100 --port 8800 --outdir D:\glider_logs
+    python station/tools/ekf_logger.py 0.0.0.0 --port 8800
+    python station/tools/ekf_logger.py 192.168.57.100 --port 8800 --outdir D:\glider_logs
 """
 
 import argparse
@@ -35,7 +35,6 @@ from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 STATION_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir))
-REPO_ROOT = os.path.abspath(os.path.join(STATION_DIR, os.pardir))
 if STATION_DIR not in sys.path:
     sys.path.insert(0, STATION_DIR)
 
@@ -48,7 +47,7 @@ from ugcp_protocol import (  # noqa: E402
 )
 
 
-DEFAULT_OUTDIR = os.path.join(REPO_ROOT, "logs", "csv")
+DEFAULT_OUTDIR = os.path.join(STATION_DIR, "logs", "ekf")
 
 # 板端 $UGEKF 之后的字段顺序，必须与 ethernet_uart_driver.c 的构帧完全一致
 BASE_FIELDS = [
@@ -178,7 +177,7 @@ def main():
     ap.add_argument("bind", nargs="?", default="0.0.0.0",
                     help="本机绑定IP，默认0.0.0.0(所有网卡)；也可填 192.168.57.100")
     ap.add_argument("--port", type=int, default=8800, help="TCP 端口(默认8800)")
-    ap.add_argument("--outdir", default=DEFAULT_OUTDIR, help="日志输出目录(默认 logs/csv)")
+    ap.add_argument("--outdir", default=DEFAULT_OUTDIR, help="日志输出目录(默认 station/logs/ekf)")
     args = ap.parse_args()
 
     os.makedirs(args.outdir, exist_ok=True)

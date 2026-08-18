@@ -14,6 +14,8 @@
 //系数与 wrapper 默认一致；空气中 gauge≈0 故 depth≈0，不受 rho 取值影响
 static const float kWaterRho = 1028.0f;   /* 水密度 kg/m^3 */
 static const float kGravity  = 9.81f;     /* 重力 m/s^2 */
+/* 压力真实新样本约 5Hz；至少 10 个样本，相当于约 2 秒静止数据。 */
+static const uint32_t kPressureZeroMinSamples = 30U;
 
 /* 磁力计硬铁/软铁标定（模块系/FLU，uT）
  * 目前版本为 2026-07-17 14:29采样标定版本, 样本 7966, station/tools/mag_calib_fit.py（station/logs/mag/mag_20260717_141522.csv）。
@@ -64,6 +66,7 @@ static uint32_t    s_imu_in_seq = 0;     /* 最新投喂序号 */
 static uint32_t    s_imu_last_seq = 0;   /* EKF 已处理序号 */
 static uint32_t    s_pressure_last_seq = 0;
 static uint32_t    s_depth_measurement_tick_ms = 0;
+static float       s_pressure_zero_sum_bar = 0.0f;
 
 // 暴露给OZone的输出快照，观察参数用
 StateEstimate     g_state_estimate;
@@ -73,12 +76,38 @@ volatile uint32_t g_ekf_imu_drop_count = 0;
 volatile uint32_t g_ekf_pressure_push_count = 0;
 volatile uint32_t g_ekf_mag_push_count = 0;   // 已 push 给 EKF 的校正 mag 帧数(Ozone 观察)
 volatile float    g_ekf_depth_meas = 0.0f;   // 换算后的深度测量值(m)，供 Ozone 对比 out.depth_m
+volatile float    g_ekf_pressure_zero_bar = 0.0f;
+volatile uint32_t g_ekf_pressure_zero_sample_count = 0U;
+volatile uint8_t  g_ekf_pressure_zero_valid = 0U;
 volatile float    g_ekf_mag_cal[3] = {0.0f, 0.0f, 0.0f};  // 校正后 mag(模块系,uT)；转动时 |·| 应≈常数
 volatile uint32_t g_ekf_mag_cal_crc = 0U;
 volatile uint8_t  g_ekf_mag_cal_valid = 0U;
 volatile uint32_t g_ekf_mag_cal_request_count = 0U;
 volatile uint32_t g_ekf_mag_cal_apply_count = 0U;
 volatile uint32_t g_ekf_mag_cal_reject_count = 0U;
+
+/* 压力归零窗口必须与 IMU 静态对齐窗口一起重置，避免混入晃动前的数据。 */
+static void resetPressureZeroAverage(void)
+{
+  s_pressure_zero_sum_bar = 0.0f;
+  g_ekf_pressure_zero_bar = 0.0f;
+  g_ekf_pressure_zero_sample_count = 0U;
+  g_ekf_pressure_zero_valid = 0U;
+  g_ekf_depth_meas = 0.0f;
+}
+
+/* 进入 RUNNING 后锁定本次上电零点；运行中不再更新，避免吞掉真实水压。 */
+static void finishPressureZeroAverage(void)
+{
+  if (g_ekf_pressure_zero_valid == 0U &&
+      g_ekf_pressure_zero_sample_count >= kPressureZeroMinSamples)
+  {
+    g_ekf_pressure_zero_bar =
+        s_pressure_zero_sum_bar /
+        (float)g_ekf_pressure_zero_sample_count;
+    g_ekf_pressure_zero_valid = 1U;
+  }
+}
 
 /* CRC-32/ISO-HDLC，与 Python zlib.crc32 一致。这里只在参数提交时计算一次，
  * 64 字节的运算量放在 EKF 任务上下文不会拉长 UART 中断。 */
@@ -293,7 +322,7 @@ void EkfBridge_Init(void)
   s_imu_last_seq = 0;
   s_pressure_last_seq = 0;
   s_depth_measurement_tick_ms = 0;
-  g_ekf_depth_meas = 0.0f;
+  resetPressureZeroAverage();
   memset(&s_mag_cal_pending, 0, sizeof(s_mag_cal_pending));
   s_mag_cal_pending_seq = 0U;
   s_mag_cal_handled_seq = 0U;
@@ -377,6 +406,7 @@ void EkfBridge_Step(void)//在EKF的task里调用
    *    不会被高速输入拖住活锁，输入快于 predict 时只丢帧，drop_count 增长 */
   // 后续可能需要实现ring-buffer
   EkfImuInput in;
+  UgEkfOutput out;
   if (takeImuInput(&in)) {
     //EKF的Task，算法层
     UgEkf_PushImu(in.gx, in.gy, in.gz, in.ax, in.ay, in.az, in.t_us);
@@ -399,8 +429,20 @@ void EkfBridge_Step(void)//在EKF的task里调用
     }
   }
 
-  /* 2) 压力：仅在 valid 且 pressure_update_seq 变化时 push（对齐前 wrapper 内部会忽略）。
-   *    本板深度计是【表压】(空气≈0)：depth = bar*1e5/(ρg)，不减大气压，
+  /* 读取刚处理完 IMU 后的状态，让压力归零窗口与现有静态对齐状态机同步。 */
+  UgEkf_GetOutput(&out);
+  if (out.status == UG_EKF_WAIT_BOOT_DELAY ||
+      out.status == UG_EKF_WAIT_STILL)
+  {
+    resetPressureZeroAverage();
+  }
+  else if (out.status == UG_EKF_RUNNING)
+  {
+    finishPressureZeroAverage();
+  }
+
+  /* 2) 压力：对齐期间只累计静止样本；零点锁定后才向 EKF push 深度。
+   *    本板深度计是【表压】：depth = (bar-zero)*1e5/(ρg)，不减大气压，
    *    故绕过 UgEkf_PushPressureBar（它按绝对压减 p_atm，会多出 -10m 偏置）。
    *    先在临界区拷出同一版 pressure/value/tick/seq，避免任务切换造成字段跨帧。 */
   uint32_t pressure_valid;
@@ -416,16 +458,30 @@ void EkfBridge_Step(void)//在EKF的task里调用
 
   if (pressure_valid != 0U && pressure_seq != s_pressure_last_seq) {
     s_pressure_last_seq = pressure_seq;
-    s_depth_measurement_tick_ms = pressure_tick_ms;
-    g_ekf_depth_meas = pressure_bar * 1.0e5f / (kWaterRho * kGravity);
-    UgEkf_PushDepth(g_ekf_depth_meas, GliderTime_NowUs());
-    g_ekf_pressure_push_count++;
+
+    if (isfinite(pressure_bar)) {
+      if (g_ekf_pressure_zero_valid == 0U &&
+          out.status == UG_EKF_ALIGNING &&
+          out.still != 0U)
+      {
+        s_pressure_zero_sum_bar += pressure_bar;
+        g_ekf_pressure_zero_sample_count++;
+      }
+
+      if (g_ekf_pressure_zero_valid != 0U) {
+        s_depth_measurement_tick_ms = pressure_tick_ms;
+        g_ekf_depth_meas =
+            (pressure_bar - g_ekf_pressure_zero_bar) *
+            1.0e5f / (kWaterRho * kGravity);
+        UgEkf_PushDepth(g_ekf_depth_meas, GliderTime_NowUs());
+        g_ekf_pressure_push_count++;
+      }
+    }
   }
 
   /* 3) mag 已在 1b 随 IMU 帧 push（校正+yaw更新）。 */
 
   /* 4) 拉输出，然后发布受保护快照 */
-  UgEkfOutput out;
   UgEkf_GetOutput(&out);
   taskENTER_CRITICAL();//嵌入式的保护读写
   g_state_estimate.out = out;

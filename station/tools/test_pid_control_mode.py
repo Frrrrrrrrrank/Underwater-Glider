@@ -29,7 +29,7 @@ def make_ctl_row(**updates):
     for name in contcp_t.UGCTL_FIELDS:
         row[name] = 0 if name in contcp_t.UGCTL_INT_FIELDS else 0.0
     row.update({
-        'schema': 1,
+        'schema': 2,
         'mode': ugcp.CASCADE_MODE_OFF,
         'fault': 1,
         'core_fault': 1,
@@ -76,7 +76,8 @@ class FakeBoardSocket:
             self.store.publish(self.board_row)
         elif msg_type == ugcp.MSG_PARAM_COMMIT:
             group, _, block_count, table_crc = struct.unpack('<BBBI', payload)
-            if group == ugcp.PARAM_GROUP_PID and block_count == 4:
+            if (group == ugcp.PARAM_GROUP_PID and
+                    block_count == ugcp.PID_PARAM_BLOCK_COUNT):
                 self.board_row.update({
                     'seq': self.board_row['seq'] + 1,
                     'pid_valid': 1,
@@ -105,7 +106,7 @@ class UgctlTests(unittest.TestCase):
 
         self.assertIsNone(contcp_t.ugctl_parse(line[:-1] + '0'))
         wrong_schema = dict(row)
-        wrong_schema['schema'] = 2
+        wrong_schema['schema'] = 1
         self.assertIsNone(contcp_t.ugctl_parse(ctl_line(wrong_schema)))
 
     def test_store_waits_for_new_generation(self):
@@ -141,14 +142,14 @@ class PidSessionTests(unittest.TestCase):
                 commands.append(ugcp.unpack_cascade_command_payload(payload))
         return commands
 
-    def test_parameter_4_plus_1_ack_then_arm_and_refresh(self):
+    def test_parameter_5_plus_1_ack_then_arm_and_refresh(self):
         session = contcp_t.PidSession(self.conn, self.store, send_period_s=0.02)
         with contextlib.redirect_stdout(io.StringIO()):
             crc = session.load_parameters(self.example)
             self.assertTrue(session.push_parameters())
         self.assertEqual(
             self._frame_types(),
-            [ugcp.MSG_PARAM_BLOCK] * 4 + [ugcp.MSG_PARAM_COMMIT],
+            [ugcp.MSG_PARAM_BLOCK] * 5 + [ugcp.MSG_PARAM_COMMIT],
         )
         local = session.local_snapshot()
         self.assertEqual(local['loaded_crc'], crc)

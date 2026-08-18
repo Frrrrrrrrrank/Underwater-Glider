@@ -21,8 +21,8 @@ try:
         MSG_PARAM_COMMIT,
         MSG_SNAPSHOT_REQUEST,
         MSG_STREAM_CONTROL,
-        PARAM_BLOCK_COUNT,
         PARAM_GROUP_PID,
+        PID_PARAM_BLOCK_COUNT,
         PID_PARAM_FIELDS,
         STREAM_EKF,
         STREAM_CTL,
@@ -51,8 +51,8 @@ except ImportError:
         MSG_PARAM_COMMIT,
         MSG_SNAPSHOT_REQUEST,
         MSG_STREAM_CONTROL,
-        PARAM_BLOCK_COUNT,
         PARAM_GROUP_PID,
+        PID_PARAM_BLOCK_COUNT,
         PID_PARAM_FIELDS,
         STREAM_EKF,
         STREAM_CTL,
@@ -657,8 +657,23 @@ def _ctypes_to_py(value, max_depth=6, array_limit=16, _depth=0):
 
 
 def print_snapshot_struct(snap):
-    """把 EthernetUartSystemSnapshot 以可读结构化形式输出到命令行。"""
-    snap_dict = _ctypes_to_py(snap)
+    """简要显示系统快照中的输入状态和报警，不输出完整结构 JSON。"""
+    limit_bits = int(snap.limit_switch_bits) & 0x0F
+    print(
+        "[输入状态] displacement=%.1f mm valid=%d; "
+        "limit_switch_bits=0x%02X "
+        "[PB3=%d PB4=%d PB5=%d PD7=%d，0=触发]"
+        % (
+            float(snap.displacement_mm_x10) / 10.0,
+            int(snap.displacement_valid),
+            limit_bits,
+            (limit_bits >> 0) & 1,
+            (limit_bits >> 1) & 1,
+            (limit_bits >> 2) & 1,
+            (limit_bits >> 3) & 1,
+        )
+    )
+
     alarms = decode_alarm_bits(snap.alarm_bits)
     if alarms:
         print("[报警] 触发报警如下:")
@@ -666,8 +681,6 @@ def print_snapshot_struct(snap):
             print(f"  - bit{alarm['bit']:02d} {alarm['code']}: {alarm['desc']}")
     else:
         print("[报警] 无报警")
-
-    print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
 
 # 控制包发送函数
 def send_ugcp_frame(conn, msg_type, payload, label='UGCP', verbose=True):
@@ -791,7 +804,7 @@ def send_cascade_command(conn, mode, armed, command_id,
 
 
 def send_pid_param_table(conn, table, transaction):
-    """发送 PID 参数的 4 个数据块和 1 个提交块，返回表 CRC 或 None。"""
+    """发送 PID 参数的 5 个数据块和 1 个提交块，返回表 CRC 或 None。"""
     table = bytes(table)
     blocks = split_param_table(table)
     table_crc = crc32_iso_hdlc(table)
@@ -801,12 +814,12 @@ def send_pid_param_table(conn, table, transaction):
             PARAM_GROUP_PID, transaction, index, block)
         if not send_ugcp_frame(
                 conn, MSG_PARAM_BLOCK, payload,
-                f'PID 参数块 {index + 1}/{PARAM_BLOCK_COUNT}'):
+                f'PID 参数块 {index + 1}/{PID_PARAM_BLOCK_COUNT}'):
             return None
     commit = pack_param_commit_payload(
         PARAM_GROUP_PID,
         transaction,
-        PARAM_BLOCK_COUNT,
+        PID_PARAM_BLOCK_COUNT,
         table_crc,
     )
     if not send_ugcp_frame(conn, MSG_PARAM_COMMIT, commit, 'PID 参数提交'):
@@ -1184,8 +1197,9 @@ UGCTL_FIELDS = [
     "pid_valid", "required_crc", "active_crc", "depth_seq",
     "target_depth", "depth", "depth_error", "target_pitch_deg",
     "pitch_sp_deg", "pitch_deg", "pitch_error_deg",
-    "outer_p_deg", "outer_i_deg", "outer_d_deg", "outer_out_deg",
-    "outer_sat", "inner_p_rpm", "inner_i_rpm", "inner_d_rpm",
+    "outer_p_mm", "outer_i_mm", "outer_d_mm", "outer_out_mm",
+    "outer_sat", "target_displacement_mm", "displacement_mm",
+    "displacement_error_mm", "inner_p_rpm", "inner_i_rpm", "inner_d_rpm",
     "inner_out_rpm", "inner_sat", "worm_rpm", "pump_enable",
     "pump_direction", "thrust_pct", "config_req", "config_apply",
     "config_reject_count",
@@ -1210,6 +1224,7 @@ PID_FAULT_NAMES = {
     6: "DEPTH_STALE",
     7: "BAD_COMMAND",
     8: "CORE_REJECTED",
+    9: "DISPLACEMENT_INVALID",
 }
 PID_CORE_FAULT_NAMES = {
     0: "NONE",
@@ -1219,12 +1234,14 @@ PID_CORE_FAULT_NAMES = {
     4: "BAD_COMMAND",
     5: "BAD_DT",
     6: "DEPTH_SAMPLE_INVALID",
+    7: "DISPLACEMENT_INVALID",
 }
 PID_CONFIG_REJECT_NAMES = {
     0: "NONE",
     1: "ARMED",
     2: "CRC",
     3: "VALUE",
+    4: "NEUTRAL_DISPLACEMENT",
 }
 
 
@@ -1267,7 +1284,7 @@ def ekf_parse(line):
 
 
 def ugctl_parse(line):
-    """严格解析 schema v1 的 40 字段 $UGCTL。"""
+    """严格解析 schema v2 的 43 字段 $UGCTL。"""
     if not ekf_checksum_ok(line):
         return None
     star = line.rfind("*")
@@ -1283,7 +1300,7 @@ def ugctl_parse(line):
             row[name] = int(raw) if name in UGCTL_INT_FIELDS else float(raw)
     except ValueError:
         return None
-    if row["schema"] != 1:
+    if row["schema"] != 2:
         return None
     return row
 
@@ -1365,13 +1382,20 @@ def print_ugctl_status(row):
         )
     )
     print(
-        "  outer P/I/D/out = %.3f / %.3f / %.3f / %.3f deg; "
+        "  buoyancy P/I/D/out = %.3f / %.3f / %.3f / %.3f mm; "
         "inner P/I/D/out = %.2f / %.2f / %.2f / %.2f RPM"
         % (
-            row["outer_p_deg"], row["outer_i_deg"],
-            row["outer_d_deg"], row["outer_out_deg"],
+            row["outer_p_mm"], row["outer_i_mm"],
+            row["outer_d_mm"], row["outer_out_mm"],
             row["inner_p_rpm"], row["inner_i_rpm"],
             row["inner_d_rpm"], row["inner_out_rpm"],
+        )
+    )
+    print(
+        "  displacement target/meas/error = %.3f / %.3f / %.3f mm"
+        % (
+            row["target_displacement_mm"], row["displacement_mm"],
+            row["displacement_error_mm"],
         )
     )
     print(
@@ -1564,7 +1588,7 @@ class PidSession:
 
     def set_depth_target(self, target_depth_m):
         target = float(target_depth_m)
-        if not 0.0 <= target <= 1000.0:
+        if not -0.5 <= target <= 1000.0:
             raise ValueError("深度目标必须在 0..1000 m")
         with self._state_lock:
             if self._parameters is not None:
@@ -1762,17 +1786,17 @@ class PidSession:
 
 def print_pid_help():
     print("\n========== PID 调试界面 ==========")
-    print("  load <json>          加载并校验 16 个 PID 参数,不下发")
+    print("  load <json>          加载并校验 18 个控制参数,不下发")
     print("  set <field> <value>  修改内存参数,应用则必须重新 push")
     print("  save <json>          保存当前内存参数")
-    print("  params               显示当前 16 个参数及 CRC")
-    print("  push                 OFF 后发送 4+1 参数帧并等待 CRC ACK")
+    print("  params               显示当前 18 个参数及 CRC")
+    print("  push                 OFF 后发送 5+1 参数帧并等待 CRC ACK")
     print("  pitch <deg>          选择俯仰内环；负值低头，不会启动泵")
     print("  depth <m>            选择深度外环+俯仰内环；启动油泵状态机")
     print("  thrust <signed %>    推进器；+ 为 AUTO-I 方向，- 为 AUTO-K")
     print("  thrust off           推进器目标设为 0（仍需心跳包帧送达）")
     print("  arm / disarm         启动闭环心跳包 / 立即发送一次 OFF")
-    print("  status               显示上位机目标与最新板端 P/I/D/执行器状态")
+    print("  status               显示控制状态并请求一次传感器输入快照")
     print("  help / back          显示帮助 / 安全退出 PID 界面")
     print("注意：推进器正负对应实物前进/后退的命名，必须先在台架确认。")
     print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n")
@@ -1873,6 +1897,8 @@ def run_pid_mode(conn, ctl_store):
                     )
                     _, board = ctl_store.snapshot()
                     print_ugctl_status(board)
+                    # 使用独立 0x03 请求，不发送 CONTROL19，避免抢占 PID 控制权。
+                    send_snapshot_request(conn)
                 else:
                     print("[PID 命令] 格式错误；输入 help 查看用法")
             except (OSError, ValueError, RuntimeError) as exc:
@@ -1885,8 +1911,9 @@ def run_pid_mode(conn, ctl_store):
 
 
 #接收线程函数
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-EKF_LOG_DIR = os.path.join(REPO_ROOT, "logs", "csv")
+STATION_DIR = os.path.dirname(os.path.abspath(__file__))
+EKF_LOG_DIR = os.path.join(STATION_DIR, "logs", "ekf")
+CONTROL_LOG_DIR = os.path.join(STATION_DIR, "logs", "control")
 
 
 def receive_thread(conn, ctl_store=None):
@@ -1899,6 +1926,7 @@ def receive_thread(conn, ctl_store=None):
 
     # —— EKF 遥测 CSV：连接起把 $UGEKF 落盘，便于离线绘图 ——
     os.makedirs(EKF_LOG_DIR, exist_ok=True)
+    os.makedirs(CONTROL_LOG_DIR, exist_ok=True)
     ekf_csv_path = os.path.join(EKF_LOG_DIR, "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
     ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
     ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
@@ -1923,7 +1951,7 @@ def receive_thread(conn, ctl_store=None):
                 return
             if ctl_csv is None:
                 ctl_csv_path = os.path.join(
-                    EKF_LOG_DIR,
+                    CONTROL_LOG_DIR,
                     "ctl_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
                 )
                 ctl_csv = open(
@@ -1954,7 +1982,7 @@ def receive_thread(conn, ctl_store=None):
             fl = row["fl"]
             key = (row["status"], (fl >> 0) & 1, (fl >> 1) & 1)  # (status, healthy, valid)
             now = time.time()
-            HB = 10.0  # 心跳间隔(秒)
+            HB = 2.0  # 心跳间隔(秒)
             if key != ekf_stat["last_key"] or (now - ekf_stat["last_print"] >= HB):
                 ekf_stat["last_key"] = key
                 ekf_stat["last_print"] = now

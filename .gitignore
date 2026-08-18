@@ -20,9 +20,15 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 
-# Generated EKF logs and analysis outputs
-/logs/csv/
-/logs/analysis/plots/
+# Generated station telemetry logs and analysis outputs
+/station/logs/ekf/*
+!/station/logs/ekf/.gitkeep
+/station/logs/mag/*
+!/station/logs/mag/.gitkeep
+/station/logs/control/*
+!/station/logs/control/.gitkeep
+/station/plots/*
+!/station/plots/.gitkeep
 
 # Agent 知识库(本地, 不上 GitHub)
 /AGENTS.md
@@ -30,3 +36,4 @@ __pycache__/
 /docs/AGENT_STATUS.md
 /EKF_context_for_new_codex.txt
 /docs/PID_TUNING_GUIDE.md
+/docs/
