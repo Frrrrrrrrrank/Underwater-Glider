@@ -21,6 +21,8 @@ MSG_TELEM_CONTROL = MSG_STREAM_CONTROL
 MSG_SNAPSHOT_REQUEST = 0x03
 MSG_CONTROL19_LATCHED = 0x04
 MSG_CASCADE_COMMAND = 0x05
+# 蜗杆回零：payload 1 字节，1=开始，0=取消
+MSG_WORM_CALIB = 0x06
 MSG_PARAM_BLOCK = 0x10
 MSG_PARAM_COMMIT = 0x11
 
@@ -458,6 +460,11 @@ def pack_stream_control_payload(mask):
     if mask & ~STREAM_ALL:
         raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL/WRM 四个 bit（0..15）")
     return bytes((mask,))
+
+
+def pack_worm_calib_payload(start):
+    """蜗杆回零命令：True=开始回零，False=取消。板端只置标志，动作在 ServoTask 里。"""
+    return bytes((1 if start else 0,))
 
 
 def pack_telem_control_payload(enabled):

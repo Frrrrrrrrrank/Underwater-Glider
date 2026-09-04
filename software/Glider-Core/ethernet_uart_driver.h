@@ -36,6 +36,8 @@
 #define ETHERNET_UART_MSG_SNAPSHOT_REQ      0x03U
 #define ETHERNET_UART_MSG_CONTROL19_LATCHED 0x04U
 #define ETHERNET_UART_MSG_CASCADE_COMMAND   0x05U
+/* 蜗杆回零：payload 1 字节，1=开始，0=取消。 */
+#define ETHERNET_UART_MSG_WORM_CALIB        0x06U
 #define ETHERNET_UART_MSG_PARAM_BLOCK     0x10U
 #define ETHERNET_UART_MSG_PARAM_COMMIT    0x11U
 
@@ -189,6 +191,12 @@ typedef struct
   int16_t ekf_yaw_x10;   /* 航向 (deg×10) */
   uint8_t ekf_status;    /* UgEkfStatus 0..5 */
   uint8_t ekf_valid;     /* 1 = valid_for_control(RUNNING&healthy) */
+  /*
+   * 蜗杆(移动质量块)行程位置。新增字段一律追加在结构体末尾：
+   * Python 侧 ctypes 镜像必须与此严格同序，插在中间会让全部后续字段解码错位。
+   */
+  int16_t worm_stroke_percent_x100; /* 行程百分比×100：0=前限位, 10000=后限位 */
+  uint8_t worm_span_valid;          /* 1=本次上电已跑过两端，上面那个数才有意义 */
 } EthernetUartSystemSnapshot;
 
 extern volatile EthernetUartState g_ethernet_uart_state;

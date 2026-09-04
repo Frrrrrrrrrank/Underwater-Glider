@@ -13,12 +13,164 @@ volatile WormAxisState g_worm_axis = {
   0U, 0U, 0U, 0U,
   0U,
   0, 0, 0,
-  0U
+  0U,
+  /* 回零 */
+  (uint8_t)WORM_HOME_IDLE, (uint8_t)WORM_HOME_FAIL_NONE, 0, 0U
 };
+
+/* main.c 里定义为 volatile（Usart3Task 每 10ms 写、本模块读），此处必须同型。 */
+extern volatile uint8_t g_limit_switch_states[4];
 
 /* 只有 ServoTask 调用 WormAxis_Step()，单一调用者，内部量用 static 即可。 */
 static uint32_t s_last_valid_ms = 0U;
 static uint8_t  s_have_valid    = 0U;
+
+/* 回零：请求/取消由以太网任务置位、ServoTask 消费。单字节读写在 M7 上原子，
+   且这两个标志只是"边沿触发一次"的性质，不需要临界区。 */
+static volatile uint8_t s_home_request = 0U;
+static volatile uint8_t s_home_cancel  = 0U;
+/* 本拍回零想要的转速，只由 WormAxis_HomingStep 写、WormAxis_GetHomingWormRpm 读，
+   两者同在 ServoTask 上下文，无并发。 */
+static int32_t  s_home_rpm = 0;
+static uint32_t s_home_phase_start_ms = 0U;
+
+static uint8_t WormAxis_HomingRunning(void)
+{
+  return ((g_worm_axis.home_state == (uint8_t)WORM_HOME_SEEK) ||
+          (g_worm_axis.home_state == (uint8_t)WORM_HOME_BACKOFF)) ? 1U : 0U;
+}
+
+static void WormAxis_HomingFail(WormHomingFail reason)
+{
+  g_worm_axis.home_state = (uint8_t)WORM_HOME_FAILED;
+  g_worm_axis.home_fail = (uint8_t)reason;
+  s_home_rpm = 0;
+}
+
+/*
+ * 两段式回零状态机。刻意写成【线性】的：SEEK -> BACKOFF -> DONE，只有超时/取消/
+ * 数据失效三条支线通向 FAILED，没有任何回环。
+ * 2026-07-31 那次事故的教训是"别把大状态机塞进收发路径"，这里的做法是：
+ * 状态机完全不发帧、不写执行器，只根据 GPIO 电平和时间推进，产出一个建议转速。
+ *
+ * 依赖 motor_driver 已有的限位保护：撞到前限位时 Motor_IsLimitBlocked() 会把速度
+ * 钳成 0 并写 0x0039=0 释放电机，所以本状态机【不需要】自己做撞限位急停。
+ */
+static void WormAxis_HomingStep(uint32_t now_ms, int32_t pulse, uint8_t fresh)
+{
+  /* g_limit_switch_states 约定：0 = 压下(触发)，1 = 未触发。 */
+  uint8_t front_hit =
+      (g_limit_switch_states[WORM_FRONT_LIMIT_INDEX] == 0U) ? 1U : 0U;
+
+  /* --- 取消优先：任何时刻都能立即中止并停机 --- */
+  if (s_home_cancel != 0U)
+  {
+    s_home_cancel = 0U;
+    s_home_request = 0U;
+    if (WormAxis_HomingRunning() != 0U)
+    {
+      WormAxis_HomingFail(WORM_HOME_FAIL_CANCELLED);
+    }
+    s_home_rpm = 0;
+  }
+
+  /* --- 启动请求：从 IDLE/DONE/FAILED 任何状态都能重新开始 --- */
+  if (s_home_request != 0U)
+  {
+    s_home_request = 0U;
+    g_worm_axis.home_state = (uint8_t)WORM_HOME_SEEK;
+    g_worm_axis.home_fail = (uint8_t)WORM_HOME_FAIL_NONE;
+    s_home_phase_start_ms = now_ms;
+    s_home_rpm = 0; /* 本拍先不动，下一拍才开始走 */
+    return;
+  }
+
+  /* --- 运行途中位置数据失效就立刻停：绝不摸黑往限位上撞 --- */
+  if ((WormAxis_HomingRunning() != 0U) && (fresh == 0U))
+  {
+    WormAxis_HomingFail(WORM_HOME_FAIL_DATA_STALE);
+    return;
+  }
+
+  switch ((WormHomingState)g_worm_axis.home_state)
+  {
+    case WORM_HOME_SEEK:
+      if (front_hit != 0U)
+      {
+        /* 已在前限位内（含"启动时就压着开关"的情况），直接进退出段。 */
+        g_worm_axis.home_state = (uint8_t)WORM_HOME_BACKOFF;
+        s_home_phase_start_ms = now_ms;
+        s_home_rpm = WORM_HOME_BACKOFF_RPM;
+      }
+      else if ((now_ms - s_home_phase_start_ms) >= WORM_HOME_SEEK_TIMEOUT_MS)
+      {
+        WormAxis_HomingFail(WORM_HOME_FAIL_SEEK_TIMEOUT);
+      }
+      else
+      {
+        /* 负向 = 朝前限位（实测：-RPM 使 pulse 递减、走向 PD7）。 */
+        s_home_rpm = -WORM_HOME_SEEK_RPM;
+      }
+      break;
+
+    case WORM_HOME_BACKOFF:
+      if (front_hit == 0U)
+      {
+        /*
+         * 开关刚刚释放 —— 以【释放沿】为零点。
+         * 释放沿比触发沿重复性好得多：触发点受撞击速度和过冲影响，
+         * 释放点只由开关自身回差决定，而且是慢速通过的。
+         * 手册方式 17(负限位回零)用的就是这个策略。
+         */
+        g_worm_axis.pulse_home_front = pulse;
+        /* 合成行程端点：一端实测、另一端由已知全行程常数推出，
+           于是 stroke_percent 立刻可用，不必再跑另一端。 */
+        g_worm_axis.pulse_min_seen = pulse;
+        g_worm_axis.pulse_max_seen = pulse + WORM_STROKE_PULSES;
+        g_worm_axis.reference_kind = (uint8_t)WORM_REF_HOMED;
+        g_worm_axis.home_state = (uint8_t)WORM_HOME_DONE;
+        g_worm_axis.home_done_count++;
+        s_home_rpm = 0;
+      }
+      else if ((now_ms - s_home_phase_start_ms) >= WORM_HOME_BACKOFF_TIMEOUT_MS)
+      {
+        WormAxis_HomingFail(WORM_HOME_FAIL_BACKOFF_TIMEOUT);
+      }
+      else
+      {
+        s_home_rpm = WORM_HOME_BACKOFF_RPM;
+      }
+      break;
+
+    default:
+      /* IDLE / DONE / FAILED：不产生任何转速。 */
+      s_home_rpm = 0;
+      break;
+  }
+}
+
+void WormAxis_RequestHoming(void)
+{
+  s_home_cancel = 0U;
+  s_home_request = 1U;
+}
+
+void WormAxis_CancelHoming(void)
+{
+  s_home_request = 0U;
+  s_home_cancel = 1U;
+}
+
+uint8_t WormAxis_GetHomingWormRpm(int32_t *out_rpm)
+{
+  if (WormAxis_HomingRunning() == 0U)
+  {
+    if (out_rpm != NULL) { *out_rpm = 0; }
+    return 0U;
+  }
+  if (out_rpm != NULL) { *out_rpm = s_home_rpm; }
+  return 1U;
+}
 
 void WormAxis_Step(uint32_t now_ms)
 {
@@ -66,6 +218,12 @@ void WormAxis_Step(uint32_t now_ms)
     {
       g_worm_axis.reference_kind = (uint8_t)WORM_REF_NONE;
       g_worm_axis.reference_lost_count++;
+      /* 参考系没了，之前那次回零的结果也就不成立了，退回未回零。
+         注意不要动 FAILED：那是给人看失败原因的，等下次回零请求时才清。 */
+      if (g_worm_axis.home_state == (uint8_t)WORM_HOME_DONE)
+      {
+        g_worm_axis.home_state = (uint8_t)WORM_HOME_IDLE;
+      }
     }
   }
   else if ((fresh != 0U) &&
@@ -96,8 +254,20 @@ void WormAxis_Step(uint32_t now_ms)
   g_worm_axis.moving = ((status_word & 0x0002U) != 0U) ? 1U : 0U;
   g_worm_axis.alarm  = ((status_word & 0x0040U) != 0U) ? 1U : 0U;
 
-  /* 极值先更新，下面的百分比才用得上本拍的最新端点。 */
-  if ((fresh != 0U) && (g_worm_axis.reference_kind != (uint8_t)WORM_REF_NONE))
+  /*
+   * 回零状态机。放在位置换算之前，这样本拍刚完成的回零立刻生效。
+   * 它只产出一个建议转速，由 StartServoTask 决定要不要采纳。
+   */
+  WormAxis_HomingStep(now_ms, pulse, fresh);
+
+  /*
+   * 极值跟踪【只在 POWER_ON 自标定模式下做】。
+   * 一旦回零成功进入 HOMED，端点就由"回零点 + 已知全行程常数"唯一确定，
+   * 不能再让它随实际走位漂移 —— 否则质量块稍微越过释放沿一点，
+   * 零点就被拉走了，绝对位置的意义也就没了。
+   */
+  if ((fresh != 0U) &&
+      (g_worm_axis.reference_kind == (uint8_t)WORM_REF_POWER_ON))
   {
     if (pulse < g_worm_axis.pulse_min_seen) { g_worm_axis.pulse_min_seen = pulse; }
     if (pulse > g_worm_axis.pulse_max_seen) { g_worm_axis.pulse_max_seen = pulse; }

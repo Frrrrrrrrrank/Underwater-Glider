@@ -198,6 +198,17 @@ extern volatile uint8_t g_limit_switch_states[LIMIT_SWITCH_COUNT];
 /* ServoTask 发布的蜗杆命令 RPM，遥测里与实测反馈并列，便于看"发了没执行"。 */
 extern volatile int32_t g_rc_worm_cmd_rpm;
 
+/*
+ * 快照结构体尺寸的编译期护栏
+ * 板端与 station/contcp_t.py 的 ctypes 镜像必须严格同序同大小，否则解码整体错位 ——
+ * 以后再往结构体里加字段，这行会立刻编译失败，
+ * 同步改 Python 侧并把这里的期望值一起更新
+ * 当前布局68 字节 + int16 worm_stroke_percent_x100(偏移 68)
+ *           + uint8 worm_span_valid(偏移 70) + 1 字节尾部对齐 = 72。
+ */
+_Static_assert(sizeof(EthernetUartSystemSnapshot) == 72U,
+               "EthernetUartSystemSnapshot 大小变了：请同步 contcp_t.py 的 ctypes 镜像");
+
 volatile EthernetUartSystemSnapshot g_ethernet_system_snapshot = {0};
 
 volatile EthernetUartState g_ethernet_uart_state = {0};
@@ -456,6 +467,20 @@ void EthernetUartDriver_UpdateSystemSnapshot(void)
         EthernetUartDriver_ScaleFloatToI16(eo->yaw * 57.2957795f, 10.0f);
     g_ethernet_system_snapshot.ekf_status = (uint8_t)eo->status;
     g_ethernet_system_snapshot.ekf_valid = (uint8_t)eo->valid_for_control;
+  }
+
+  /*
+   * 蜗杆行程位置。走 WormAxis_CopyState 取一致快照，不散读 g_worm_axis
+   * （ServoTask 每 20ms 整组刷新，散读会拿到"旧 percent 配新 span_valid"）。
+   * percent 由 stroke_percent 定点化：×100 后满量程 10000，int16 装得下。
+   * span_valid=0 时百分比无意义，但仍照实填 0，由上位机负责显示成"不可用"。
+   */
+  {
+    WormAxisState worm;
+    WormAxis_CopyState(&worm);
+    g_ethernet_system_snapshot.worm_stroke_percent_x100 =
+        EthernetUartDriver_ScaleFloatToI16(worm.stroke_percent, 100.0f);
+    g_ethernet_system_snapshot.worm_span_valid = worm.span_valid;
   }
 }
 
@@ -849,6 +874,29 @@ static void EthernetUartDriver_DispatchFrame(
       {
         s_snapshot_pending = 1U;
         g_ethernet_uart_diag.snapshot_request_count++;
+      }
+      break;
+
+    /*
+     * 蜗杆回零命令。payload 1 字节：1=开始回零，0=取消。
+     * 这里【只置标志】，不做任何动作 —— 真正的状态推进和转速产出都在
+     * ServoTask 的 WormAxis_Step() 里，执行器写点仍然只有 StartServoTask 一处。
+     * 刻意不设租约/心跳：回零是一次性动作，本身带分段超时；
+     * 断链要停的话，上位机发一次 0 取消即可。
+     */
+    case ETHERNET_UART_MSG_WORM_CALIB:
+      if (payload_length != 1U || payload[0] > 1U)
+      {
+        g_ethernet_uart_diag.frame_length_error_count++;
+        g_ethernet_uart_diag.frame_type_error_count++;
+      }
+      else if (payload[0] != 0U)
+      {
+        WormAxis_RequestHoming();
+      }
+      else
+      {
+        WormAxis_CancelHoming();
       }
       break;
 
@@ -1778,7 +1826,9 @@ HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void)
   line[i++] = 'R';
   line[i++] = 'M';
 
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 1UL, 1); /* schema */
+  /* schema 2：相对 1 在 alarm 之后插入了 home_state / home_fail / pulse_home。
+     旧上位机按字段数严格校验，会直接拒收而不是错位解析。 */
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 2UL, 1); /* schema */
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)s_wrm_seq, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)HAL_GetTick(), 1);
 
@@ -1795,6 +1845,11 @@ HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void)
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)w.span_pulses, 0);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.moving, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.alarm, 1);
+
+  /* ---- 回零进度（schema 2 新增）：回零是会让电机自己跑的动作，必须能远程看见 ---- */
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.home_state, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.home_fail, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)w.pulse_home_front, 0);
 
   /* ---- 电机状态：命令 vs 反馈，用于看"发了没执行" ---- */
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)g_rc_worm_cmd_rpm, 0);

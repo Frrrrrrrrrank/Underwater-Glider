@@ -61,8 +61,49 @@ typedef enum
 {
   WORM_REF_NONE     = 0U, /* 无参考：通信没起来，或刚判定驱动器可能重启过 */
   WORM_REF_POWER_ON = 1U, /* 参考=驱动器上电点，只能在本次上电内做相对比较 */
-  WORM_REF_HOMED    = 2U  /* 参考=回零点，绝对位置有效。本轮不会出现，留给下一轮 */
+  WORM_REF_HOMED    = 2U  /* 参考=回零点，绝对位置有效（回零成功后进入） */
 } WormReferenceKind;
+
+/* ================= 回零(Homing) ================= */
+
+/* 前限位在 g_limit_switch_states[] 中的下标：PD7，压下为 0。
+ * 与 motor_driver.c:Motor_IsLimitBlocked 的方向映射一致：它挡的正是负 RPM。 */
+#define WORM_FRONT_LIMIT_INDEX 3U
+
+/*
+ * 两段式回零速度,手册 0x003C/0x003D 分 V1/V2 两个参数就是为了这件事
+ * 举例：
+ * 趋近段 WORM_HOME_SEEK_RPM 150 RPM：全行程 33.577 转 ÷ 2.5 转/秒 ≈ 13.4 秒。
+ * 退出段必须慢，因为【零点精度 = 转速 × 位置轮询周期 × 每脉冲毫米数】：
+ *   150 RPM -> 25000 脉冲/秒 × 0.1s = 2500 脉冲 ≈ 1.08 mm（位置只有 10Hz）
+ *    15 RPM ->  2500 脉冲/秒 × 0.1s =  250 脉冲 ≈ 0.11 mm
+ * 实测机械重复性约 0.16mm，故 15 RPM 与之相当，再慢收益有限。
+ */
+#define WORM_HOME_SEEK_RPM    350
+#define WORM_HOME_BACKOFF_RPM  35
+
+/* 分段超时。趋近最坏情况是从后限位出发跑满全行程(≈13.4s)，取一倍余量；
+ * 退出只需走开关回差(几毫米)，15s 足够。超时即判失败并停机。 */
+#define WORM_HOME_SEEK_TIMEOUT_MS    30000U
+#define WORM_HOME_BACKOFF_TIMEOUT_MS 15000U
+
+typedef enum
+{
+  WORM_HOME_IDLE    = 0U, /* 未在回零 */
+  WORM_HOME_SEEK    = 1U, /* 低速朝前限位趋近，等 PD7 触发 */
+  WORM_HOME_BACKOFF = 2U, /* 反向慢速退出，等 PD7 释放 */
+  WORM_HOME_DONE    = 3U, /* 回零完成，零点已记录 */
+  WORM_HOME_FAILED  = 4U  /* 失败，见 home_fail */
+} WormHomingState;
+
+typedef enum
+{
+  WORM_HOME_FAIL_NONE            = 0U,
+  WORM_HOME_FAIL_SEEK_TIMEOUT    = 1U, /* 一直没撞到前限位 */
+  WORM_HOME_FAIL_BACKOFF_TIMEOUT = 2U, /* 退不出前限位 */
+  WORM_HOME_FAIL_DATA_STALE      = 3U, /* 回零途中位置数据失效，不敢再动 */
+  WORM_HOME_FAIL_CANCELLED       = 4U  /* 被上位机或 PID 接管取消 */
+} WormHomingFail;
 
 typedef struct
 {
@@ -80,6 +121,11 @@ typedef struct
   int32_t  pulse_max_seen;
   int32_t  span_pulses;          /* pulse_max_seen - pulse_min_seen，已探明的行程跨度 */
   uint32_t update_count;         /* Step 调用次数，确认本模块真的在跑 */
+  /* --- 回零 --- */
+  uint8_t  home_state;           /* WormHomingState */
+  uint8_t  home_fail;            /* WormHomingFail，仅在 home_state=FAILED 时有意义 */
+  int32_t  pulse_home_front;     /* 回零点：前限位释放沿处的脉冲值 */
+  uint32_t home_done_count;      /* 成功回零次数 */
 } WormAxisState;
 
 /* Ozone 观察点；上层若要用位置，必须同时判 data_fresh 与 reference_kind。 */
@@ -94,6 +140,24 @@ void WormAxis_Step(uint32_t now_ms);
  * 这种撕裂组合。与 EkfBridge_CopyState 是同一条约定。
  */
 void WormAxis_CopyState(WormAxisState *out_state);
+
+/*
+ * 请求 / 取消一次回零。以太网任务收到上位机命令后调用，只置标志，不做任何动作，
+ * 真正的状态推进全部发生在 ServoTask 的 WormAxis_Step() 里。
+ * 重复请求会重新开始；DONE/FAILED 状态下再次请求也能重来。
+ */
+void WormAxis_RequestHoming(void);
+void WormAxis_CancelHoming(void);
+
+/*
+ * 回零期间由 StartServoTask 查询：返回 1 表示回零正在进行、需要接管蜗杆，
+ * 此时 *out_rpm 是本拍应下发的转速。
+ *
+ * 本模块【绝不】自己调 UMotor_* —— 执行器唯一写点仍然是 StartServoTask，
+ * 否则就出现两个写者，违反本仓库"唯一仲裁点"的核心约定。
+ * 必须在同一个任务里紧跟 WormAxis_Step() 之后调用，取的才是本拍刚算出的结果。
+ */
+uint8_t WormAxis_GetHomingWormRpm(int32_t *out_rpm);
 
 #ifdef __cplusplus
 }

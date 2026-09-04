@@ -481,7 +481,8 @@ typedef enum
   RC_CTRL_MODE_OFF = 0U,
   RC_CTRL_MODE_OPEN_LOOP_SPEED = 1U,
   RC_CTRL_MODE_ETH = 2U,
-  RC_CTRL_MODE_PID_ETH = 3U
+  RC_CTRL_MODE_PID_ETH = 3U,
+  RC_CTRL_MODE_WORM_HOMING = 4U /* 蜗杆回零接管：只驱动蜗杆，其余执行器保持零 */
 } RcControlMode;
 
 static uint32_t RcControl_IsSwitchUp(uint16_t raw)
@@ -2718,6 +2719,7 @@ void StartServoTask(void *argument)
   uint16_t sw_left_mid_2 = 0U;
   uint16_t sw_right_outer = 0U;
   int32_t worm_cmd_rpm = 0;
+  int32_t homing_worm_rpm = 0; /* 回零状态机本拍要求的蜗杆转速 */
   int32_t stepper_cmd_rpm = 0;
   uint8_t thrust1_speed_cmd = 0U;
   uint8_t thrust2_speed_cmd = 0U;
@@ -2834,6 +2836,21 @@ void StartServoTask(void *argument)
         off_reason =
             RC_OFF_REASON_PID_FAULT_BASE + (uint32_t)pid_status.fault;
       }
+      /* PID 一旦接管，回零必须让路：两者都想开蜗杆，绝不能同时生效。 */
+      WormAxis_CancelHoming();
+    }
+    /*
+     * 蜗杆回零：优先级仅次于 PID，高于直接以太网控制和 SBUS。
+     * 放在这里的理由：用户在 AUTO 模式下输 calib 时，ethernet_control_flag 是 1，
+     * 若排在它后面就永远轮不到。而 PID armed 时上面那条分支已经把回零取消掉了。
+     * 回零【只】驱动蜗杆，泵/推进器/步进保持本轮开头清好的零值。
+     */
+    else if (WormAxis_GetHomingWormRpm(&homing_worm_rpm) != 0U)
+    {
+      mode = RC_CTRL_MODE_WORM_HOMING;
+      pitchmotor_enable_cmd = 1U;
+      worm_cmd_rpm = RcControl_ClampSigned(
+          homing_worm_rpm, RC_WORM_MOTOR_MAX_RPM);
     }
     else if (ethernet_control_flag != 0U)
     {
