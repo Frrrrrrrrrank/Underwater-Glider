@@ -26,6 +26,7 @@ try:
         PID_PARAM_FIELDS,
         STREAM_EKF,
         STREAM_CTL,
+        STREAM_WRM,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -56,6 +57,7 @@ except ImportError:
         PID_PARAM_FIELDS,
         STREAM_EKF,
         STREAM_CTL,
+        STREAM_WRM,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -76,6 +78,8 @@ UGCP_TX_SEQUENCE = SequenceCounter()
 UGCP_TX_LOCK = threading.Lock()
 TELEMETRY_STREAM_LOCK = threading.Lock()
 TELEMETRY_STREAM_MASK = 0
+# 主线程标记当前是否处于 PID 命令界面，接收线程据此选择快照显示方式。
+PID_MODE_ACTIVE = threading.Event()
 
 AUTO_SEND_PERIOD_S = 1.0 #Auto模式的下发频率
 AUTO_KEY_POLL_S = 0.02
@@ -656,8 +660,25 @@ def _ctypes_to_py(value, max_depth=6, array_limit=16, _depth=0):
     return value
 
 
+def _print_snapshot_alarms(snap):
+    alarms = decode_alarm_bits(snap.alarm_bits)
+    if alarms:
+        print("[报警] 触发报警如下:")
+        for alarm in alarms:
+            print(f"  - bit{alarm['bit']:02d} {alarm['code']}: {alarm['desc']}")
+    else:
+        print("[报警] 无报警")
+
+
 def print_snapshot_struct(snap):
-    """简要显示系统快照中的输入状态和报警，不输出完整结构 JSON。"""
+    """AUTO 和主菜单查询：保持原有完整结构 JSON 输出。"""
+    snap_dict = _ctypes_to_py(snap)
+    _print_snapshot_alarms(snap)
+    print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
+
+
+def print_pid_snapshot_struct(snap):
+    """PID status：只显示控制调试需要的输入状态和报警。"""
     limit_bits = int(snap.limit_switch_bits) & 0x0F
     print(
         "[输入状态] displacement=%.1f mm valid=%d; "
@@ -673,14 +694,14 @@ def print_snapshot_struct(snap):
             (limit_bits >> 3) & 1,
         )
     )
+    _print_snapshot_alarms(snap)
 
-    alarms = decode_alarm_bits(snap.alarm_bits)
-    if alarms:
-        print("[报警] 触发报警如下:")
-        for alarm in alarms:
-            print(f"  - bit{alarm['bit']:02d} {alarm['code']}: {alarm['desc']}")
+
+def print_snapshot_for_active_mode(snap):
+    if PID_MODE_ACTIVE.is_set():
+        print_pid_snapshot_struct(snap)
     else:
-        print("[报警] 无报警")
+        print_snapshot_struct(snap)
 
 # 控制包发送函数
 def send_ugcp_frame(conn, msg_type, payload, label='UGCP', verbose=True):
@@ -1056,10 +1077,10 @@ def run_auto_mode(conn):
 
         if rising['W']:
             packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = -200
+            packet["pitchmotor_speed_rpm"] = -50
         if rising['S']:
             packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = 200
+            packet["pitchmotor_speed_rpm"] = 50
         if rising['X']:
             packet["pitchmotor_enable"] = 0
             packet["pitchmotor_speed_rpm"] = 0
@@ -1212,6 +1233,53 @@ UGCTL_INT_FIELDS = {
     "config_apply", "config_reject_count",
 }
 UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
+
+#  蜗杆位置遥测($UGWRM)解析 + CSV 记录
+# 字段顺序必须与板端 EthernetUartDriver_SendWormTelemetry() 完全一致。
+UGWRM_FIELDS = [
+    "schema", "seq", "t_ms",
+    # 位置量：stroke_percent 是主输出（0=前限位，100=后限位），pulse 是原始真值
+    "pulse", "stroke_percent", "mm_from_front",
+    "span_valid", "data_fresh", "ref_kind", "ref_lost",
+    "pulse_min", "pulse_max", "span_pulses", "moving", "alarm",
+    # 电机状态：命令 vs 反馈，用于看"发了没执行"
+    "cmd_rpm", "fb_rpm", "status_word", "err", "err_sub",
+    "input_ports", "limit_bits",
+    # 总线健康：与位置同一时刻，用于判断上面那些数可不可信
+    "poll_ok", "poll_fail", "overrun", "enable_resync", "last_error",
+]
+# 除两个百分比/毫米外全部按整数解析。
+UGWRM_INT_FIELDS = set(UGWRM_FIELDS) - {"stroke_percent", "mm_from_front"}
+UGWRM_CSV_HEADER = ["host_iso"] + UGWRM_FIELDS
+WORM_REF_KIND_NAMES = {0: "NONE", 1: "POWER_ON", 2: "HOMED"}
+
+
+def ugwrm_parse(line):
+    """严格解析 schema 1 的 $UGWRM；校验或字段数不符一律返回 None。"""
+    if not ekf_checksum_ok(line):
+        return None
+    star = line.rfind("*")
+    parts = line[1:star].split(",")
+    if not parts or parts[0] != "UGWRM":
+        return None
+    values = parts[1:]
+    if len(values) != len(UGWRM_FIELDS):
+        return None
+    row = {}
+    try:
+        for name, raw in zip(UGWRM_FIELDS, values):
+            row[name] = int(raw) if name in UGWRM_INT_FIELDS else float(raw)
+    except ValueError:
+        return None
+    if row["schema"] != 1:
+        return None
+    return row
+
+
+def ugwrm_csv_row(row):
+    return [datetime.now().isoformat(timespec="milliseconds")] + [
+        row[name] for name in UGWRM_FIELDS]
+
 PID_MODE_NAMES = {0: "OFF", 1: "PITCH_HOLD", 2: "DEPTH_CASCADE"}
 PID_PHASE_NAMES = {0: "DIVE", 1: "CLIMB"}
 PID_FAULT_NAMES = {
@@ -1826,6 +1894,7 @@ def run_pid_mode(conn, ctl_store):
             "[PID] 板端已处于 OFF；pid_valid=%d active_crc=0x%08X"
             % (first_status["pid_valid"], first_status["active_crc"]))
 
+    PID_MODE_ACTIVE.set()
     try:
         while True:
             try:
@@ -1906,6 +1975,7 @@ def run_pid_mode(conn, ctl_store):
     except KeyboardInterrupt:
         print("\n[PID] Ctrl+C：安全退出 PID 界面")
     finally:
+        PID_MODE_ACTIVE.clear()
         session.close()
         send_stream_control(conn, previous_stream_mask, '恢复遥测流')
 
@@ -1936,11 +2006,37 @@ def receive_thread(conn, ctl_store=None):
     ctl_csv = None
     ctl_csv_path = None
     ctl_stat = {"ok": 0, "bad": 0}
+    wrm_csv = None
+    wrm_csv_path = None
+    wrm_stat = {"ok": 0, "bad": 0}
 
     def handle_line(raw_line):
-        nonlocal ctl_csv, ctl_csv_path
+        nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
         line = raw_line.strip()
         if not line:
+            return
+
+        # 蜗杆位置遥测：落 CSV，不打印（10Hz，打印会把控制台刷爆）。
+        # 坏帧计入 wrm_stat["bad"]，与 EKF 的 bad 一样用于观察链路误码。
+        if line.startswith("$UGWRM"):
+            row = ugwrm_parse(line)
+            if row is None:
+                wrm_stat["bad"] += 1
+                return
+            if wrm_csv is None:
+                wrm_csv_path = os.path.join(
+                    CONTROL_LOG_DIR,
+                    "worm_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
+                )
+                wrm_csv = open(
+                    wrm_csv_path, "w", encoding="utf-8", newline="")
+                wrm_csv.write(",".join(UGWRM_CSV_HEADER) + "\n")
+                wrm_csv.flush()
+                print(f"\n[WORM] 蜗杆位置遥测记录 -> {wrm_csv_path}")
+            wrm_csv.write(
+                ",".join(str(value) for value in ugwrm_csv_row(row)) + "\n")
+            wrm_csv.flush()
+            wrm_stat["ok"] += 1
             return
 
         # PID 遥测由本线程独占解析，再发布给 UgctlStore；PID 界面禁止 recv。
@@ -2006,7 +2102,7 @@ def receive_thread(conn, ctl_store=None):
         snap = assembler.feed_line(line)
         if snap is not None:
             print(f"\n[客户端] 已还原 EthernetUartSystemSnapshot，大小={ctypes.sizeof(snap)} 字节")
-            print_snapshot_struct(snap)
+            print_snapshot_for_active_mode(snap)
             return
 
         print(f"\n[客户端] {line}")
@@ -2087,6 +2183,7 @@ def main():
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
+    print("输入 'wormon' / 'wormoff' 开 / 停蜗杆位置遥测 $UGWRM（落 CSV，不打印）")
     print("输入 'snapshot' 请求一次系统状态快照")
     print("输入 'quit' 或 'exit' 退出程序")
     print("==================================\n")
@@ -2112,10 +2209,18 @@ def main():
             elif user_input.lower() == 'ekfon':
                 send_telem_control(conn, 1)
                 print("[EKF] 已请求板子开始遥测")
+            elif user_input.lower() == 'wormon':
+                send_stream_control(
+                    conn, get_stream_control_mask() | STREAM_WRM)
+                print("[WORM] 已请求板子开始发送 $UGWRM")
+            elif user_input.lower() == 'wormoff':
+                send_stream_control(
+                    conn, get_stream_control_mask() & ~STREAM_WRM)
+                print("[WORM] 已请求板子停发 $UGWRM")
             elif user_input.lower() == 'snapshot':
                 send_snapshot_request(conn)
             else:
-                print("[命令] 未识别，未发送；可用 pack/auto/pid/ekfon/ekfoff/snapshot/quit")
+                print("[命令] 未识别，未发送；可用 pack/auto/pid/ekfon/ekfoff/wormon/wormoff/snapshot/quit")
     except KeyboardInterrupt:
         print("\n检测到 Ctrl+C，退出。")
     finally:

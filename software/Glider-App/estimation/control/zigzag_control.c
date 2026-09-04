@@ -77,7 +77,7 @@ uint8_t ZigzagControl_ValidateConfig(
       config->max_worm_rpm > 600.0f ||
       config->max_thrust_percent < 0.0f ||
       config->max_thrust_percent > 100.0f ||
-      config->surface_depth_m < 0.0f ||
+      config->surface_depth_m < -0.2f || //板端二次校验设定水面深度，由于传感器误差暂设负数
       config->depth_switch_threshold_m < 0.0f ||
       config->depth_to_pitch_alpha_rad_per_m < 0.0f ||
       config->depth_to_pitch_alpha_rad_per_m > (ZIGZAG_PI_F / 2.0f) ||

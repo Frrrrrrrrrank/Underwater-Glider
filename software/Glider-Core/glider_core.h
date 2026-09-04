@@ -8,6 +8,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef struct
+{
+  volatile uint32_t valid;
+  volatile uint32_t update_count;
+  volatile uint32_t last_update_tick;
+  char source_card[24];
+  volatile int32_t latitude_deg_e7;
+  volatile int32_t longitude_deg_e7;
+  volatile float latitude_deg;
+  volatile float longitude_deg;
+} GliderTargetCoordinate;
+
+extern volatile GliderTargetCoordinate g_target_coordinate;
+
 void GliderCore_Init(UART_HandleTypeDef *uart_handle);
 void GliderCore_RunRxTask(void);
 void GliderCore_RunTxTask(void);

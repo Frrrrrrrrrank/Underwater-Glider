@@ -25,8 +25,15 @@
 #define MOTOR_POLL_INTERVAL_MS         100U
 #define MOTOR_UART_TX_TIMEOUT_MS       20U
 #define MOTOR_UART_RX_TIMEOUT_MS       20U
-/* 事务失败后等待半帧到齐再排空的时间：3ms @115200 ≈ 34 字节 > 最长应答 25 字节。 */
-#define MOTOR_RX_DRAIN_MS              3U
+/* 事务失败后等待半帧到齐再排空的时间。@115200 8N1 每字节 86.8us：
+   5ms ≈ 57 字节，覆盖当前最长应答 31 字节(读 13 个状态寄存器)并留足余量。
+   注意：状态块读打开后最长应答已由 25 字节变为 31 字节，原来的 3ms(≈34 字节)
+   只剩 3 字节余量，排不干净会让残留字节污染下一次事务。 */
+#define MOTOR_RX_DRAIN_MS              5U
+/* MODBUS-RTU 帧间静默 t3.5：从站靠"连续 3.5 个字符时间无新字节"判定一帧结束。
+   115200 下理论值 3.5×86.8us ≈ 304us，高波特率业界惯例取 1.75ms。
+   FreeRTOS 1ms tick 下 osDelay(1) 可能几乎为 0，故取 2 以保证 >=1ms。 */
+#define MOTOR_INTERFRAME_GAP_MS        2U
 
 /*
  * Default MODBUS register map (adjust to your motor manual).
@@ -48,9 +55,24 @@
 #define MOTOR_VERIFY_READ_START_REG    0x0014U
 #define MOTOR_VERIFY_READ_REG_COUNT    10U
 
-/* Fixed status read window: 0x0000~0x000F (version/state/speed/position). */
+/*
+ * 固定状态读窗口: 0x0000~0x000C(版本/状态字/转速/错误码/输入端口/当前位置)。
+ *
+ * 为什么取 13 而不是手册状态组的全长 16:
+ *  1) 13 是"够用的最小值"。Motor_ProcessOneNode() 的解析用到的最大下标是
+ *     block_words[12](= 0x000C 当前位置高 16 位), 再往后的 0x000D~0x000F
+ *     三个电流寄存器本轮用不上。
+ *  2) 帧长直接等于占线时间。应答长度 = 3 + 2*13 + 2 = 31 字节, @115200 8N1
+ *     每字节 86.8us => 约 2.7ms; 读 16 个则是 37 字节/3.2ms。
+ *     Motor_ReceiveExact() 是逐字节阻塞接收, 而 Usart2Task 与 servoTask/
+ *     EthernetTask 同为 osPriorityNormal3(见 AGENT_STATUS 风险 9-bis),
+ *     时间片切换只要让 CPU 离开接收循环超过 86.8us 就会触发 ORE 丢字节。
+ *     帧越长暴露的抢占窗口越多, 故先用最小帧验证总线是否仍然干净。
+ * 确认 g_umotor.bus_diag.overrun_count 不再增长后, 可再考虑放宽到 16 以取得
+ * 0x000D 实际电流(用于堵转/顶死检测)。
+ */
 #define MOTOR_STATUS_READ_START_REG    0x0000U
-#define MOTOR_STATUS_READ_REG_COUNT    16U
+#define MOTOR_STATUS_READ_REG_COUNT    13U
 
 /* Fixed fault read window: 0x0194~0x019A (fault history + comm fault bits). */
 #define MOTOR_FAULT_READ_START_REG     0x0194U
@@ -112,6 +134,14 @@ typedef struct
   uint16_t reg_0006_actual_speed;   /* [状态]当前反馈转速 */
   uint16_t reg_0007_error_code;     /* [状态]当前故障大类代码 */
   uint16_t reg_0008_error_subcode;  /* [状态]当前故障子类代码 */
+  /*
+   * [状态]驱动器自身输入端口 X0/X1/X2 的"有效/无效"标志(Bit0~Bit2)。
+   * 用途: 判断限位开关除了接 STM32 的 GPIO(g_limit_switch_states), 是否也接进了
+   * 驱动器的 X 端子。手册 4.2.9 出厂默认 X0=原点/X1=正限位/X2=负限位, 若接了,
+   * 后续回零可直接用驱动器内建的 0x003B 回原点模式, 无须 STM32 侧软件回零。
+   * 台架验证: 手按限位开关, 看本字段对应 Bit 是否翻转。
+   */
+  uint16_t reg_0009_input_ports;
   uint16_t reg_000B_pos_low;        /* [状态]反馈绝对脉冲低16位 */
   uint16_t reg_000C_pos_high;       /* [状态]反馈绝对脉冲高16位 */
   int32_t pos_signed_32;            /* 完整拼接为32位的带符号反馈脉冲 */
@@ -184,6 +214,9 @@ typedef struct
   uint32_t total_rx_count;
   uint32_t total_timeout_count;
   uint32_t overrun_count;      /* 其中属于接收溢出/帧错位的次数(last_error=24) */
+  /* 本地使能记账与驱动器上报的 0x0004 Bit0 不符、被强制纠正的次数。
+     持续增长 = 驱动器在反复自释放(多半是 0x07 超差报警)或使能写应答在丢。 */
+  uint32_t enable_resync_count;
   uint32_t total_crc_error_count;
   uint32_t total_protocol_error_count;
   uint8_t last_tx_frame[16];

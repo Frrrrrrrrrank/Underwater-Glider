@@ -58,6 +58,7 @@ Glider-App/tasks/ekf_task.c \
 Glider-App/common/glider_time.c \
 Glider-Core/disk_driver.c \
 Glider-Core/limit_switch.c \
+Glider-Core/worm_axis.c \
 Glider-Core/thruster_driver.c \
 Glider-Core/bspforSD/bsp.c \
 Glider-Core/bspforSD/bsp_timer.c \

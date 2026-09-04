@@ -28,6 +28,7 @@
 #include "imu_core.h"
 #include "servo_driver.h"
 #include "motor_driver.h"
+#include "worm_axis.h"
 #include "pump_driver.h"
 #include "displacement_sensor.h"
 #include "pressure_sensor_driver.h"
@@ -2747,6 +2748,8 @@ void StartServoTask(void *argument)
   for(;;)
   {
     now_tick = HAL_GetTick();
+    /* 蜗杆位置读出：只读 g_umotor 快照做换算与可信度判定，不发帧、不写执行器。 */
+    WormAxis_Step(now_tick);
     (void)EthernetUartDriver_CopyControlPack(
         &ethernet_pack, &ethernet_control_flag);
     (void)EkfBridge_CopyState(&state_estimate);//ServoTask每轮调用PID

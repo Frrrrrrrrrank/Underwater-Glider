@@ -306,6 +306,89 @@ static bool parse_decimal_x100(const char *src, size_t src_len, int32_t *out)
   return true;
 }
 
+static bool parse_decimal_degrees_e7(
+    const char *src,
+    size_t src_len,
+    uint32_t max_degrees,
+    char direction,
+    int32_t *out)
+{
+  size_t i = 0U;
+  uint32_t whole = 0U;
+  uint32_t fraction = 0U;
+  uint32_t fraction_digits = 0U;
+  bool seen_dot = false;
+  bool seen_digit = false;
+  int32_t value = 0;
+
+  if (src == NULL || out == NULL || src_len == 0U)
+  {
+    return false;
+  }
+
+  for (i = 0U; i < src_len; i++)
+  {
+    if (src[i] == '.')
+    {
+      if (seen_dot)
+      {
+        return false;
+      }
+      seen_dot = true;
+      continue;
+    }
+
+    if (!is_digit_ascii(src[i]))
+    {
+      return false;
+    }
+
+    seen_digit = true;
+    if (!seen_dot)
+    {
+      whole = (whole * 10U) + (uint32_t)(src[i] - '0');
+      if (whole > max_degrees)
+      {
+        return false;
+      }
+    }
+    else
+    {
+      if (fraction_digits >= 7U)
+      {
+        return false;
+      }
+      fraction = (fraction * 10U) + (uint32_t)(src[i] - '0');
+      fraction_digits++;
+    }
+  }
+
+  if (!seen_digit || (seen_dot && fraction_digits == 0U))
+  {
+    return false;
+  }
+
+  while (fraction_digits < 7U)
+  {
+    fraction *= 10U;
+    fraction_digits++;
+  }
+
+  if (whole == max_degrees && fraction != 0U)
+  {
+    return false;
+  }
+
+  value = (int32_t)((whole * 10000000U) + fraction);
+  if (direction == 'S' || direction == 's' || direction == 'W' || direction == 'w')
+  {
+    value = -value;
+  }
+
+  *out = value;
+  return true;
+}
+
 static bool parse_degmin_to_deg_e7(const char *src, size_t src_len, bool is_longitude, char dir, int32_t *out)
 {
   uint32_t whole = 0U;
@@ -1002,6 +1085,145 @@ static void parse_gnrmc_fields(const char *body, size_t body_len, GliderRdssDeco
   }
 }
 
+static bool parse_bds_command_frame(const char *line, size_t line_len, GliderRdssDecodedFrame *out_frame)
+{
+  static const char prefix[] = "$BDS:";
+  static const char command[] = "go to";
+  size_t cursor = 0U;
+  size_t card_start = 0U;
+  size_t card_len = 0U;
+  size_t value_start = 0U;
+  size_t value_len = 0U;
+  size_t i = 0U;
+  char latitude_dir = '\0';
+  char longitude_dir = '\0';
+
+  if (line == NULL || out_frame == NULL || line_len == 0U)
+  {
+    return false;
+  }
+
+  if (str_starts_with(line, prefix))
+  {
+    cursor = sizeof(prefix) - 1U;
+    card_start = cursor;
+    while (cursor < line_len && line[cursor] != ',')
+    {
+      if (!is_digit_ascii(line[cursor]))
+      {
+        return false;
+      }
+      cursor++;
+    }
+    card_len = cursor - card_start;
+    if (card_len == 0U || card_len >= sizeof(out_frame->bds_command.sender_card) || cursor >= line_len)
+    {
+      return false;
+    }
+    cursor++;
+  }
+
+  while (cursor < line_len && is_space_ascii(line[cursor]))
+  {
+    cursor++;
+  }
+  if ((line_len - cursor) < (sizeof(command) - 1U))
+  {
+    return false;
+  }
+  for (i = 0U; i < (sizeof(command) - 1U); i++)
+  {
+    if (to_lower_ascii(line[cursor + i]) != command[i])
+    {
+      return false;
+    }
+  }
+  cursor += sizeof(command) - 1U;
+  if (cursor >= line_len || !is_space_ascii(line[cursor]))
+  {
+    return false;
+  }
+  while (cursor < line_len && is_space_ascii(line[cursor]))
+  {
+    cursor++;
+  }
+
+  if (cursor >= line_len || !(line[cursor] == 'N' || line[cursor] == 'n' ||
+                              line[cursor] == 'S' || line[cursor] == 's'))
+  {
+    return false;
+  }
+  latitude_dir = line[cursor++];
+  value_start = cursor;
+  while (cursor < line_len && !is_space_ascii(line[cursor]))
+  {
+    cursor++;
+  }
+  value_len = cursor - value_start;
+  if (value_len == 0U || value_len >= sizeof(out_frame->bds_command.latitude_raw) ||
+      !parse_decimal_degrees_e7(
+          &line[value_start], value_len, 90U, latitude_dir,
+          &out_frame->bds_command.latitude_deg_e7))
+  {
+    return false;
+  }
+  copy_token(out_frame->bds_command.latitude_raw,
+             sizeof(out_frame->bds_command.latitude_raw), &line[value_start], value_len);
+
+  while (cursor < line_len && is_space_ascii(line[cursor]))
+  {
+    cursor++;
+  }
+  if (cursor >= line_len || !(line[cursor] == 'E' || line[cursor] == 'e' ||
+                              line[cursor] == 'W' || line[cursor] == 'w'))
+  {
+    return false;
+  }
+  longitude_dir = line[cursor++];
+  value_start = cursor;
+  while (cursor < line_len && !is_space_ascii(line[cursor]))
+  {
+    cursor++;
+  }
+  value_len = cursor - value_start;
+  if (value_len == 0U || value_len >= sizeof(out_frame->bds_command.longitude_raw) ||
+      !parse_decimal_degrees_e7(
+          &line[value_start], value_len, 180U, longitude_dir,
+          &out_frame->bds_command.longitude_deg_e7))
+  {
+    return false;
+  }
+  copy_token(out_frame->bds_command.longitude_raw,
+             sizeof(out_frame->bds_command.longitude_raw), &line[value_start], value_len);
+
+  while (cursor < line_len && is_space_ascii(line[cursor]))
+  {
+    cursor++;
+  }
+  if (cursor != line_len)
+  {
+    return false;
+  }
+
+  if (card_len > 0U)
+  {
+    copy_token(out_frame->bds_command.sender_card,
+               sizeof(out_frame->bds_command.sender_card), &line[card_start], card_len);
+  }
+  out_frame->bds_command.latitude_ns[0] = latitude_dir;
+  out_frame->bds_command.latitude_ns[1] = '\0';
+  out_frame->bds_command.longitude_ew[0] = longitude_dir;
+  out_frame->bds_command.longitude_ew[1] = '\0';
+  out_frame->bds_command.valid = true;
+  out_frame->is_bds_command = true;
+  out_frame->type = GLIDER_RDSS_FRAME_BDS_COMMAND;
+  copy_token(out_frame->sentence, sizeof(out_frame->sentence), "BDS", 3U);
+  copy_token(out_frame->text, sizeof(out_frame->text), line, line_len);
+  copy_token((char *)out_frame->payload, sizeof(out_frame->payload), line, line_len);
+  out_frame->payload_len = (line_len < sizeof(out_frame->payload)) ? line_len : sizeof(out_frame->payload) - 1U;
+  return true;
+}
+
 static bool parse_nmea_like_frame(const char *line, size_t line_len, GliderRdssDecodedFrame *out_frame)
 {
   const char *asterisk = NULL;
@@ -1224,6 +1446,11 @@ bool GliderRdssCodec_TryDecodeLine(const char *line, GliderRdssDecodedFrame *out
   }
 
   copy_token(normalized_line, sizeof(normalized_line), start, normalized_len);
+
+  if (parse_bds_command_frame(normalized_line, normalized_len, out_frame))
+  {
+    return true;
+  }
 
   if (parse_nmea_like_frame(normalized_line, normalized_len, out_frame))
   {

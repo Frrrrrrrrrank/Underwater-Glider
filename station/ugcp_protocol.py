@@ -27,7 +27,9 @@ MSG_PARAM_COMMIT = 0x11
 STREAM_EKF = 0x01
 STREAM_MAG = 0x02
 STREAM_CTL = 0x04
-STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL
+# bit3：蜗杆位置遥测 $UGWRM（装机后 Ozone 不可用，位置量只能靠这条流看）
+STREAM_WRM = 0x08
+STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL | STREAM_WRM
 
 PARAM_GROUP_MAG_CAL = 1
 PARAM_GROUP_PID = 2
@@ -392,7 +394,7 @@ def pack_pid_param_table(parameters):
         raise UgcpProtocolError("max_worm_rpm 必须在 (0, 600]")
     if not 0.0 <= values[13] <= 100.0:
         raise UgcpProtocolError("max_thrust_percent 必须在 [0, 100]")
-    if values[14] < 0.0 or values[15] < 0.0:
+    if values[14] < -0.2 or values[15] < 0.0:#values[14]是surface_depth_m
         raise UgcpProtocolError("深度阈值不得为负")
     if values[16] not in (-1.0, 1.0):
         raise UgcpProtocolError("pitch_actuator_sign 只能是 -1 或 +1")
@@ -451,10 +453,10 @@ def pack_param_commit_payload(group, transaction, block_count, table_crc):
 
 
 def pack_stream_control_payload(mask):
-    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL。"""
+    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL，bit3=$UGWRM。"""
     mask = _require_u8(mask, "stream_mask")
     if mask & ~STREAM_ALL:
-        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL 三个 bit（0..7）")
+        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL/WRM 四个 bit（0..15）")
     return bytes((mask,))
 
 
