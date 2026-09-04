@@ -617,7 +617,7 @@ void IoControlPump_Poll(void)
   }
 
   displacement_mm = g_displacement_sensor.displacement_mm;
-  if (!isfinite(displacement_mm))//暂时删除对线位移传感器值有效性的审查
+  if (g_displacement_sensor.valid == 0U || !isfinite(displacement_mm))//对线位移传感器值有效性的审查
   {//  if (g_displacement_sensor.valid == 0U || !isfinite(displacement_mm))
     IoControlPump_SetSpeed(0U);
     g_io_pump_debug.speed_triggered = 0U;

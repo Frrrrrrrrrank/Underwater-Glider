@@ -1,10 +1,11 @@
 /*
  * zigzag_control.h
  *
- * 深度—俯仰级联控制器的纯计算层。
+ * 深度—浮力/俯仰并行外环与俯仰内环控制器的纯计算层。
  *
  * 单位约定：
  *   - depth、vertical_velocity：m、m/s，NED 向下为正；
+ *   - 油囊线位移：mm，数值越大表示浮力越大；
  *   - pitch：rad，低头为负、抬头为正；
  *   - 输出蜗杆命令：有符号 RPM；
  *   - 推进器：有符号百分比，仅作为开环前馈，不进入 PID 公式。
@@ -42,7 +43,8 @@ typedef enum
   ZIGZAG_FAULT_BAD_CONFIG = 3U,
   ZIGZAG_FAULT_BAD_COMMAND = 4U,
   ZIGZAG_FAULT_BAD_DT = 5U,
-  ZIGZAG_FAULT_DEPTH_SAMPLE_INVALID = 6U
+  ZIGZAG_FAULT_DEPTH_SAMPLE_INVALID = 6U,
+  ZIGZAG_FAULT_DISPLACEMENT_INVALID = 7U
 } ZigzagControlFault;
 
 typedef struct
@@ -58,12 +60,19 @@ typedef struct
 {
   ZigzagPidConfig depth_outer;
   ZigzagPidConfig pitch_inner;
+  /* 深度误差直接生成俯仰目标；正系数配合 Down 正方向显式取负号。 */
+  float depth_to_pitch_alpha_rad_per_m;
+  // 用 pump_driver.h 的硬宏填写 min/max/deadzone；只允许上位机传参修改 neutral
+  float displacement_min_mm;
+  float displacement_neutral_mm;
+  float displacement_max_mm;
+  float displacement_deadzone_mm;
   float max_pitch_rad;
   float max_worm_rpm;
   float max_thrust_percent;
   float surface_depth_m;
   float depth_switch_threshold_m;
-  /* 实机蜗杆正负方向与俯仰修正方向的极性，只允许 +1 或 -1。 */
+  /* 实机蜗杆正负方向与俯仰修正方向的极性，只允许 +1 或 -1 */
   float pitch_actuator_sign;
 } ZigzagControlConfig;
 
@@ -85,10 +94,12 @@ typedef struct
   uint8_t valid_for_control;
   /* 仅 DEPTH_CASCADE 使用；调用者根据测量时刻检查超时后给出 valid。 */
   uint8_t depth_sample_valid;
+  uint8_t displacement_valid;
   uint32_t depth_update_seq;
   float depth_m;
   float pitch_rad;
   float vertical_velocity_mps;
+  float displacement_mm;
 } ZigzagControlInput;
 
 typedef struct
@@ -112,6 +123,9 @@ typedef struct
   uint16_t command_id;
   float target_depth_m;
   float measured_depth_m;
+  float target_displacement_mm;
+  float measured_displacement_mm;
+  float displacement_error_mm;
   float desired_pitch_rad;
   float measured_pitch_rad;
   ZigzagPidTelemetry depth_outer;
@@ -140,6 +154,7 @@ typedef struct
   uint32_t last_depth_update_seq;//上一次真实压力序号
   float depth_outer_elapsed_s;//两个压力帧之间累计的外环时间
   float held_desired_pitch_rad;//压力帧之间保持的俯仰目标
+  float held_target_displacement_mm;//压力帧之间保持的油囊目标位置
   float previous_pitch_rad;//上一帧俯仰角
   uint8_t have_depth_sample;
   uint8_t have_previous_pitch;

@@ -178,26 +178,28 @@ class UgcpProtocolTests(unittest.TestCase):
 
     def test_pid_table_blocks_crc_round_trip_and_validation(self):
         parameters = {
-            'depth_kp_deg_per_m': 4.0,
-            'depth_ki_deg_per_m_s': 0.1,
-            'depth_kd_deg_s_per_m': 1.2,
-            'depth_integral_limit_m_s': 2.0,
-            'depth_derivative_tau_s': 0.4,
+            'buoyancy_kp_mm_per_m': 5.0,
+            'buoyancy_ki_mm_per_m_s': 0.1,
+            'buoyancy_kd_mm_s_per_m': 1.2,
+            'buoyancy_integral_limit_m_s': 2.0,
+            'buoyancy_derivative_tau_s': 0.4,
             'pitch_kp_rpm_per_deg': 2.5,
             'pitch_ki_rpm_per_deg_s': 0.2,
             'pitch_kd_rpm_s_per_deg': 0.8,
             'pitch_integral_limit_deg_s': 20.0,
             'pitch_derivative_tau_s': 0.1,
+            'depth_to_pitch_alpha_deg_per_m': 4.0,
             'max_pitch_deg': 30.0,
             'max_worm_rpm': 200.0,
             'max_thrust_percent': 60.0,
             'surface_depth_m': 0.2,
             'depth_switch_threshold_m': 0.3,
             'pitch_actuator_sign': -1.0,
+            'displacement_neutral_mm': 90.0,
         }
         table = ugcp.pack_pid_param_table(parameters)
-        self.assertEqual(len(table), 64)
-        self.assertEqual(len(ugcp.split_param_table(table)), 4)
+        self.assertEqual(len(table), 80)
+        self.assertEqual(len(ugcp.split_param_table(table)), 5)
         self.assertEqual(b''.join(ugcp.split_param_table(table)), table)
         decoded = ugcp.unpack_pid_param_table(table)
         for name, expected in parameters.items():
@@ -207,16 +209,18 @@ class UgcpProtocolTests(unittest.TestCase):
         commit = ugcp.pack_param_commit_payload(
             ugcp.PARAM_GROUP_PID,
             9,
-            ugcp.PARAM_BLOCK_COUNT,
+            ugcp.PID_PARAM_BLOCK_COUNT,
             crc,
         )
         self.assertEqual(
             struct.unpack('<BBBI', commit),
-            (ugcp.PARAM_GROUP_PID, 9, 4, crc),
+            (ugcp.PARAM_GROUP_PID, 9, 5, crc),
         )
 
         for name, value in (
                 ('pitch_kp_rpm_per_deg', -1.0),
+                ('depth_to_pitch_alpha_deg_per_m', -1.0),
+                ('depth_to_pitch_alpha_deg_per_m', 91.0),
                 ('max_pitch_deg', 0.0),
                 ('max_pitch_deg', 91.0),
                 ('max_worm_rpm', 601.0),
@@ -228,6 +232,16 @@ class UgcpProtocolTests(unittest.TestCase):
             with self.subTest(name=name, value=value):
                 with self.assertRaises(ugcp.UgcpProtocolError):
                     ugcp.pack_pid_param_table(unsafe)
+
+        # neutral 越界必须能送到板端，由底层 MIN/MAX 宏返回专用拒绝码。
+        board_rejected = dict(parameters)
+        board_rejected['displacement_neutral_mm'] = 140.0
+        self.assertEqual(len(ugcp.pack_pid_param_table(board_rejected)), 80)
+
+        bad_reserved = bytearray(table)
+        struct.pack_into('<f', bad_reserved, 18 * 4, 1.0)
+        with self.assertRaises(ugcp.UgcpProtocolError):
+            ugcp.unpack_pid_param_table(bad_reserved)
 
         missing = dict(parameters)
         missing.pop('pitch_kd_rpm_s_per_deg')

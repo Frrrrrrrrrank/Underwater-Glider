@@ -36,6 +36,8 @@
 #define ETHERNET_UART_MSG_SNAPSHOT_REQ      0x03U
 #define ETHERNET_UART_MSG_CONTROL19_LATCHED 0x04U
 #define ETHERNET_UART_MSG_CASCADE_COMMAND   0x05U
+/* 蜗杆回零：payload 1 字节，1=开始，0=取消。 */
+#define ETHERNET_UART_MSG_WORM_CALIB        0x06U
 #define ETHERNET_UART_MSG_PARAM_BLOCK     0x10U
 #define ETHERNET_UART_MSG_PARAM_COMMIT    0x11U
 
@@ -48,8 +50,10 @@
 #define ETHERNET_UART_STREAM_EKF 0x01U
 #define ETHERNET_UART_STREAM_MAG 0x02U
 #define ETHERNET_UART_STREAM_CTL 0x04U
+/* bit3：蜗杆位置遥测 $UGWRM。装机后 Ozone 不可用，位置量只能靠这条流看。 */
+#define ETHERNET_UART_STREAM_WRM 0x08U
 #define ETHERNET_UART_STREAM_ALL \
-  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL)
+  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM)
 
 /* EKF 遥测定义，单行 ASCII 帧上限（NMEA 风格 $UGEKF,...*HH），以及周期(ms)。
  * 行内全部字段定点格式化，正常约 200B，留足余量到 512；100ms=10Hz。 */
@@ -57,6 +61,7 @@
 #define ETHERNET_UART_EKF_PERIOD_MS 100U//遥测频率定义
 #define ETHERNET_UART_MAG_PERIOD_MS 100U
 #define ETHERNET_UART_CTL_PERIOD_MS 100U
+#define ETHERNET_UART_WRM_PERIOD_MS 100U
 
 typedef struct
 {
@@ -186,6 +191,12 @@ typedef struct
   int16_t ekf_yaw_x10;   /* 航向 (deg×10) */
   uint8_t ekf_status;    /* UgEkfStatus 0..5 */
   uint8_t ekf_valid;     /* 1 = valid_for_control(RUNNING&healthy) */
+  /*
+   * 蜗杆(移动质量块)行程位置。新增字段一律追加在结构体末尾：
+   * Python 侧 ctypes 镜像必须与此严格同序，插在中间会让全部后续字段解码错位。
+   */
+  int16_t worm_stroke_percent_x100; /* 行程百分比×100：0=前限位, 10000=后限位 */
+  uint8_t worm_span_valid;          /* 1=本次上电已跑过两端，上面那个数才有意义 */
 } EthernetUartSystemSnapshot;
 
 extern volatile EthernetUartState g_ethernet_uart_state;
@@ -217,6 +228,9 @@ void EthernetUartDriver_SendEkfTelemetry(void);
 HAL_StatusTypeDef EthernetUartDriver_SendMagTelemetry(void);
 /* PID 调参与命令 ACK：$UGCTL 独立于 $UGEKF，避免破坏旧字段解析。 */
 HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void);
+
+/* 蜗杆位置遥测 $UGWRM：位置量与总线诊断量同行，便于对照判断数据可信度。 */
+HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void);
 /* 控制/泵任务每周期先整体复制一次，避免逐字段散读时跨越一次新包发布。 */
 bool EthernetUartDriver_CopyControlPack(
     EthernetUartReadoutPack *out_pack,

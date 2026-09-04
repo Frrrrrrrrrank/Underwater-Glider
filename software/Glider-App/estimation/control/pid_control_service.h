@@ -17,8 +17,8 @@
 extern "C" {
 #endif
 
-#define PID_CONTROL_PARAM_TABLE_BYTES 64U
-#define PID_CONTROL_PARAM_FLOAT_COUNT 16U
+#define PID_CONTROL_PARAM_TABLE_BYTES 80U
+#define PID_CONTROL_PARAM_FLOAT_COUNT 20U
 #define PID_CONTROL_COMMAND_TIMEOUT_MS 500U
 #define PID_CONTROL_DEPTH_TIMEOUT_MS 600U
 
@@ -45,7 +45,8 @@ typedef enum
   PID_CONTROL_FAULT_EKF_INVALID = 5U,
   PID_CONTROL_FAULT_DEPTH_STALE = 6U,
   PID_CONTROL_FAULT_BAD_COMMAND = 7U,
-  PID_CONTROL_FAULT_CORE_REJECTED = 8U
+  PID_CONTROL_FAULT_CORE_REJECTED = 8U,
+  PID_CONTROL_FAULT_DISPLACEMENT_INVALID = 9U
 } PidControlFault;
 
 typedef enum
@@ -53,7 +54,8 @@ typedef enum
   PID_CONTROL_CONFIG_REJECT_NONE = 0U,
   PID_CONTROL_CONFIG_REJECT_ARMED = 1U,
   PID_CONTROL_CONFIG_REJECT_CRC = 2U,
-  PID_CONTROL_CONFIG_REJECT_VALUE = 3U
+  PID_CONTROL_CONFIG_REJECT_VALUE = 3U,
+  PID_CONTROL_CONFIG_REJECT_NEUTRAL_DISPLACEMENT = 4U
 } PidControlConfigRejectReason;
 
 typedef struct
@@ -93,6 +95,8 @@ uint8_t PidControlService_SubmitConfigTable(
 /* ServoTask 每 20ms 调用；所有 CRC、浮点解码和控制计算均在这里发生。 */
 void PidControlService_Step(
     const StateEstimate *state,
+    uint8_t displacement_valid,
+    float displacement_mm,
     uint32_t now_ms,
     float dt_s,
     ZigzagControlOutput *output);

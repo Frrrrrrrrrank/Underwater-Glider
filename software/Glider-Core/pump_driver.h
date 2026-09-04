@@ -72,8 +72,9 @@ typedef struct
 
 #define IO_PUMP_COMMAND_TIMEOUT_MS 100U
 #define IO_PUMP_DIRECTION_GUARD_MS 100U
-#define IO_PUMP_DISPLACEMENT_MIN_MM 48.0f
+#define IO_PUMP_DISPLACEMENT_MIN_MM 50.0f //泵限位值
 #define IO_PUMP_DISPLACEMENT_MAX_MM 130.0f
+#define IO_PUMP_DISPLACEMENT_DEADZONE_MM 2.0f //  dead zone，不操作
 
 typedef enum
 {

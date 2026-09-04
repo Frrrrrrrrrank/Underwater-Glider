@@ -21,11 +21,12 @@ try:
         MSG_PARAM_COMMIT,
         MSG_SNAPSHOT_REQUEST,
         MSG_STREAM_CONTROL,
-        PARAM_BLOCK_COUNT,
         PARAM_GROUP_PID,
+        PID_PARAM_BLOCK_COUNT,
         PID_PARAM_FIELDS,
         STREAM_EKF,
         STREAM_CTL,
+        STREAM_WRM,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -36,6 +37,8 @@ try:
         pack_pid_param_table,
         pack_snapshot_request_payload,
         pack_stream_control_payload,
+        pack_worm_calib_payload,
+        MSG_WORM_CALIB,
         pack_telem_control_payload,
         split_param_table,
     )
@@ -51,11 +54,12 @@ except ImportError:
         MSG_PARAM_COMMIT,
         MSG_SNAPSHOT_REQUEST,
         MSG_STREAM_CONTROL,
-        PARAM_BLOCK_COUNT,
         PARAM_GROUP_PID,
+        PID_PARAM_BLOCK_COUNT,
         PID_PARAM_FIELDS,
         STREAM_EKF,
         STREAM_CTL,
+        STREAM_WRM,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -66,16 +70,20 @@ except ImportError:
         pack_pid_param_table,
         pack_snapshot_request_payload,
         pack_stream_control_payload,
+        pack_worm_calib_payload,
+        MSG_WORM_CALIB,
         pack_telem_control_payload,
         split_param_table,
     )
 
-# ==================== 全局标志 ====================
+# 全局标志
 running = True          # 控制线程退出
 UGCP_TX_SEQUENCE = SequenceCounter()
 UGCP_TX_LOCK = threading.Lock()
 TELEMETRY_STREAM_LOCK = threading.Lock()
 TELEMETRY_STREAM_MASK = 0
+# 主线程标记当前是否处于 PID 命令界面，接收线程据此选择快照显示方式。
+PID_MODE_ACTIVE = threading.Event()
 
 AUTO_SEND_PERIOD_S = 1.0 #Auto模式的下发频率
 AUTO_KEY_POLL_S = 0.02
@@ -514,6 +522,9 @@ class EthernetUartSystemSnapshot(ctypes.Structure):
         ("ekf_yaw_x10", ctypes.c_int16),   # 航向 (deg×10)
         ("ekf_status", ctypes.c_uint8),    # UgEkfStatus 0..5
         ("ekf_valid", ctypes.c_uint8),     # 1 = valid_for_control
+        # 蜗杆行程位置（板端同样追加在结构体末尾，顺序必须完全一致）
+        ("worm_stroke_percent_x100", ctypes.c_int16),  # 0=前限位, 10000=后限位
+        ("worm_span_valid", ctypes.c_uint8),           # 1=已跑过两端，百分比才有意义
     ]
 
 
@@ -656,9 +667,7 @@ def _ctypes_to_py(value, max_depth=6, array_limit=16, _depth=0):
     return value
 
 
-def print_snapshot_struct(snap):
-    """把 EthernetUartSystemSnapshot 以可读结构化形式输出到命令行。"""
-    snap_dict = _ctypes_to_py(snap)
+def _print_snapshot_alarms(snap):
     alarms = decode_alarm_bits(snap.alarm_bits)
     if alarms:
         print("[报警] 触发报警如下:")
@@ -667,7 +676,51 @@ def print_snapshot_struct(snap):
     else:
         print("[报警] 无报警")
 
+
+def format_worm_status(snap):
+    """蜗杆行程位置摘要。span_valid=0 时百分比无意义，显式说明而不是印一个假数。"""
+    if not int(snap.worm_span_valid):
+        return ("[蜗杆] stroke_percent 不可用 span_valid=0"
+                "（本次上电尚未跑过两端限位，无法确定行程端点）")
+    return ("[蜗杆] stroke_percent=%.2f%% span_valid=1"
+            "（0=前限位 PD7，100=后限位 PB4）"
+            % (float(snap.worm_stroke_percent_x100) / 100.0))
+
+
+def print_snapshot_struct(snap):
+    """AUTO 和主菜单查询：完整结构 JSON，前面先给一行蜗杆摘要免得在 JSON 里翻。"""
+    snap_dict = _ctypes_to_py(snap)
+    _print_snapshot_alarms(snap)
+    print(format_worm_status(snap))
     print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
+
+
+def print_pid_snapshot_struct(snap):
+    """PID status：只显示控制调试需要的输入状态。
+    """
+    limit_bits = int(snap.limit_switch_bits) & 0x0F
+    print(
+        "[输入状态] displacement=%.1f mm valid=%d; "
+        "limit_switch_bits=0x%02X "
+        "[PB3=%d PB4=%d PB5=%d PD7=%d，0=触发]"
+        % (
+            float(snap.displacement_mm_x10) / 10.0,
+            int(snap.displacement_valid),
+            limit_bits,
+            (limit_bits >> 0) & 1,
+            (limit_bits >> 1) & 1,
+            (limit_bits >> 2) & 1,
+            (limit_bits >> 3) & 1,
+        )
+    )
+    print(format_worm_status(snap))
+
+
+def print_snapshot_for_active_mode(snap):
+    if PID_MODE_ACTIVE.is_set():
+        print_pid_snapshot_struct(snap)
+    else:
+        print_snapshot_struct(snap)
 
 # 控制包发送函数
 def send_ugcp_frame(conn, msg_type, payload, label='UGCP', verbose=True):
@@ -723,6 +776,18 @@ def send_stream_control(conn, mask, label='遥测流控制'):
         with TELEMETRY_STREAM_LOCK:
             TELEMETRY_STREAM_MASK = int(mask)
     return ok
+
+
+def send_worm_calib(conn, start):
+    """蜗杆回零：start=True 开始，False 取消。
+
+    开始前顺带打开 $UGWRM 流，否则回零过程完全看不见（板子会自己转电机）。
+    板端只置标志、由 ServoTask 推进；回零自带分段超时，这里不需要心跳。
+    """
+    if start:
+        send_stream_control(conn, get_stream_control_mask() | STREAM_WRM)
+    return send_ugcp_frame(
+        conn, MSG_WORM_CALIB, pack_worm_calib_payload(start), "蜗杆回零")
 
 
 def get_stream_control_mask():
@@ -791,7 +856,7 @@ def send_cascade_command(conn, mode, armed, command_id,
 
 
 def send_pid_param_table(conn, table, transaction):
-    """发送 PID 参数的 4 个数据块和 1 个提交块，返回表 CRC 或 None。"""
+    """发送 PID 参数的 5 个数据块和 1 个提交块，返回表 CRC 或 None。"""
     table = bytes(table)
     blocks = split_param_table(table)
     table_crc = crc32_iso_hdlc(table)
@@ -801,12 +866,12 @@ def send_pid_param_table(conn, table, transaction):
             PARAM_GROUP_PID, transaction, index, block)
         if not send_ugcp_frame(
                 conn, MSG_PARAM_BLOCK, payload,
-                f'PID 参数块 {index + 1}/{PARAM_BLOCK_COUNT}'):
+                f'PID 参数块 {index + 1}/{PID_PARAM_BLOCK_COUNT}'):
             return None
     commit = pack_param_commit_payload(
         PARAM_GROUP_PID,
         transaction,
-        PARAM_BLOCK_COUNT,
+        PID_PARAM_BLOCK_COUNT,
         table_crc,
     )
     if not send_ugcp_frame(conn, MSG_PARAM_COMMIT, commit, 'PID 参数提交'):
@@ -1043,10 +1108,10 @@ def run_auto_mode(conn):
 
         if rising['W']:
             packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = -200
+            packet["pitchmotor_speed_rpm"] = -50
         if rising['S']:
             packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = 200
+            packet["pitchmotor_speed_rpm"] = 50
         if rising['X']:
             packet["pitchmotor_enable"] = 0
             packet["pitchmotor_speed_rpm"] = 0
@@ -1184,8 +1249,9 @@ UGCTL_FIELDS = [
     "pid_valid", "required_crc", "active_crc", "depth_seq",
     "target_depth", "depth", "depth_error", "target_pitch_deg",
     "pitch_sp_deg", "pitch_deg", "pitch_error_deg",
-    "outer_p_deg", "outer_i_deg", "outer_d_deg", "outer_out_deg",
-    "outer_sat", "inner_p_rpm", "inner_i_rpm", "inner_d_rpm",
+    "outer_p_mm", "outer_i_mm", "outer_d_mm", "outer_out_mm",
+    "outer_sat", "target_displacement_mm", "displacement_mm",
+    "displacement_error_mm", "inner_p_rpm", "inner_i_rpm", "inner_d_rpm",
     "inner_out_rpm", "inner_sat", "worm_rpm", "pump_enable",
     "pump_direction", "thrust_pct", "config_req", "config_apply",
     "config_reject_count",
@@ -1198,6 +1264,63 @@ UGCTL_INT_FIELDS = {
     "config_apply", "config_reject_count",
 }
 UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
+
+#  蜗杆位置遥测($UGWRM)解析 + CSV 记录
+# 字段顺序必须与板端 EthernetUartDriver_SendWormTelemetry() 完全一致。
+UGWRM_FIELDS = [
+    "schema", "seq", "t_ms",
+    # 位置量：stroke_percent 是主输出（0=前限位，100=后限位），pulse 是原始真值
+    "pulse", "stroke_percent", "mm_from_front",
+    "span_valid", "data_fresh", "ref_kind", "ref_lost",
+    "pulse_min", "pulse_max", "span_pulses", "moving", "alarm",
+    # 回零进度（schema 2 新增）
+    "home_state", "home_fail", "pulse_home",
+    # 电机状态：命令 vs 反馈，用于看"发了没执行"
+    "cmd_rpm", "fb_rpm", "status_word", "err", "err_sub",
+    "input_ports", "limit_bits",
+    # 总线健康：与位置同一时刻，用于判断上面那些数可不可信
+    "poll_ok", "poll_fail", "overrun", "enable_resync", "last_error",
+]
+# 除两个百分比/毫米外全部按整数解析。
+UGWRM_INT_FIELDS = set(UGWRM_FIELDS) - {"stroke_percent", "mm_from_front"}
+UGWRM_CSV_HEADER = ["host_iso"] + UGWRM_FIELDS
+WORM_REF_KIND_NAMES = {0: "NONE", 1: "POWER_ON", 2: "HOMED"}
+WORM_HOME_STATE_NAMES = {
+    0: "IDLE 未回零", 1: "SEEK 快速趋近前限位", 2: "BACKOFF 慢速退出记零点",
+    3: "DONE 回零完成", 4: "FAILED 回零失败",
+}
+WORM_HOME_FAIL_NAMES = {
+    0: "-", 1: "SEEK_TIMEOUT 一直没撞到前限位", 2: "BACKOFF_TIMEOUT 退不出前限位",
+    3: "DATA_STALE 回零途中位置数据失效", 4: "CANCELLED 被取消或被 PID 接管",
+}
+
+
+def ugwrm_parse(line):
+    """严格解析 schema 2 的 $UGWRM；校验或字段数不符一律返回 None。"""
+    if not ekf_checksum_ok(line):
+        return None
+    star = line.rfind("*")
+    parts = line[1:star].split(",")
+    if not parts or parts[0] != "UGWRM":
+        return None
+    values = parts[1:]
+    if len(values) != len(UGWRM_FIELDS):
+        return None
+    row = {}
+    try:
+        for name, raw in zip(UGWRM_FIELDS, values):
+            row[name] = int(raw) if name in UGWRM_INT_FIELDS else float(raw)
+    except ValueError:
+        return None
+    if row["schema"] != 2:
+        return None
+    return row
+
+
+def ugwrm_csv_row(row):
+    return [datetime.now().isoformat(timespec="milliseconds")] + [
+        row[name] for name in UGWRM_FIELDS]
+
 PID_MODE_NAMES = {0: "OFF", 1: "PITCH_HOLD", 2: "DEPTH_CASCADE"}
 PID_PHASE_NAMES = {0: "DIVE", 1: "CLIMB"}
 PID_FAULT_NAMES = {
@@ -1210,6 +1333,7 @@ PID_FAULT_NAMES = {
     6: "DEPTH_STALE",
     7: "BAD_COMMAND",
     8: "CORE_REJECTED",
+    9: "DISPLACEMENT_INVALID",
 }
 PID_CORE_FAULT_NAMES = {
     0: "NONE",
@@ -1219,12 +1343,14 @@ PID_CORE_FAULT_NAMES = {
     4: "BAD_COMMAND",
     5: "BAD_DT",
     6: "DEPTH_SAMPLE_INVALID",
+    7: "DISPLACEMENT_INVALID",
 }
 PID_CONFIG_REJECT_NAMES = {
     0: "NONE",
     1: "ARMED",
     2: "CRC",
     3: "VALUE",
+    4: "NEUTRAL_DISPLACEMENT",
 }
 
 
@@ -1267,7 +1393,7 @@ def ekf_parse(line):
 
 
 def ugctl_parse(line):
-    """严格解析 schema v1 的 40 字段 $UGCTL。"""
+    """严格解析 schema v2 的 43 字段 $UGCTL。"""
     if not ekf_checksum_ok(line):
         return None
     star = line.rfind("*")
@@ -1283,7 +1409,7 @@ def ugctl_parse(line):
             row[name] = int(raw) if name in UGCTL_INT_FIELDS else float(raw)
     except ValueError:
         return None
-    if row["schema"] != 1:
+    if row["schema"] != 2:
         return None
     return row
 
@@ -1365,13 +1491,20 @@ def print_ugctl_status(row):
         )
     )
     print(
-        "  outer P/I/D/out = %.3f / %.3f / %.3f / %.3f deg; "
+        "  buoyancy P/I/D/out = %.3f / %.3f / %.3f / %.3f mm; "
         "inner P/I/D/out = %.2f / %.2f / %.2f / %.2f RPM"
         % (
-            row["outer_p_deg"], row["outer_i_deg"],
-            row["outer_d_deg"], row["outer_out_deg"],
+            row["outer_p_mm"], row["outer_i_mm"],
+            row["outer_d_mm"], row["outer_out_mm"],
             row["inner_p_rpm"], row["inner_i_rpm"],
             row["inner_d_rpm"], row["inner_out_rpm"],
+        )
+    )
+    print(
+        "  displacement target/meas/error = %.3f / %.3f / %.3f mm"
+        % (
+            row["target_displacement_mm"], row["displacement_mm"],
+            row["displacement_error_mm"],
         )
     )
     print(
@@ -1564,7 +1697,7 @@ class PidSession:
 
     def set_depth_target(self, target_depth_m):
         target = float(target_depth_m)
-        if not 0.0 <= target <= 1000.0:
+        if not -0.5 <= target <= 1000.0:
             raise ValueError("深度目标必须在 0..1000 m")
         with self._state_lock:
             if self._parameters is not None:
@@ -1762,17 +1895,17 @@ class PidSession:
 
 def print_pid_help():
     print("\n========== PID 调试界面 ==========")
-    print("  load <json>          加载并校验 16 个 PID 参数,不下发")
+    print("  load <json>          加载并校验 18 个控制参数,不下发")
     print("  set <field> <value>  修改内存参数,应用则必须重新 push")
     print("  save <json>          保存当前内存参数")
-    print("  params               显示当前 16 个参数及 CRC")
-    print("  push                 OFF 后发送 4+1 参数帧并等待 CRC ACK")
+    print("  params               显示当前 18 个参数及 CRC")
+    print("  push                 OFF 后发送 5+1 参数帧并等待 CRC ACK")
     print("  pitch <deg>          选择俯仰内环；负值低头，不会启动泵")
     print("  depth <m>            选择深度外环+俯仰内环；启动油泵状态机")
     print("  thrust <signed %>    推进器；+ 为 AUTO-I 方向，- 为 AUTO-K")
     print("  thrust off           推进器目标设为 0（仍需心跳包帧送达）")
     print("  arm / disarm         启动闭环心跳包 / 立即发送一次 OFF")
-    print("  status               显示上位机目标与最新板端 P/I/D/执行器状态")
+    print("  status               显示控制状态并请求一次传感器输入快照")
     print("  help / back          显示帮助 / 安全退出 PID 界面")
     print("注意：推进器正负对应实物前进/后退的命名，必须先在台架确认。")
     print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n")
@@ -1802,6 +1935,7 @@ def run_pid_mode(conn, ctl_store):
             "[PID] 板端已处于 OFF；pid_valid=%d active_crc=0x%08X"
             % (first_status["pid_valid"], first_status["active_crc"]))
 
+    PID_MODE_ACTIVE.set()
     try:
         while True:
             try:
@@ -1873,6 +2007,8 @@ def run_pid_mode(conn, ctl_store):
                     )
                     _, board = ctl_store.snapshot()
                     print_ugctl_status(board)
+                    # 使用独立 0x03 请求，不发送 CONTROL19，避免抢占 PID 控制权。
+                    send_snapshot_request(conn)
                 else:
                     print("[PID 命令] 格式错误；输入 help 查看用法")
             except (OSError, ValueError, RuntimeError) as exc:
@@ -1880,13 +2016,15 @@ def run_pid_mode(conn, ctl_store):
     except KeyboardInterrupt:
         print("\n[PID] Ctrl+C：安全退出 PID 界面")
     finally:
+        PID_MODE_ACTIVE.clear()
         session.close()
         send_stream_control(conn, previous_stream_mask, '恢复遥测流')
 
 
 #接收线程函数
-REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-EKF_LOG_DIR = os.path.join(REPO_ROOT, "logs", "csv")
+STATION_DIR = os.path.dirname(os.path.abspath(__file__))
+EKF_LOG_DIR = os.path.join(STATION_DIR, "logs", "ekf")
+CONTROL_LOG_DIR = os.path.join(STATION_DIR, "logs", "control")
 
 
 def receive_thread(conn, ctl_store=None):
@@ -1899,6 +2037,7 @@ def receive_thread(conn, ctl_store=None):
 
     # —— EKF 遥测 CSV：连接起把 $UGEKF 落盘，便于离线绘图 ——
     os.makedirs(EKF_LOG_DIR, exist_ok=True)
+    os.makedirs(CONTROL_LOG_DIR, exist_ok=True)
     ekf_csv_path = os.path.join(EKF_LOG_DIR, "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
     ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
     ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
@@ -1908,11 +2047,52 @@ def receive_thread(conn, ctl_store=None):
     ctl_csv = None
     ctl_csv_path = None
     ctl_stat = {"ok": 0, "bad": 0}
+    wrm_csv = None
+    wrm_csv_path = None
+    wrm_stat = {"ok": 0, "bad": 0, "last_home": None}
 
     def handle_line(raw_line):
-        nonlocal ctl_csv, ctl_csv_path
+        nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
         line = raw_line.strip()
         if not line:
+            return
+
+        # 蜗杆位置遥测：落 CSV，不打印（10Hz，打印会把控制台刷爆）。
+        # 坏帧计入 wrm_stat["bad"]，与 EKF 的 bad 一样用于观察链路误码。
+        if line.startswith("$UGWRM"):
+            row = ugwrm_parse(line)
+            if row is None:
+                wrm_stat["bad"] += 1
+                return
+            if wrm_csv is None:
+                wrm_csv_path = os.path.join(
+                    CONTROL_LOG_DIR,
+                    "worm_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
+                )
+                wrm_csv = open(
+                    wrm_csv_path, "w", encoding="utf-8", newline="")
+                wrm_csv.write(",".join(UGWRM_CSV_HEADER) + "\n")
+                wrm_csv.flush()
+                print(f"\n[WORM] 蜗杆位置遥测记录 -> {wrm_csv_path}")
+            wrm_csv.write(
+                ",".join(str(value) for value in ugwrm_csv_row(row)) + "\n")
+            wrm_csv.flush()
+            wrm_stat["ok"] += 1
+            # 回零会让电机自己跑，状态每次变化都要让人看见；不变则静默。
+            home_state = row["home_state"]
+            if home_state != wrm_stat["last_home"]:
+                wrm_stat["last_home"] = home_state
+                print()
+                name = WORM_HOME_STATE_NAMES.get(home_state, home_state)
+                if home_state == 4:
+                    reason = WORM_HOME_FAIL_NAMES.get(
+                        row["home_fail"], row["home_fail"])
+                    print("[回零] %s：%s" % (name, reason))
+                elif home_state == 3:
+                    print("[回零] %s  零点脉冲=%d  当前 stroke_percent=%.2f%%"
+                          % (name, row["pulse_home"], row["stroke_percent"]))
+                else:
+                    print("[回零] %s" % name)
             return
 
         # PID 遥测由本线程独占解析，再发布给 UgctlStore；PID 界面禁止 recv。
@@ -1923,7 +2103,7 @@ def receive_thread(conn, ctl_store=None):
                 return
             if ctl_csv is None:
                 ctl_csv_path = os.path.join(
-                    EKF_LOG_DIR,
+                    CONTROL_LOG_DIR,
                     "ctl_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
                 )
                 ctl_csv = open(
@@ -1954,7 +2134,7 @@ def receive_thread(conn, ctl_store=None):
             fl = row["fl"]
             key = (row["status"], (fl >> 0) & 1, (fl >> 1) & 1)  # (status, healthy, valid)
             now = time.time()
-            HB = 10.0  # 心跳间隔(秒)
+            HB = 2.0  # 心跳间隔(秒)
             if key != ekf_stat["last_key"] or (now - ekf_stat["last_print"] >= HB):
                 ekf_stat["last_key"] = key
                 ekf_stat["last_print"] = now
@@ -1978,7 +2158,7 @@ def receive_thread(conn, ctl_store=None):
         snap = assembler.feed_line(line)
         if snap is not None:
             print(f"\n[客户端] 已还原 EthernetUartSystemSnapshot，大小={ctypes.sizeof(snap)} 字节")
-            print_snapshot_struct(snap)
+            print_snapshot_for_active_mode(snap)
             return
 
         print(f"\n[客户端] {line}")
@@ -2059,6 +2239,9 @@ def main():
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
+    print("输入 'wormon' / 'wormoff' 开 / 停蜗杆位置遥测 $UGWRM（落 CSV，不打印）")
+    print("输入 'calib' 开始蜗杆回零（电机会自己走到前限位）")
+    print("输入 'calibstop' 中止回零")
     print("输入 'snapshot' 请求一次系统状态快照")
     print("输入 'quit' 或 'exit' 退出程序")
     print("==================================\n")
@@ -2084,10 +2267,27 @@ def main():
             elif user_input.lower() == 'ekfon':
                 send_telem_control(conn, 1)
                 print("[EKF] 已请求板子开始遥测")
+            elif user_input.lower() == 'wormon':
+                send_stream_control(
+                    conn, get_stream_control_mask() | STREAM_WRM)
+                print("[WORM] 已请求板子开始发送 $UGWRM")
+            elif user_input.lower() == 'wormoff':
+                send_stream_control(
+                    conn, get_stream_control_mask() & ~STREAM_WRM)
+                print("[WORM] 已请求板子停发 $UGWRM")
+            elif user_input.lower() == 'calib':
+                print("[回零] 电机即将自行走到前限位")
+                if input("确认开始？输入 yes 继续：").strip().lower() == 'yes':
+                    send_worm_calib(conn, True)
+                else:
+                    print("[回零] 已取消，未发送。")
+            elif user_input.lower() == 'calibstop':
+                send_worm_calib(conn, False)
+                print("[回零] 已请求中止")
             elif user_input.lower() == 'snapshot':
                 send_snapshot_request(conn)
             else:
-                print("[命令] 未识别，未发送；可用 pack/auto/pid/ekfon/ekfoff/snapshot/quit")
+                print("[命令] 未识别，未发送；可用 pack/auto/pid/ekfon/ekfoff/wormon/wormoff/calib/calibstop/snapshot/quit")
     except KeyboardInterrupt:
         print("\n检测到 Ctrl+C，退出。")
     finally:

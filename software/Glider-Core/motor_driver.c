@@ -42,7 +42,7 @@ volatile UMotor g_umotor = {
         .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
         .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
         .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
-        .status_read_reg_count = 0U,
+        .status_read_reg_count = MOTOR_STATUS_READ_REG_COUNT,
         .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
         .fault_read_reg_count = 0U
       },
@@ -75,7 +75,7 @@ volatile UMotor g_umotor = {
         .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
         .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
         .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
-        .status_read_reg_count = 0U,
+        .status_read_reg_count = MOTOR_STATUS_READ_REG_COUNT,
         .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
         .fault_read_reg_count = 0U
       },
@@ -108,7 +108,7 @@ volatile UMotor g_umotor = {
         .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
         .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
         .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
-        .status_read_reg_count = 0U,
+        .status_read_reg_count = MOTOR_STATUS_READ_REG_COUNT,
         .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
         .fault_read_reg_count = 0U
       },
@@ -141,7 +141,7 @@ volatile UMotor g_umotor = {
         .verify_read_start_reg = MOTOR_VERIFY_READ_START_REG,
         .verify_read_reg_count = MOTOR_VERIFY_READ_REG_COUNT,
         .status_read_start_reg = MOTOR_STATUS_READ_START_REG,
-        .status_read_reg_count = 0U,
+        .status_read_reg_count = MOTOR_STATUS_READ_REG_COUNT,
         .fault_read_start_reg = MOTOR_FAULT_READ_START_REG,
         .fault_read_reg_count = 0U
       },
@@ -348,6 +348,20 @@ static uint8_t Motor_Transfer(const uint8_t *tx_frame,
 
   *rx_got_len = 0U;
   g_motor_bus_diag.last_rx_len = 0U;
+
+  /*
+   * MODBUS-RTU 帧间静默(t3.5)。从站没有帧结束符，靠"连续 3.5 个字符时间没有新字节"
+   * 判定上一帧结束；本文件多处背靠背发帧(轮询链 stage1->stage2、速度块 0x0033->0x0037、
+   * 位置块连发 5 笔)，原先帧间间隔为 0，从站可能把两帧粘成一帧去算 CRC ——
+   * 实测驱动器报 0x0007=0x05 / 0x0008=0x51(MODBUS CRC 校验错误)。
+   * 放在唯一的发送入口统一补静默，比在每个调用点分别加可靠。
+   *
+   * 注意这句 osDelay 落在"发之前"，此刻总线空闲、没有任何接收在进行，
+   * 因此不可能引发接收超时/ORE；那类问题只发生在 Motor_ReceiveExact() 的逐字节循环内。
+   * 任务循环末尾用的是相对 osDelay 而非 osDelayUntil，多花的时间只是让周期变长，
+   * 不存在错过截止时间的问题。
+   */
+  osDelay(MOTOR_INTERFRAME_GAP_MS);
 
   /* 修改点，发送前先把接收侧清干净，否则一次溢出会让收发永久错开一帧。 */
   Motor_FlushRx();
@@ -1131,6 +1145,8 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
           dbg->reg_0006_actual_speed = (got_regs >= 7U) ? block_words[6U] : 0U;
           dbg->reg_0007_error_code = (got_regs >= 8U) ? block_words[7U] : 0U;
           dbg->reg_0008_error_subcode = (got_regs >= 9U) ? block_words[8U] : 0U;
+          /* 0x0009 输入端口状态: 判断限位是否也接进了驱动器 X 端子, 见 .h 中该字段说明。 */
+          dbg->reg_0009_input_ports = (got_regs >= 10U) ? block_words[9U] : 0U;
           dbg->reg_000B_pos_low = (got_regs >= 12U) ? block_words[11U] : 0U;
           dbg->reg_000C_pos_high = (got_regs >= 13U) ? block_words[12U] : 0U;
           dbg->pos_signed_32 = (int32_t)(((uint32_t)dbg->reg_000C_pos_high << 16) | dbg->reg_000B_pos_low);
@@ -1203,6 +1219,28 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
 
       node->status_word = status_word;
       node->feedback_speed_rpm = (int32_t)feedback_speed;
+      /*
+       * 使能记账以驱动器上报的真实状态(0x0004 Bit0)为准，不再盲信 last_motor_enable。
+       * 需要这么做的两个实测原因：
+       *  1) 驱动器报警(Bit6，如 0x07 超差)时会【自行释放电机】，本地却仍以为使能着；
+       *  2) 写 0x0039 的应答被 ORE 吞掉时，本地按"失败方向朝断电"记成了已发。
+       * 两种情况下都不再有使能跳变，于是 0x0039 永远不重写、报警永远不清，
+       * 表现为"发任何指令都不动，必须先按 X 再发"。
+       * 同步之后，下一拍 effective_enable 与之不符就会自动补写 0x0039：
+       * 补写 1 顺带产生使能上升沿，正是手册表 6.1 对 0x07 给出的清报警手段；
+       * 补写 0 则是把没写进去的释放重发一次，方向仍然朝断电，安全。
+       *
+       * 刻意【不】在这里清 last_sent_speed_rpm：这样报警清除后电机不会拿旧目标
+       * 自动重新冲出去，必须等上位机给一条新指令(target 变化)才会重发速度+START。
+       * 代价是"重复按同一个方向键不会自动重试"，这是有意为之的安全取舍。
+       */
+      if ((uint8_t)(status_word & 0x0001U) !=
+          g_motor_internal.last_motor_enable[index])
+      {
+        g_motor_internal.last_motor_enable[index] =
+            (uint8_t)(status_word & 0x0001U);
+        g_motor_bus_diag.enable_resync_count++;
+      }
       node->valid = 1U;
       node->comm_ok = 1U;
       node->rx_count++;

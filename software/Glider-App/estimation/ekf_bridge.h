@@ -55,7 +55,10 @@ extern volatile uint32_t g_ekf_imu_push_count;
 extern volatile uint32_t g_ekf_imu_drop_count;   /* 输入缓存被覆盖丢弃的帧数 */
 extern volatile uint32_t g_ekf_pressure_push_count;
 extern volatile uint32_t g_ekf_mag_push_count;   /* 已 push 的校正 mag 帧数 */
-extern volatile float    g_ekf_depth_meas;       /* 换算后的深度测量(m)，对比 out.depth_m */
+extern volatile float    g_ekf_depth_meas;       /* 零偏修正后的深度测量(m) */
+extern volatile float    g_ekf_pressure_zero_bar;/* 本次上电静态平均零偏(bar) */
+extern volatile uint32_t g_ekf_pressure_zero_sample_count;
+extern volatile uint8_t  g_ekf_pressure_zero_valid;
 extern volatile float    g_ekf_mag_cal[3];       /* 校正后 mag(模块系,uT)；转动时 |·| 应≈常数 */
 extern volatile uint32_t g_ekf_mag_cal_crc;      /* 当前已生效参数表 CRC32，遥测 ACK */
 extern volatile uint8_t  g_ekf_mag_cal_valid;    /* 1=已成功提交；0 时不 push mag */

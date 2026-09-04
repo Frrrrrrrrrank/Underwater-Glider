@@ -1,5 +1,6 @@
 /* 深度—俯仰级联控制器纯计算实现，接口与单位见 zigzag_control.h。 */
 #include <zigzag_control.h>
+#include <pump_driver.h>
 
 #include <math.h>
 #include <string.h>
@@ -60,6 +61,11 @@ uint8_t ZigzagControl_ValidateConfig(
       !isfinite(config->max_thrust_percent) ||
       !isfinite(config->surface_depth_m) ||
       !isfinite(config->depth_switch_threshold_m) ||
+      !isfinite(config->depth_to_pitch_alpha_rad_per_m) ||
+      !isfinite(config->displacement_min_mm) ||
+      !isfinite(config->displacement_neutral_mm) ||
+      !isfinite(config->displacement_max_mm) ||
+      !isfinite(config->displacement_deadzone_mm) ||
       !isfinite(config->pitch_actuator_sign))
   {
     return 0U;
@@ -71,8 +77,14 @@ uint8_t ZigzagControl_ValidateConfig(
       config->max_worm_rpm > 600.0f ||
       config->max_thrust_percent < 0.0f ||
       config->max_thrust_percent > 100.0f ||
-      config->surface_depth_m < 0.0f ||
-      config->depth_switch_threshold_m < 0.0f)
+      config->surface_depth_m < -0.2f || //板端二次校验设定水面深度，由于传感器误差暂设负数
+      config->depth_switch_threshold_m < 0.0f ||
+      config->depth_to_pitch_alpha_rad_per_m < 0.0f ||
+      config->depth_to_pitch_alpha_rad_per_m > (ZIGZAG_PI_F / 2.0f) ||
+      config->displacement_min_mm < 0.0f ||
+      config->displacement_neutral_mm <= config->displacement_min_mm ||
+      config->displacement_neutral_mm >= config->displacement_max_mm ||
+      config->displacement_deadzone_mm <= 0.0f)
   {
     return 0U;
   }
@@ -106,6 +118,8 @@ static void ZigzagControl_ResetLoops(ZigzagControl *control)
   control->last_depth_update_seq = 0U;
   control->depth_outer_elapsed_s = 0.0f;
   control->held_desired_pitch_rad = 0.0f;
+  control->held_target_displacement_mm =
+      control->config.displacement_neutral_mm;
   control->previous_pitch_rad = 0.0f;
   control->have_depth_sample = 0U;
   control->have_previous_pitch = 0U;
@@ -242,12 +256,12 @@ void ZigzagControl_DefaultConfig(ZigzagControlConfig *out_config)
   (void)memset(out_config, 0, sizeof(*out_config));
 
   /*
-   * 外环初值只参考 Glider_sim 的量纲和结构，不视为实机已整定参数。
+   * 浮力外环初值只用于形成合法默认配置，不视为实机已整定参数。
    * 内环 Kp=57.2958 RPM/rad 等价于旧代码的 1 RPM/deg。
    */
-  out_config->depth_outer.kp = 0.03f;
+  out_config->depth_outer.kp = 5.0f;
   out_config->depth_outer.ki = 0.0f;
-  out_config->depth_outer.kd = 0.1f;
+  out_config->depth_outer.kd = 1.0f;
   out_config->depth_outer.integral_limit = 2.0f;
   out_config->depth_outer.derivative_tau_s = 0.20f;
 
@@ -257,6 +271,14 @@ void ZigzagControl_DefaultConfig(ZigzagControlConfig *out_config)
   out_config->pitch_inner.integral_limit = 1.0f;
   out_config->pitch_inner.derivative_tau_s = 0.05f;
 
+  out_config->depth_to_pitch_alpha_rad_per_m = 0.03f;
+  out_config->displacement_min_mm = IO_PUMP_DISPLACEMENT_MIN_MM;
+  out_config->displacement_max_mm = IO_PUMP_DISPLACEMENT_MAX_MM;
+  out_config->displacement_neutral_mm =
+      0.5f * (out_config->displacement_min_mm +
+              out_config->displacement_max_mm);
+  out_config->displacement_deadzone_mm =
+      IO_PUMP_DISPLACEMENT_DEADZONE_MM;
   out_config->max_pitch_rad = ZIGZAG_DEFAULT_MAX_PITCH_RAD;
   out_config->max_worm_rpm = 50.0f;
   out_config->max_thrust_percent = 30.0f;
@@ -374,11 +396,16 @@ void ZigzagControl_Step(
     float dt_s,
     ZigzagControlOutput *output)
 {
-  float depth_pid_output = 0.0f;
+  float depth_pid_output_mm = 0.0f;
+  float depth_pid_output_min_mm;
+  float depth_pid_output_max_mm;
+  float depth_error_m;
   float desired_pitch_rad = 0.0f;
+  float displacement_error_mm;
   float pitch_error_derivative = 0.0f;
   float pitch_pid_output;
   uint8_t new_depth_sample;
+  uint8_t displacement_is_valid;
 
   if (output == NULL)
   {
@@ -393,12 +420,20 @@ void ZigzagControl_Step(
     return;
   }
 
+  displacement_is_valid =
+      (input->displacement_valid != 0U &&
+       isfinite(input->displacement_mm))
+          ? 1U
+          : 0U;
+
   output->mode = control->command.mode;
   output->phase = control->phase;
   output->armed = control->command.armed;
   output->command_id = control->command.command_id;
   output->measured_depth_m = input->depth_m;
   output->measured_pitch_rad = input->pitch_rad;
+  output->measured_displacement_mm =
+      isfinite(input->displacement_mm) ? input->displacement_mm : 0.0f;
 
   if (control->config_valid == 0U)
   {
@@ -471,42 +506,104 @@ void ZigzagControl_Step(
 
     if (new_depth_sample != 0U)
     {
+      depth_error_m = output->target_depth_m - input->depth_m;
+
       /*
-       * depth 向下为正，目标更深时误差为正；期望低头必须为负，
-       * 因此外环输出后显式取负号。D 项直接用 -vD，避免换相时
-       * 目标深度阶跃造成微分冲击。外环 dt 是两帧真实压力之间
-       * 累计的时间，不是 50Hz 内环的固定 20ms。
+       * depth 向下为正。浮力 PID 的正输出表示“需要减小浮力”，
+       * 所以目标位移为 neutral-u_b。输出上下限由中性位置到两个
+       * 物理端点的实际距离计算，不再写死为某个固定 mm 幅度。
+       *
+       * D 项直接使用误差导数 -vD，避免目标深度换相阶跃造成微分
+       * 冲击。外环 dt 是两帧真实压力之间累计的时间
+       *
+       * 位移反馈无效时冻结浮力 PID 和目标位移，避免执行器不可用
+       * 期间继续积分；俯仰目标仍根据本次深度误差正常刷新。
        */
-      depth_pid_output = ZigzagPid_Update(
-          &control->config.depth_outer,
-          &control->depth_outer_state,
-          output->target_depth_m - input->depth_m,
-          -input->vertical_velocity_mps,
-          control->depth_outer_elapsed_s,
-          -control->config.max_pitch_rad,
-          control->config.max_pitch_rad,
-          &control->depth_outer_telemetry);
-      control->held_desired_pitch_rad = -depth_pid_output;
+      if (displacement_is_valid != 0U)
+      {
+        depth_pid_output_min_mm =
+            control->config.displacement_neutral_mm -
+            control->config.displacement_max_mm;
+        depth_pid_output_max_mm =
+            control->config.displacement_neutral_mm -
+            control->config.displacement_min_mm;
+        depth_pid_output_mm = ZigzagPid_Update(
+            &control->config.depth_outer,
+            &control->depth_outer_state,
+            depth_error_m,
+            -input->vertical_velocity_mps,
+            control->depth_outer_elapsed_s,
+            depth_pid_output_min_mm,
+            depth_pid_output_max_mm,
+            &control->depth_outer_telemetry);
+        control->held_target_displacement_mm = ZigzagControl_Clamp(
+            control->config.displacement_neutral_mm - depth_pid_output_mm,
+            control->config.displacement_min_mm,
+            control->config.displacement_max_mm);
+      }
+
+      /*
+       * 姿态支路不再复用浮力 PID 输出：Alpha 只把深度误差换算成
+       * 俯仰目标。误差为正表示目标更深，因此用负号产生低头目标
+       */
+      control->held_desired_pitch_rad =
+          -control->config.depth_to_pitch_alpha_rad_per_m * depth_error_m;
       control->last_depth_update_seq = input->depth_update_seq;
       control->depth_outer_elapsed_s = 0.0f;
       control->have_depth_sample = 1U;
     }
 
     output->depth_outer = control->depth_outer_telemetry;
+    output->target_displacement_mm =
+        control->held_target_displacement_mm;
+    if (displacement_is_valid != 0U)
+    {
+      output->displacement_error_mm =
+          output->target_displacement_mm -
+          output->measured_displacement_mm;
+    }
+    else
+    {
+      output->displacement_error_mm = 0.0f;
+    }
     desired_pitch_rad = control->held_desired_pitch_rad;
 
     if (control->phase == ZIGZAG_PHASE_DIVE)
     {
       desired_pitch_rad = ZigzagControl_Clamp(
           desired_pitch_rad, -control->config.max_pitch_rad, 0.0f);
-      output->pump_enable = 1U;
-      output->pump_direction = 1U;
     }
     else
     {
       desired_pitch_rad = ZigzagControl_Clamp(
           desired_pitch_rad, 0.0f, control->config.max_pitch_rad);
+    }
+
+    /*
+     * 位置闭环使用底层给出的单一死区。目标更小时向最小位移方向
+     * 抽油（direction=1），目标更大时充油（direction=0）。
+     */
+    displacement_error_mm = output->displacement_error_mm;
+    if (displacement_is_valid == 0U)
+    {
+      output->pump_enable = 0U;
+      output->pump_direction = 0U;
+    }
+    else if (displacement_error_mm <=
+             -control->config.displacement_deadzone_mm)
+    {
       output->pump_enable = 1U;
+      output->pump_direction = 1U;
+    }
+    else if (displacement_error_mm >=
+             control->config.displacement_deadzone_mm)
+    {
+      output->pump_enable = 1U;
+      output->pump_direction = 0U;
+    }
+    else
+    {
+      output->pump_enable = 0U;
       output->pump_direction = 0U;
     }
   }
@@ -517,6 +614,9 @@ void ZigzagControl_Step(
         control->command.target_pitch_rad,
         -control->config.max_pitch_rad,
         control->config.max_pitch_rad);
+    output->target_displacement_mm =
+        output->measured_displacement_mm;
+    output->displacement_error_mm = 0.0f;
     output->pump_enable = 0U;
     output->pump_direction = 0U;
   }
@@ -557,5 +657,8 @@ void ZigzagControl_Step(
       -control->config.max_thrust_percent,
       control->config.max_thrust_percent);
   output->output_valid = 1U;
-  output->fault = ZIGZAG_FAULT_NONE;
+  output->fault =
+      (displacement_is_valid != 0U)
+          ? ZIGZAG_FAULT_NONE
+          : ZIGZAG_FAULT_DISPLACEMENT_INVALID;
 }

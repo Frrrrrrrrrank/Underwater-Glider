@@ -21,21 +21,28 @@ MSG_TELEM_CONTROL = MSG_STREAM_CONTROL
 MSG_SNAPSHOT_REQUEST = 0x03
 MSG_CONTROL19_LATCHED = 0x04
 MSG_CASCADE_COMMAND = 0x05
+# 蜗杆回零：payload 1 字节，1=开始，0=取消
+MSG_WORM_CALIB = 0x06
 MSG_PARAM_BLOCK = 0x10
 MSG_PARAM_COMMIT = 0x11
 
 STREAM_EKF = 0x01
 STREAM_MAG = 0x02
 STREAM_CTL = 0x04
-STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL
+# bit3：蜗杆位置遥测 $UGWRM（装机后 Ozone 不可用，位置量只能靠这条流看）
+STREAM_WRM = 0x08
+STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL | STREAM_WRM
 
 PARAM_GROUP_MAG_CAL = 1
 PARAM_GROUP_PID = 2
-PARAM_BLOCK_COUNT = 4
+MAG_CAL_BLOCK_COUNT = 4
+PID_PARAM_BLOCK_COUNT = 5
+# 兼容磁标定工具的旧名称；PID 发送必须使用 PID_PARAM_BLOCK_COUNT。
+PARAM_BLOCK_COUNT = MAG_CAL_BLOCK_COUNT
 PARAM_BLOCK_DATA_SIZE = 16
 PARAM_TABLE_SIZE = PARAM_BLOCK_COUNT * PARAM_BLOCK_DATA_SIZE
 MAG_CAL_TABLE_SIZE = 64
-PID_PARAM_TABLE_SIZE = 64
+PID_PARAM_TABLE_SIZE = 80
 
 CASCADE_SCHEMA_V1 = 1
 CASCADE_MODE_OFF = 0
@@ -44,22 +51,24 @@ CASCADE_MODE_DEPTH = 2
 CASCADE_FLAG_ARM = 0x01
 
 PID_PARAM_FIELDS = (
-    "depth_kp_deg_per_m",
-    "depth_ki_deg_per_m_s",
-    "depth_kd_deg_s_per_m",
-    "depth_integral_limit_m_s",
-    "depth_derivative_tau_s",
+    "buoyancy_kp_mm_per_m",
+    "buoyancy_ki_mm_per_m_s",
+    "buoyancy_kd_mm_s_per_m",
+    "buoyancy_integral_limit_m_s",
+    "buoyancy_derivative_tau_s",
     "pitch_kp_rpm_per_deg",
     "pitch_ki_rpm_per_deg_s",
     "pitch_kd_rpm_s_per_deg",
     "pitch_integral_limit_deg_s",
     "pitch_derivative_tau_s",
+    "depth_to_pitch_alpha_deg_per_m",
     "max_pitch_deg",
     "max_worm_rpm",
     "max_thrust_percent",
     "surface_depth_m",
     "depth_switch_threshold_m",
     "pitch_actuator_sign",
+    "displacement_neutral_mm",
 )
 
 _CORE_HEADER = struct.Struct("<BBHH")
@@ -69,7 +78,7 @@ _CASCADE_COMMAND = struct.Struct("<BBBBHHfffI")
 _PARAM_BLOCK = struct.Struct("<BBB16s")
 _PARAM_COMMIT = struct.Struct("<BBBI")
 _MAG_CAL_TABLE = struct.Struct("<16f")
-_PID_PARAM_TABLE = struct.Struct("<16f")
+_PID_PARAM_TABLE = struct.Struct("<20f")
 
 
 class UgcpProtocolError(ValueError):
@@ -379,19 +388,22 @@ def pack_pid_param_table(parameters):
     values = _float_vector(source, len(PID_PARAM_FIELDS), "pid_parameters")
     if any(value < 0.0 for value in values[:10]):
         raise UgcpProtocolError("PID 增益、积分限幅和微分滤波时间不得为负")
-    if not 0.0 < values[10] <= 90.0:
+    if not 0.0 <= values[10] <= 90.0:
+        raise UgcpProtocolError("depth_to_pitch_alpha_deg_per_m 必须在 [0, 90]")
+    if not 0.0 < values[11] <= 90.0:
         raise UgcpProtocolError("max_pitch_deg 必须在 (0, 90]")
-    if not 0.0 < values[11] <= 600.0:
+    if not 0.0 < values[12] <= 600.0:
         raise UgcpProtocolError("max_worm_rpm 必须在 (0, 600]")
-    if not 0.0 <= values[12] <= 100.0:
+    if not 0.0 <= values[13] <= 100.0:
         raise UgcpProtocolError("max_thrust_percent 必须在 [0, 100]")
-    if values[13] < 0.0 or values[14] < 0.0:
+    if values[14] < -0.2 or values[15] < 0.0:#values[14]是surface_depth_m
         raise UgcpProtocolError("深度阈值不得为负")
-    if values[15] not in (-1.0, 1.0):
+    if values[16] not in (-1.0, 1.0):
         raise UgcpProtocolError("pitch_actuator_sign 只能是 -1 或 +1")
 
     try:
-        table = _PID_PARAM_TABLE.pack(*values)
+        # neutral 的物理范围故意留给板端硬宏校验，以便 push 后返回专用原因码。
+        table = _PID_PARAM_TABLE.pack(*(values + [0.0, 0.0]))
     except (OverflowError, struct.error) as exc:
         raise UgcpProtocolError("PID 参数不能表示为 float32") from exc
     if not all(math.isfinite(value) for value in _PID_PARAM_TABLE.unpack(table)):
@@ -402,17 +414,19 @@ def pack_pid_param_table(parameters):
 def unpack_pid_param_table(table):
     table = bytes(table)
     if len(table) != PID_PARAM_TABLE_SIZE:
-        raise UgcpProtocolError("PID 参数表必须是 64 字节")
+        raise UgcpProtocolError("PID 参数表必须是 80 字节")
     values = _PID_PARAM_TABLE.unpack(table)
+    if values[18:] != (0.0, 0.0):
+        raise UgcpProtocolError("PID 参数表保留字段必须为 0")
     # 通过同一入口验证板端会接受该表，再返回带单位的字段名。
-    pack_pid_param_table(values)
-    return dict(zip(PID_PARAM_FIELDS, values))
+    pack_pid_param_table(values[:len(PID_PARAM_FIELDS)])
+    return dict(zip(PID_PARAM_FIELDS, values[:len(PID_PARAM_FIELDS)]))
 
 
 def split_param_table(table):
     table = bytes(table)
-    if len(table) != PARAM_TABLE_SIZE:
-        raise UgcpProtocolError("参数表必须是 64 字节")
+    if len(table) not in (MAG_CAL_TABLE_SIZE, PID_PARAM_TABLE_SIZE):
+        raise UgcpProtocolError("参数表必须是 64 或 80 字节")
     return tuple(
         table[offset:offset + PARAM_BLOCK_DATA_SIZE]
         for offset in range(0, len(table), PARAM_BLOCK_DATA_SIZE)
@@ -441,11 +455,16 @@ def pack_param_commit_payload(group, transaction, block_count, table_crc):
 
 
 def pack_stream_control_payload(mask):
-    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL。"""
+    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL，bit3=$UGWRM。"""
     mask = _require_u8(mask, "stream_mask")
     if mask & ~STREAM_ALL:
-        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL 三个 bit（0..7）")
+        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL/WRM 四个 bit（0..15）")
     return bytes((mask,))
+
+
+def pack_worm_calib_payload(start):
+    """蜗杆回零命令：True=开始回零，False=取消。板端只置标志，动作在 ServoTask 里。"""
+    return bytes((1 if start else 0,))
 
 
 def pack_telem_control_payload(enabled):

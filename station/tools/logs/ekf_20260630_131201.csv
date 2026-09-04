@@ -1,1 +1,0 @@
-host_iso,host_epoch,seq,t_ms,status,status_name,healthy,valid,still,finite,aligned,roll_deg,pitch_deg,yaw_deg,pN,pE,depth,vN,vE,vD,bgx,bgy,bgz,bax,bay,baz,Ppos,Pvel,Patt,nisD,accD,rejD,dstreak,dreset,dmeas,dt,imuhz,tlast

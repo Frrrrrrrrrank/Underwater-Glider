@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 磁力计硬铁/软铁标定,椭球拟合,离线,PC 端
-python tools\mag_calib_fit.py logs\csv\mag_时间戳.csv
+python station\tools\mag_calib_fit.py station\logs\mag\mag_时间戳.csv
 
 输入：mag_logger.py 采集的 mag_*.csv（列 mx,my,mz，模块系/FLU，uT）
 输出：硬铁偏置 b(3) + 软铁矩阵 A(3x3)，使  m_cal = A @ (m_raw - b)  近似落在

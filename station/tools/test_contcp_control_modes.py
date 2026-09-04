@@ -33,6 +33,10 @@ CONTROL_VALUES = (
 class ContcpControlModeTests(unittest.TestCase):
     def setUp(self):
         contcp_t.UGCP_TX_SEQUENCE = ugcp.SequenceCounter()
+        contcp_t.PID_MODE_ACTIVE.clear()
+
+    def tearDown(self):
+        contcp_t.PID_MODE_ACTIVE.clear()
 
     def test_default_is_stream_and_manual_can_select_latched(self):
         conn = FakeSocket()
@@ -65,6 +69,29 @@ class ContcpControlModeTests(unittest.TestCase):
         self.assertEqual(parsed[1][2][-1], 0)
         self.assertEqual(parsed[0][2][:-1], bytes(18))
         self.assertEqual(parsed[1][2], bytes(19))
+
+    def test_snapshot_display_is_full_in_auto_and_compact_in_pid(self):
+        snap = contcp_t.EthernetUartSystemSnapshot()
+        snap.displacement_mm_x10 = 893
+        snap.displacement_valid = 1
+        snap.limit_switch_bits = 0x07
+
+        auto_output = io.StringIO()
+        with contextlib.redirect_stdout(auto_output):
+            contcp_t.print_snapshot_for_active_mode(snap)
+        self.assertIn('"displacement_mm_x10": 893', auto_output.getvalue())
+        self.assertNotIn("[输入状态]", auto_output.getvalue())
+
+        contcp_t.PID_MODE_ACTIVE.set()
+        pid_output = io.StringIO()
+        with contextlib.redirect_stdout(pid_output):
+            contcp_t.print_snapshot_for_active_mode(snap)
+        self.assertIn(
+            "[输入状态] displacement=89.3 mm valid=1",
+            pid_output.getvalue(),
+        )
+        self.assertIn("limit_switch_bits=0x07", pid_output.getvalue())
+        self.assertNotIn('"displacement_mm_x10"', pid_output.getvalue())
 
 
 if __name__ == "__main__":

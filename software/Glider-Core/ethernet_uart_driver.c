@@ -6,6 +6,7 @@
 #include "pump_driver.h"
 #include "servo_driver.h"
 #include "limit_switch.h"
+#include "worm_axis.h"
 #include "ekf_bridge.h"   /* EkfBridge_CopyState / StateEstimate / g_ekf_depth_meas */
 #include "ekf_task.h"     /* g_ekf_imu_hz */
 #include "pid_control_service.h"
@@ -194,6 +195,19 @@ extern volatile GliderDebugView g_dbg_view;
 extern volatile GliderDebugQuickView g_dbg_quick;
 extern volatile IMUDebugView g_imu_debug;
 extern volatile uint8_t g_limit_switch_states[LIMIT_SWITCH_COUNT];
+/* ServoTask 发布的蜗杆命令 RPM，遥测里与实测反馈并列，便于看"发了没执行"。 */
+extern volatile int32_t g_rc_worm_cmd_rpm;
+
+/*
+ * 快照结构体尺寸的编译期护栏
+ * 板端与 station/contcp_t.py 的 ctypes 镜像必须严格同序同大小，否则解码整体错位 ——
+ * 以后再往结构体里加字段，这行会立刻编译失败，
+ * 同步改 Python 侧并把这里的期望值一起更新
+ * 当前布局68 字节 + int16 worm_stroke_percent_x100(偏移 68)
+ *           + uint8 worm_span_valid(偏移 70) + 1 字节尾部对齐 = 72。
+ */
+_Static_assert(sizeof(EthernetUartSystemSnapshot) == 72U,
+               "EthernetUartSystemSnapshot 大小变了：请同步 contcp_t.py 的 ctypes 镜像");
 
 volatile EthernetUartSystemSnapshot g_ethernet_system_snapshot = {0};
 
@@ -217,6 +231,7 @@ static uint32_t s_last_command_tick = 0U;
 static volatile uint8_t s_ekf_telem_enabled = 1U;
 static volatile uint8_t s_mag_telem_enabled = 0U;
 static volatile uint8_t s_ctl_telem_enabled = 0U;
+static volatile uint8_t s_wrm_telem_enabled = 0U;
 /* HAL_BUSY 时不篡改 HAL 内部状态，由 Ethernet task 在 READY 后重试挂接。 */
 static volatile uint8_t s_rx_rearm_pending = 0U;
 
@@ -229,7 +244,8 @@ static volatile uint8_t s_rx_rearm_pending = 0U;
 #define UGCP_CASCADE_SCHEMA_V1      1U
 #define UGCP_PARAM_GROUP_MAG_CAL    1U
 #define UGCP_PARAM_GROUP_PID        2U
-#define UGCP_PARAM_BLOCK_COUNT      4U
+#define UGCP_MAG_PARAM_BLOCK_COUNT  4U
+#define UGCP_PID_PARAM_BLOCK_COUNT  5U
 #define UGCP_PARAM_BLOCK_DATA_SIZE 16U
 #define UGCP_PARAM_BLOCK_PAYLOAD_SIZE 19U
 #define UGCP_PARAM_COMMIT_PAYLOAD_SIZE 7U
@@ -243,7 +259,8 @@ static uint8_t s_snapshot_pending = 0U;
 
 typedef struct
 {
-  uint8_t table[EKF_MAG_CAL_TABLE_BYTES];
+  /* PID 表 80 B 大于磁标定表 64 B，暂存区按两者最大值分配。 */
+  uint8_t table[PID_CONTROL_PARAM_TABLE_BYTES];
   uint8_t group;
   uint8_t transaction;
   uint8_t received_mask;
@@ -450,6 +467,20 @@ void EthernetUartDriver_UpdateSystemSnapshot(void)
         EthernetUartDriver_ScaleFloatToI16(eo->yaw * 57.2957795f, 10.0f);
     g_ethernet_system_snapshot.ekf_status = (uint8_t)eo->status;
     g_ethernet_system_snapshot.ekf_valid = (uint8_t)eo->valid_for_control;
+  }
+
+  /*
+   * 蜗杆行程位置。走 WormAxis_CopyState 取一致快照，不散读 g_worm_axis
+   * （ServoTask 每 20ms 整组刷新，散读会拿到"旧 percent 配新 span_valid"）。
+   * percent 由 stroke_percent 定点化：×100 后满量程 10000，int16 装得下。
+   * span_valid=0 时百分比无意义，但仍照实填 0，由上位机负责显示成"不可用"。
+   */
+  {
+    WormAxisState worm;
+    WormAxis_CopyState(&worm);
+    g_ethernet_system_snapshot.worm_stroke_percent_x100 =
+        EthernetUartDriver_ScaleFloatToI16(worm.stroke_percent, 100.0f);
+    g_ethernet_system_snapshot.worm_span_valid = worm.span_valid;
   }
 }
 
@@ -681,6 +712,7 @@ static void EthernetUartDriver_HandleParamBlock(
   uint8_t group;
   uint8_t transaction;
   uint8_t block;
+  uint8_t expected_block_count;
 
   if (payload == NULL || payload_length != UGCP_PARAM_BLOCK_PAYLOAD_SIZE)
   {
@@ -692,9 +724,17 @@ static void EthernetUartDriver_HandleParamBlock(
   group = payload[0];
   transaction = payload[1];
   block = payload[2];
-  if ((group != UGCP_PARAM_GROUP_MAG_CAL &&
-       group != UGCP_PARAM_GROUP_PID) ||
-      block >= UGCP_PARAM_BLOCK_COUNT)
+  if (group != UGCP_PARAM_GROUP_MAG_CAL &&
+      group != UGCP_PARAM_GROUP_PID)
+  {
+    g_ethernet_uart_diag.parameter_reject_count++;
+    return;
+  }
+  expected_block_count =
+      (group == UGCP_PARAM_GROUP_PID)
+          ? UGCP_PID_PARAM_BLOCK_COUNT
+          : UGCP_MAG_PARAM_BLOCK_COUNT;
+  if (block >= expected_block_count)
   {
     g_ethernet_uart_diag.parameter_reject_count++;
     return;
@@ -728,8 +768,8 @@ static void EthernetUartDriver_HandleParamCommit(
     const uint8_t *payload, uint16_t payload_length)
 {
   uint32_t expected_crc;
-  const uint8_t all_blocks_mask =
-      (uint8_t)((1U << UGCP_PARAM_BLOCK_COUNT) - 1U);
+  uint8_t expected_block_count;
+  uint8_t all_blocks_mask;
 
   if (payload == NULL || payload_length != UGCP_PARAM_COMMIT_PAYLOAD_SIZE)
   {
@@ -739,9 +779,19 @@ static void EthernetUartDriver_HandleParamCommit(
   }
 
   expected_crc = EthernetUartDriver_ReadLeU32(&payload[3]);
-  if ((payload[0] != UGCP_PARAM_GROUP_MAG_CAL &&
-       payload[0] != UGCP_PARAM_GROUP_PID) ||
-      payload[2] != UGCP_PARAM_BLOCK_COUNT ||
+  if (payload[0] != UGCP_PARAM_GROUP_MAG_CAL &&
+      payload[0] != UGCP_PARAM_GROUP_PID)
+  {
+    g_ethernet_uart_diag.parameter_reject_count++;
+    return;
+  }
+  expected_block_count =
+      (payload[0] == UGCP_PARAM_GROUP_PID)
+          ? UGCP_PID_PARAM_BLOCK_COUNT
+          : UGCP_MAG_PARAM_BLOCK_COUNT;
+  all_blocks_mask =
+      (uint8_t)((1U << expected_block_count) - 1U);
+  if (payload[2] != expected_block_count ||
       s_param_stage.group != payload[0] ||
       s_param_stage.transaction != payload[1] ||
       s_param_stage.received_mask != all_blocks_mask)
@@ -809,6 +859,8 @@ static void EthernetUartDriver_DispatchFrame(
             ((payload[0] & ETHERNET_UART_STREAM_MAG) != 0U) ? 1U : 0U;
         s_ctl_telem_enabled =
             ((payload[0] & ETHERNET_UART_STREAM_CTL) != 0U) ? 1U : 0U;
+        s_wrm_telem_enabled =
+            ((payload[0] & ETHERNET_UART_STREAM_WRM) != 0U) ? 1U : 0U;
         g_ethernet_uart_diag.telemetry_control_count++;
       }
       break;
@@ -822,6 +874,29 @@ static void EthernetUartDriver_DispatchFrame(
       {
         s_snapshot_pending = 1U;
         g_ethernet_uart_diag.snapshot_request_count++;
+      }
+      break;
+
+    /*
+     * 蜗杆回零命令。payload 1 字节：1=开始回零，0=取消。
+     * 这里【只置标志】，不做任何动作 —— 真正的状态推进和转速产出都在
+     * ServoTask 的 WormAxis_Step() 里，执行器写点仍然只有 StartServoTask 一处。
+     * 刻意不设租约/心跳：回零是一次性动作，本身带分段超时；
+     * 断链要停的话，上位机发一次 0 取消即可。
+     */
+    case ETHERNET_UART_MSG_WORM_CALIB:
+      if (payload_length != 1U || payload[0] > 1U)
+      {
+        g_ethernet_uart_diag.frame_length_error_count++;
+        g_ethernet_uart_diag.frame_type_error_count++;
+      }
+      else if (payload[0] != 0U)
+      {
+        WormAxis_RequestHoming();
+      }
+      else
+      {
+        WormAxis_CancelHoming();
       }
       break;
 
@@ -1202,6 +1277,7 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
   s_ekf_telem_enabled = 1U;
   s_mag_telem_enabled = 0U;
   s_ctl_telem_enabled = 0U;
+  s_wrm_telem_enabled = 0U;
   (void)memset(s_ugcp_parse_buffer, 0, sizeof(s_ugcp_parse_buffer));
   (void)memset(&s_param_stage, 0, sizeof(s_param_stage));
   (void)memset((void *)&g_ethernet_uart_readout_pack,
@@ -1233,6 +1309,7 @@ void EthernetUartDriver_RunTask(void *argument)
   static uint32_t s_last_ekf_tx_tick = 0U; /* EKF 遥测上次推送 tick */
   static uint32_t s_last_mag_tx_tick = 0U; /* MAG 遥测有自己的周期，不依赖 EKF */
   static uint32_t s_last_ctl_tx_tick = 0U; /* PID 控制/ACK 独立周期 */
+  static uint32_t s_last_wrm_tx_tick = 0U; /* 蜗杆位置遥测独立周期 */
 
   for (;;)
   {
@@ -1318,6 +1395,15 @@ void EthernetUartDriver_RunTask(void *argument)
         if (EthernetUartDriver_SendControlTelemetry() == HAL_OK)
         {
           s_last_ctl_tx_tick = now;
+        }
+      }
+      else if (s_tx_busy == 0U &&
+          (s_wrm_telem_enabled != 0U) &&
+          ((now - s_last_wrm_tx_tick) >= ETHERNET_UART_WRM_PERIOD_MS))
+      {
+        if (EthernetUartDriver_SendWormTelemetry() == HAL_OK)
+        {
+          s_last_wrm_tx_tick = now;
         }
       }
       /* 保留原心跳计数（AT 心跳本就注释掉，仅留 liveness 计数） */
@@ -1579,12 +1665,13 @@ void EthernetUartDriver_SendEkfTelemetry(void)
 }
 
 /*
- * PID 控制遥测/ACK（schema v1）：
+ * PID 控制遥测/ACK（schema v2）：
  * $UGCTL,schema,seq,t_ms,mode,phase,armed,output_valid,fault,core_fault,
  * config_reject,command_id,age_ms,pid_valid,required_crc,active_crc,depth_seq,
  * target_depth,depth,depth_error,target_pitch_deg,pitch_sp_deg,pitch_deg,
- * pitch_error_deg,outer_P_deg,outer_I_deg,outer_D_deg,outer_out_deg,outer_sat,
- * inner_P_rpm,inner_I_rpm,inner_D_rpm,inner_out_rpm,inner_sat,worm_rpm,
+ * pitch_error_deg,outer_P_mm,outer_I_mm,outer_D_mm,outer_out_mm,outer_sat,
+ * target_x_mm,x_mm,x_error_mm,inner_P_rpm,inner_I_rpm,inner_D_rpm,
+ * inner_out_rpm,inner_sat,worm_rpm,
  * pump_enable,pump_direction,thrust_pct,config_req,config_apply,config_reject*HH
  */
 HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
@@ -1618,7 +1705,7 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
   line[i++] = 'T';
   line[i++] = 'L';
 
-  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 1UL, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 2UL, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.update_seq, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.update_tick_ms, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.requested_mode, 1);
@@ -1643,11 +1730,14 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->measured_pitch_rad * rad_to_deg, 2);
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.error * rad_to_deg, 2);
 
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.p_term * rad_to_deg, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.i_term * rad_to_deg, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.d_term * rad_to_deg, 3);
-  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.output * rad_to_deg, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.p_term, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.i_term, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.d_term, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->depth_outer.output, 3);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)o->depth_outer.saturated, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->target_displacement_mm, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->measured_displacement_mm, 3);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->displacement_error_mm, 3);
 
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.p_term, 2);
   line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, o->pitch_inner.i_term, 2);
@@ -1661,6 +1751,121 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.config_request_count, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.config_apply_count, 1);
   line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)status.config_reject_count, 1);
+
+  for (k = 1; k < i; k++)
+  {
+    cks ^= (uint8_t)line[k];
+  }
+  line[i++] = '*';
+  line[i++] = hex_chars[(cks >> 4) & 0x0FU];
+  line[i++] = hex_chars[cks & 0x0FU];
+  line[i++] = '\r';
+  line[i++] = '\n';
+
+  return EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)i);
+}
+
+/*
+ * 蜗杆位置遥测 $UGWRM（schema 1）
+ *
+ * 为什么单独一条语句而不是扩进 $UGEKF / $UGCTL：
+ *  1) contcp_t.py / ekf_logger.py 都按"前缀过滤 + 字段数严格校验"解析，新前缀会被
+ *     旧解析器直接忽略，不破坏队友已有协议（$UGMAG 当初就是这么加的）；
+ *  2) $UGCTL 只在 PID 会话里发（s_ctl_telem_enabled 默认 0），而台架用 SBUS 或
+ *     station 的 pack 直接推电机时根本不在 PID 会话中，那时 $UGCTL 一个字都不会出来。
+ *
+ * 为什么把总线诊断量和位置量放【同一行】：
+ *   EMI 尚未治理（AGENT_STATUS 风险 9-penta），位置数据的可信度必须能和总线健康
+ *   对照着看 —— 位置跳变的同时 overrun/poll_fail 也在涨，那就是通讯问题不是机械问题。
+ *   拆成两条语句发，这个时间相关性就丢了。
+ *
+ * 其它约束：
+ *  - 走 WormAxis_CopyState 取一致快照，不散读 g_worm_axis（ServoTask 每 20ms 在写）。
+ *  - 浮点一律走 AppendFixed：链接用 nano.specs 且未加 -u _printf_float，
+ *    snprintf("%f") 无效（见 AGENTS.md 构建约定）。
+ *  - line[] 必须是 static：HAL_UART_Transmit_IT 返回后仍在后台读该缓冲。
+ */
+HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void)
+{
+  static const char hex_chars[] = "0123456789ABCDEF";
+  static char line[256];        /* 本行满载约 170 字节，256 足够 */
+  static uint32_t s_wrm_seq = 0U;
+  WormAxisState w;
+  uint8_t limit_bits = 0U;
+  uint8_t cks = 0U;
+  uint32_t n;
+  int i = 0;
+  int k;
+
+  if (s_uart == NULL)
+  {
+    return HAL_ERROR;
+  }
+  if (s_tx_busy != 0U)
+  {
+    g_ethernet_uart_diag.tx_busy_count++;
+    return HAL_BUSY;
+  }
+
+  WormAxis_CopyState(&w);
+  s_wrm_seq++;
+
+  /* 限位打包沿用本文件快照的既有约定：bit 置 1 = states[i] != 0 = 【未】触发。 */
+  for (n = 0U; n < LIMIT_SWITCH_COUNT; n++)
+  {
+    if (g_limit_switch_states[n] != 0U)
+    {
+      limit_bits |= (uint8_t)(1U << n);
+    }
+  }
+
+  line[i++] = '$';
+  line[i++] = 'U';
+  line[i++] = 'G';
+  line[i++] = 'W';
+  line[i++] = 'R';
+  line[i++] = 'M';
+
+  /* schema 2：相对 1 在 alarm 之后插入了 home_state / home_fail / pulse_home。
+     旧上位机按字段数严格校验，会直接拒收而不是错位解析。 */
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, 2UL, 1); /* schema */
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)s_wrm_seq, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)HAL_GetTick(), 1);
+
+  /* ---- 位置量：stroke_percent 是主输出，pulse 是原始真值 ---- */
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)w.pulse, 0);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, w.stroke_percent, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, w.mm_from_front, 2);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.span_valid, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.data_fresh, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.reference_kind, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.reference_lost_count, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)w.pulse_min_seen, 0);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)w.pulse_max_seen, 0);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)w.span_pulses, 0);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.moving, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.alarm, 1);
+
+  /* ---- 回零进度（schema 2 新增）：回零是会让电机自己跑的动作，必须能远程看见 ---- */
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.home_state, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)w.home_fail, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)w.pulse_home_front, 0);
+
+  /* ---- 电机状态：命令 vs 反馈，用于看"发了没执行" ---- */
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)g_rc_worm_cmd_rpm, 0);
+  line[i++] = ','; i += EthernetUartDriver_AppendFixed(line + i, (float)g_umotor.nodes[WORM_AXIS_MOTOR_SLOT].feedback_speed_rpm, 0);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.nodes[WORM_AXIS_MOTOR_SLOT].status_word, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.nodes[WORM_AXIS_MOTOR_SLOT].debug.reg_0007_error_code, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.nodes[WORM_AXIS_MOTOR_SLOT].debug.reg_0008_error_subcode, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.nodes[WORM_AXIS_MOTOR_SLOT].debug.reg_0009_input_ports, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)limit_bits, 1);
+
+  /* ---- 总线健康：与上面的位置同一时刻，用于判断位置可不可信 ---- */
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.nodes[WORM_AXIS_MOTOR_SLOT].debug.poll_ok_count, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.nodes[WORM_AXIS_MOTOR_SLOT].debug.poll_fail_count, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.bus_diag.overrun_count, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.bus_diag.enable_resync_count, 1);
+  line[i++] = ','; i += EthernetUartDriver_AppendUint(line + i, (unsigned long)g_umotor.bus_diag.last_error, 1);
 
   for (k = 1; k < i; k++)
   {

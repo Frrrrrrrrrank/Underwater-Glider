@@ -4,7 +4,12 @@
 脚本按板端启动次数划分实验会话，使用板端时间戳拼接上位机重连日志，
 为每个会话生成运动总览图，并为深度更新质量最好的会话生成 pitch-vD 相图
 
-在相对路径中 Python plot_ekf_logs.py
+默认从 station/logs/ekf 读取日志，并把分析结果写入 station/plots
+
+cd D:\ForSTM32\xinjian\Underwater-Glider
+
+python station\tools\plot_ekf_trajectory_3d.py --date 20260805
+python station\tools\plot_ekf_logs.py --date 20260805
 """
 
 from __future__ import annotations
@@ -484,6 +489,7 @@ def plot_phase(
 
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
+    station_dir = script_dir.parent
     parser = argparse.ArgumentParser(
         description="分组、汇总并绘制水下滑翔机 EKF 日志。"
     )
@@ -494,13 +500,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--input-dir",
         type=Path,
-        default=script_dir.parent / "csv",
+        default=station_dir / "logs" / "ekf",
         help="包含 ekf_YYYYMMDD_HHMMSS.csv 日志的目录。",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=script_dir / "plots",
+        default=station_dir / "plots",
         help="PNG 图和汇总 CSV 的输出目录。",
     )
     parser.add_argument(

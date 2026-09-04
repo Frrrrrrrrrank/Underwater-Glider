@@ -24,7 +24,7 @@
 #define GLIDER_TX_MODE_POSITION_TEST 1U
 #define GLIDER_TX_MODE_RECEIVE_ONLY 2U
 /* Only edit this macro to change the target platform card ID. */
-#define GLIDER_TARGET_CARD_ID "381127"
+#define GLIDER_TARGET_CARD_ID "1462102"
 #define GLIDER_PLATFORM_CARD_ID GLIDER_TARGET_CARD_ID
 #define GLIDER_SIGNAL_STABLE_COUNT 2U
 #define GLIDER_MODE_SWITCH_COOLDOWN_LINES 3U
@@ -51,8 +51,11 @@ static volatile uint32_t s_tx_fail_count = 0;
 static volatile uint32_t s_tx_last_hal_status = 0;
 static volatile uint32_t s_tx_last_uart_error = 0;
 static volatile uint32_t s_shortmsg_sent_count = 0;
+static volatile uint32_t s_bdpwi_signal_available = 0;
 static char s_last_tx_text[32] = {0};
 static char s_last_shortmsg_payload[96] = {0};
+
+volatile GliderTargetCoordinate g_target_coordinate = {0};
 
 typedef struct
 {
@@ -147,6 +150,29 @@ static const char *s_boot_test_cmds[] = {
 };
 
 static void update_local_card_id(const char *parsed);
+
+static void cache_target_coordinate(const GliderRdssDecodedFrame *frame)
+{
+  size_t i = 0U;
+
+  if (frame == NULL || !frame->is_bds_command || !frame->bds_command.valid)
+  {
+    return;
+  }
+
+  g_target_coordinate.valid = 0U;
+  for (i = 0U; i < sizeof(g_target_coordinate.source_card); i++)
+  {
+    g_target_coordinate.source_card[i] = frame->bds_command.sender_card[i];
+  }
+  g_target_coordinate.latitude_deg_e7 = frame->bds_command.latitude_deg_e7;
+  g_target_coordinate.longitude_deg_e7 = frame->bds_command.longitude_deg_e7;
+  g_target_coordinate.latitude_deg = ((float)frame->bds_command.latitude_deg_e7) / 10000000.0f;
+  g_target_coordinate.longitude_deg = ((float)frame->bds_command.longitude_deg_e7) / 10000000.0f;
+  g_target_coordinate.last_update_tick = HAL_GetTick();
+  g_target_coordinate.update_count++;
+  g_target_coordinate.valid = 1U;
+}
 
 static void request_rd_mode_soft(uint32_t now)
 {
@@ -341,6 +367,51 @@ static bool try_parse_signal_from_bdbsi(const char *line, uint32_t *has_good_sig
   return true;
 }
 
+static void update_signal_state(uint32_t new_signal_good)
+{
+  if (new_signal_good != 0U)
+  {
+    s_signal_good_streak++;
+    s_signal_bad_streak = 0U;
+    if (s_signal_good_streak > GLIDER_SIGNAL_STABLE_COUNT)
+    {
+      s_signal_good_streak = GLIDER_SIGNAL_STABLE_COUNT;
+    }
+  }
+  else
+  {
+    s_signal_bad_streak++;
+    s_signal_good_streak = 0U;
+    if (s_signal_bad_streak > GLIDER_SIGNAL_STABLE_COUNT)
+    {
+      s_signal_bad_streak = GLIDER_SIGNAL_STABLE_COUNT;
+    }
+  }
+
+  if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT)
+  {
+    s_signal_good = 1U;
+  }
+  else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT)
+  {
+    s_signal_good = 0U;
+  }
+
+  if (s_mode_switch_cooldown == 0U && s_shortmsg_pending == 0U && s_tc_mode_active == 0U && s_tc_mode_requested == 0U)
+  {
+    if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_POSITION_TEST)
+    {
+      s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
+      s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
+    }
+    else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_SIGNAL_POLL)
+    {
+      s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
+      s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
+    }
+  }
+}
+
 static bool try_parse_target_card_from_sendto(const char *line)
 {
   size_t i = 0U;
@@ -429,6 +500,8 @@ static bool cache_coordinate_shortmsg(const GliderRdssDecodedFrame *frame)
   int sign_lon = 0;
   uint32_t abs_lat = 0U;
   uint32_t abs_lon = 0U;
+  uint32_t lat_ten_thousandths = 0U;
+  uint32_t lon_ten_thousandths = 0U;
 
   if (frame == NULL)
   {
@@ -439,19 +512,19 @@ static bool cache_coordinate_shortmsg(const GliderRdssDecodedFrame *frame)
   sign_lon = (frame->gnrmc.longitude_deg_e7 >= 0) ? 1 : -1;
   abs_lat = (uint32_t)((sign_lat > 0) ? frame->gnrmc.latitude_deg_e7 : -frame->gnrmc.latitude_deg_e7);
   abs_lon = (uint32_t)((sign_lon > 0) ? frame->gnrmc.longitude_deg_e7 : -frame->gnrmc.longitude_deg_e7);
+  lat_ten_thousandths = (abs_lat + 500U) / 1000U;
+  lon_ten_thousandths = (abs_lon + 500U) / 1000U;
 
   written = snprintf(
       payload,
       sizeof(payload),
-      "LAT=%c%lu.%07lu,LON=%c%lu.%07lu,UTC=%s,DATE=%s\r\n",
+      "LAT=%c%lu.%04lu,LON=%c%lu.%04lu",
       (sign_lat > 0) ? '+' : '-',
-      (unsigned long)(abs_lat / 10000000U),
-      (unsigned long)(abs_lat % 10000000U),
+      (unsigned long)(lat_ten_thousandths / 10000U),
+      (unsigned long)(lat_ten_thousandths % 10000U),
       (sign_lon > 0) ? '+' : '-',
-      (unsigned long)(abs_lon / 10000000U),
-      (unsigned long)(abs_lon % 10000000U),
-      frame->gnrmc.utc,
-      frame->gnrmc.date);
+      (unsigned long)(lon_ten_thousandths / 10000U),
+      (unsigned long)(lon_ten_thousandths % 10000U));
 
   if (written <= 0 || (size_t)written >= sizeof(payload))
   {
@@ -579,36 +652,20 @@ static bool try_send_pending_shortmsg(void)
 
   if (s_transparent_mode_ready == 0U)
   {
-    if (s_current_target_card_known == 0U && s_target_card_query_attempted == 0U)
+    written = snprintf(cmd, sizeof(cmd), GLIDER_SET_CARD_CMD_FMT, GLIDER_PLATFORM_CARD_ID);
+    if (written <= 0 || (size_t)written >= sizeof(cmd))
     {
-      if (GliderCore_SendText(GLIDER_QUERY_TARGET_CARD_CMD) != HAL_OK)
-      {
-        return false;
-      }
-      s_target_card_query_attempted = 1U;
+      return false;
+    }
+    if (GliderCore_SendText(cmd) != HAL_OK)
+    {
       return false;
     }
 
-    if (s_current_target_card_known == 0U || s_current_target_card_match == 0U)
-    {
-      written = snprintf(cmd, sizeof(cmd), GLIDER_SET_CARD_CMD_FMT, GLIDER_PLATFORM_CARD_ID);
-      if (written <= 0 || (size_t)written >= sizeof(cmd))
-      {
-        return false;
-      }
-      if (GliderCore_SendText(cmd) != HAL_OK)
-      {
-        return false;
-      }
-      strncpy(s_current_target_card, GLIDER_PLATFORM_CARD_ID, sizeof(s_current_target_card) - 1U);
-      s_current_target_card[sizeof(s_current_target_card) - 1U] = '\0';
-      s_current_target_card_known = 1U;
-      s_current_target_card_match = 1U;
-      s_target_card_query_attempted = 0U;
-      s_transparent_mode_ready = 1U;
-      return false;
-    }
-
+    strncpy(s_current_target_card, GLIDER_PLATFORM_CARD_ID, sizeof(s_current_target_card) - 1U);
+    s_current_target_card[sizeof(s_current_target_card) - 1U] = '\0';
+    s_current_target_card_known = 1U;
+    s_current_target_card_match = 1U;
     s_target_card_query_attempted = 0U;
     s_transparent_mode_ready = 1U;
     return false;
@@ -712,6 +769,7 @@ static void process_line(const char *line)
   }
 
   s_rx_line_count++;
+  cache_target_coordinate(&s_decoded_frame);
   if (s_mode_switch_cooldown > 0U)
   {
     s_mode_switch_cooldown--;
@@ -804,48 +862,18 @@ static void process_line(const char *line)
   {
     s_rd_mode_active = 1U;
     s_rn_mode_active = 0U;
+    if (s_bdpwi_signal_available == 0U)
+    {
+      update_signal_state(new_signal_good);
+    }
+  }
 
-    if (new_signal_good != 0U)
-    {
-      s_signal_good_streak++;
-      s_signal_bad_streak = 0U;
-      if (s_signal_good_streak > GLIDER_SIGNAL_STABLE_COUNT)
-      {
-        s_signal_good_streak = GLIDER_SIGNAL_STABLE_COUNT;
-      }
-    }
-    else
-    {
-      s_signal_bad_streak++;
-      s_signal_good_streak = 0U;
-      if (s_signal_bad_streak > GLIDER_SIGNAL_STABLE_COUNT)
-      {
-        s_signal_bad_streak = GLIDER_SIGNAL_STABLE_COUNT;
-      }
-    }
-
-    if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT)
-    {
-      s_signal_good = 1U;
-    }
-    else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT)
-    {
-      s_signal_good = 0U;
-    }
-
-    if (s_mode_switch_cooldown == 0U && s_shortmsg_pending == 0U && s_tc_mode_active == 0U && s_tc_mode_requested == 0U)
-    {
-      if (s_signal_good_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_POSITION_TEST)
-      {
-        s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
-        s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
-      }
-      else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_SIGNAL_POLL)
-      {
-        s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
-        s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
-      }
-    }
+  if (s_decoded_frame.is_bdpwi)
+  {
+    s_rd_mode_active = 1U;
+    s_rn_mode_active = 0U;
+    s_bdpwi_signal_available = 1U;
+    update_signal_state(s_decoded_frame.bdpwi.signal_good ? 1U : 0U);
   }
 
   if (s_decoded_frame.is_rn_mode || s_decoded_frame.is_gnrmc)
@@ -943,6 +971,7 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_tx_fail_count = 0;
   s_tx_last_hal_status = 0;
   s_tx_last_uart_error = 0;
+  s_bdpwi_signal_available = 0U;
   s_signal_good = 0U;
   s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
   s_shortmsg_sent_count = 0U;
@@ -974,6 +1003,7 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_cached_shortmsg_payload[0] = '\0';
   s_local_card_id[0] = '\0';
   s_current_target_card[0] = '\0';
+  memset((void *)&g_target_coordinate, 0, sizeof(g_target_coordinate));
 
   if (s_uart != NULL)
   {
@@ -1236,7 +1266,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   PressureSensorDriver_OnRxComplete(huart);
   SbusDriver_OnRxComplete(huart);
   EthernetUartDriver_OnRxComplete(huart);
-  DisplacementSensor_OnRxComplete(huart);//线位移传感器中断回调
+  DisplacementSensor_OnRxComplete(huart);//??????????
 
   /* Forward to IMU module if it matches the configured IMU UART. */
   IMU_OnUART_RxComplete(huart);
