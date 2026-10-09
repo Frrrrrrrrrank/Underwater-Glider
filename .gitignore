@@ -19,6 +19,11 @@ Thumbs.db
 # Python bytecode/cache (generated locally; source tests remain versioned)
 __pycache__/
 *.py[cod]
+/station/.venv/
+
+# URGC frontend generated dependencies and build output
+/station/frontend/node_modules/
+/station/frontend/dist/
 
 # Generated station telemetry logs and analysis outputs
 /station/logs/ekf/*
@@ -27,6 +32,7 @@ __pycache__/
 !/station/logs/mag/.gitkeep
 /station/logs/control/*
 !/station/logs/control/.gitkeep
+/station/logs/sessions/
 /station/plots/*
 !/station/plots/.gitkeep
 

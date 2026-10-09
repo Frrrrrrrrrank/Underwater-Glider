@@ -59,13 +59,13 @@ class UgcpProtocolTests(unittest.TestCase):
         self.assertEqual(ugcp.MSG_CASCADE_COMMAND, 0x05)
         self.assertEqual(ugcp.MSG_STREAM_CONTROL, ugcp.MSG_TELEM_CONTROL)
         self.assertEqual(
-            [ugcp.pack_stream_control_payload(mask) for mask in range(8)],
-            [bytes((mask,)) for mask in range(8)],
+            [ugcp.pack_stream_control_payload(mask) for mask in range(16)],
+            [bytes((mask,)) for mask in range(16)],
         )
-        self.assertEqual(ugcp.STREAM_ALL, 0x07)
+        self.assertEqual(ugcp.STREAM_ALL, 0x0F)
         self.assertEqual(ugcp.pack_telem_control_payload(False), b'\x00')
         self.assertEqual(ugcp.pack_telem_control_payload(True), b'\x01')
-        for invalid in (-1, 8, 255):
+        for invalid in (-1, 16, 255):
             with self.assertRaises(ugcp.UgcpProtocolError):
                 ugcp.pack_stream_control_payload(invalid)
 
@@ -225,7 +225,7 @@ class UgcpProtocolTests(unittest.TestCase):
                 ('max_pitch_deg', 91.0),
                 ('max_worm_rpm', 601.0),
                 ('max_thrust_percent', 101.0),
-                ('surface_depth_m', -0.1),
+                ('surface_depth_m', -0.201),
                 ('pitch_actuator_sign', 0.0)):
             unsafe = dict(parameters)
             unsafe[name] = value
