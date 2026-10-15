@@ -16,7 +16,7 @@
 | `Glider-Core/pump_driver.c` | Pump RS485 control logic retained for later reuse; GPIO pump control remains active | `IoControlPump_Init` + `IoControlPump_Poll` for GPIO only | GPIO pump control active; RS485 part disabled | `PB10` speed, `PD14` direction | GPIO level control via SBUS switches | N/A |
 | `Glider-Core/motor_driver.c` | Pump actuator motor control (MODBUS-RTU closed-loop stepper) | `StartUsart2Task -> UMotor_StartTask` | `USART2` RS485 | `PA2 TX`, `PA3 RX`, `PA1 DE` | `115200`, `8N1`, RS485 DE high | Default active node ID `0x01` |
 | `Glider-Core/stepper_driver.c` | Open-loop pulse/dir stepper control | Called by `StartServoTask` RC control loop (`Stepper_SetContinuousSignedRpm`) | `TIM1 CH2` + GPIO | `PE11` pulse, `PE13` dir, `PE10` PUL-, `PE12` DIR- | PWM pulse generation (timer-based) | No bus address |
-| `Glider-Core/servo_driver.c` | DS3120 servo angle-to-PWM helper | `StartServoTask_Disabled` (not currently mounted) | `TIM4 CH3` | `PD14` | 50 Hz class PWM timing via TIM4 config | No bus address |
+| `Glider-Core/rudder_driver.c` | DS820MG 尾舵绝对位置命令 | `StartServoTask -> RudderDriver_Apply` | `TIM4 CH4` | `PD15 / J9 pin1` | 333 Hz，1500 us 中位，首期限幅 ±10° | 无总线地址 |
 
 ## 2) Bus-to-Device Mount Table
 
@@ -103,9 +103,9 @@ Intended bus settings for this allocation:
 - Timer setup in `main.c`: prescaler `120-1`, period `1000-1`.
 
 ### TIM4
-- `PD14` -> `TIM4_CH3` (servo PWM output pin in `servo_driver` design)
-- `PD15` -> `TIM4_CH4` (configured in HAL)
-- Timer setup: prescaler `119`, period `19999` (20 ms period, 50 Hz class PWM).
+- `PD14` -> `TIM4_CH3`：MSP 遗留代码将其改为普通 GPIO；不启动该通道。
+- `PD15` -> `TIM4_CH4`：DS820MG 尾舵，J9 pin1；pin2=共享7.4V，pin3=GND。
+- 当前100MHz核时钟：PSC=99、ARR=3002，1us计数、3003us周期；CCR4=1500为中位。驱动启动前核验真实时钟。
 
 ### TIM2
 - `PB10` -> `TIM2_CH3`
@@ -147,7 +147,7 @@ Intended bus settings for this allocation:
 
 ## 8) Notes / To-Confirm Items
 
-- `servo_driver` exists but is not mounted by default; `StartServoTask` is now used for SBUS-based motor/stepper RC control.
+- 旧 `servo_driver` 源码保留但不再编译；尾舵使用独立 `rudder_driver`，由 `StartServoTask` 在网线直控分支仲裁，其他来源回中。
 - `Bus3` (`USART3 -> U15 -> RS485_Bus3 -> J17/J18`) is reserved for the linear displacement sensor in this document.
 - `PumpDriver_*` RS485 code is intentionally preserved but should remain disabled while `Bus3` is assigned to the displacement sensor; `IoControlPump_*` remains active for GPIO pump control.
 - `main.h` defines `IMU_DRY_Pin` on `PC4`, while `MX_GPIO_Init` configures `IMU_DRY_Pin` plus `PC7` as inputs.
@@ -172,8 +172,8 @@ Intended bus settings for this allocation:
 - `Glider-Core/imu_core.c`
 - `Glider-Core/stepper_driver.h`
 - `Glider-Core/stepper_driver.c`
-- `Glider-Core/servo_driver.h`
-- `Glider-Core/servo_driver.c`
+- `Glider-Core/rudder_driver.h`
+- `Glider-Core/rudder_driver.c`
 - `Glider-Core/glider_core.h`
 - `Glider-Core/glider_core.c`
 - `Glider-Core/glider_rdss_codec.h`
@@ -221,3 +221,30 @@ Intended bus settings for this allocation:
 - RC control state: `g_rc_ctrl_mode`, `g_rc_ctrl_off_reason`
 - RC command outputs: `g_rc_worm_cmd_rpm`, `g_rc_stepper_cmd_rpm`
 - RC key inputs: `g_rc_sw_left_outer`, `g_rc_sw_left_mid_1`, `g_rc_sw_left_mid_2`, `g_rc_sw_right_outer`, `g_rc_left_stick_y`, `g_rc_left_stick_x`, `g_rc_right_stick_y`
+
+
+## 11) DS820MG 尾舵网线 AUTO（2026-10-09）
+
+- 启动新版 `station/contcp_t.py`，设备连接后输入 `auto`。必须同时使用新版板端固件；
+  旧固件不识别消息0x07，不能据PC显示认定尾舵或其他AUTO执行器已响应。
+- 按一次R/F以10°/s持续增减目标角；松键继续，V停止改变目标并保持，T回中。
+  R/F同时按停止；V/T/Z按住优先。初期PC和板端共同限制±10°，即约1389～1611us。
+- Z清零并回中，Q/ESC退出时尝试先中立再释放；Ctrl+C、接收线程断线或发送失败也进入清理。
+  释放后沿用既有全机控制权分配，不能称为全局急停；尾舵本轮没有SBUS接管入口。
+- AUTO每100ms发送绝对目标，尾舵键立即触发发送；消息0x07的payload为旧19B字段加
+  int16小端角度（度×100），总帧35B。协议允许±4500cdeg，驱动机械限幅更窄。
+  旧0x01/0x04仍是19B，收到旧包明确撤销尾舵偏角。无锁存尾舵消息。
+- 尾舵只在有效DIRECT源下动作；2.5s租约超时回中，PID/回零/其他源获权时回中。
+  若DIRECT后来重新获得控制权且PC仍发新鲜目标，会执行该目标。
+- Ozone：`g_rudder_state`；`source`为0未启动/1中位保护/2网线命令。
+  `requested_angle_cdeg/applied_angle_cdeg`是命令，`applied_pulse_us`是已写CCR脉宽；
+  三线舵机没有角度返回。H请求的72B快照复用servo_pulse_us/servo_mode，长度不变。
+- 标定修改 `rudder_driver.h` 的RUDDER_DIRECTION（±1）、RUDDER_CENTER_TRIM_US、
+  RUDDER_LIMIT_CDEG；放宽角度时同步PC AUTO_RUDDER_LIMIT_DEG并先验证连杆行程。
+  同TIM4的其他通道共用周期，不能同时按50Hz配置。
+- 实机待验：确认板版本/J9脚序与供电；示波器核对333Hz/1500us后，先空载测试中位、
+  R/V/F/T、Z/退出和拔网线，再接连杆。7.4V堵转电流标4.3A，检查共享电源瞬态压降。
+  外供电时断开J9 pin2并共地；回中是带动力动作，停止PWM不等于断电。
+- 离线验证入口：`station/tools/test_auto_rudder_control.py`、
+  `software/tests/test_rudder_driver.py`、`software/tests/test_rudder_protocol.py`；
+  后两者需要主机GCC，测试环境建议设置PYTHONDONTWRITEBYTECODE=1。

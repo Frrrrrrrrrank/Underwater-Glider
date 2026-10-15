@@ -7,7 +7,17 @@ import ctypes
 import json
 import os
 import shlex
+import math
 from datetime import datetime
+
+try:
+    from .gamepad_control import (
+        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+    )
+except ImportError:
+    from gamepad_control import (
+        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+    )
 
 try:
     from .ugcp_protocol import (
@@ -16,6 +26,7 @@ try:
         CASCADE_MODE_PITCH_HOLD,
         MSG_CONTROL19_LATCHED,
         MSG_CONTROL19_STREAM,
+        MSG_CONTROL21_STREAM,
         MSG_CASCADE_COMMAND,
         MSG_PARAM_BLOCK,
         MSG_PARAM_COMMIT,
@@ -32,6 +43,7 @@ try:
         crc32_iso_hdlc,
         pack_cascade_command_payload,
         pack_control_payload,
+        pack_control21_payload,
         pack_param_block_payload,
         pack_param_commit_payload,
         pack_pid_param_table,
@@ -49,6 +61,7 @@ except ImportError:
         CASCADE_MODE_PITCH_HOLD,
         MSG_CONTROL19_LATCHED,
         MSG_CONTROL19_STREAM,
+        MSG_CONTROL21_STREAM,
         MSG_CASCADE_COMMAND,
         MSG_PARAM_BLOCK,
         MSG_PARAM_COMMIT,
@@ -65,6 +78,7 @@ except ImportError:
         crc32_iso_hdlc,
         pack_cascade_command_payload,
         pack_control_payload,
+        pack_control21_payload,
         pack_param_block_payload,
         pack_param_commit_payload,
         pack_pid_param_table,
@@ -85,10 +99,15 @@ TELEMETRY_STREAM_MASK = 0
 # 主线程标记当前是否处于 PID 命令界面，接收线程据此选择快照显示方式。
 PID_MODE_ACTIVE = threading.Event()
 
-AUTO_SEND_PERIOD_S = 1.0 #Auto模式的下发频率
+AUTO_SEND_PERIOD_S = 0.10  # 每 100ms 连续刷新一次，板端直控租约为 2.5s。
 AUTO_KEY_POLL_S = 0.02
+AUTO_RUDDER_LIMIT_DEG = 10.0  # 首次联调仅开放中位两侧各 10 度。
+AUTO_RUDDER_RATE_DEG_S = 10.0
+AUTO_RUDDER_MAX_DT_S = 0.10  # PC 卡顿后不补算长时间位移，单步最多 1 度。
+AUTO_VK_MAP = {key: ord(key) for key in 'WSXEDCIKJLUNZHQRFVT'}
+AUTO_VK_MAP['ESC'] = 0x1B
 THRUST_SPEED_MIN = 0.0
-THRUST_SPEED_MAX = 30.0
+THRUST_SPEED_MAX = 100.0
 THRUST_SPEED_INIT = 10.0
 THRUST_SPEED_REARM_AFTER_RESET = 10.0
 THRUST_DIFF_RATE_PER_S = 20.0
@@ -687,11 +706,21 @@ def format_worm_status(snap):
             % (float(snap.worm_stroke_percent_x100) / 100.0))
 
 
+def format_rudder_status(snap):
+    """快照是板端已施加的 PWM 命令，三线舵机没有角度反馈。"""
+    mode = int(snap.servo_mode)
+    mode_text = {0: 'PWM 初始化失败/未启动', 1: '中位保护', 2: '网线命令'}.get(
+        mode, '未知模式')
+    return ("[尾舵] applied_pulse_us=%d servo_mode=%d(%s)；命令值，非实测角度"
+            % (int(snap.servo_pulse_us), mode, mode_text))
+
+
 def print_snapshot_struct(snap):
     """AUTO 和主菜单查询：完整结构 JSON，前面先给一行蜗杆摘要免得在 JSON 里翻。"""
     snap_dict = _ctypes_to_py(snap)
     _print_snapshot_alarms(snap)
     print(format_worm_status(snap))
+    print(format_rudder_status(snap))
     print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
 
 
@@ -761,6 +790,17 @@ def send_control_packet(conn, pitchmotor_enable, pitchmotor_speed_rpm,
     msg_type = MSG_CONTROL19_LATCHED if latched else MSG_CONTROL19_STREAM
     label = '锁存控制包' if latched else '连续控制包'
     return send_ugcp_frame(conn, msg_type, payload, label)
+
+
+def send_auto_control_packet(conn, packet, label='AUTO'):
+    """键盘和手柄共用 21 字节连续命令；退出包保持 CONTROL19 兼容。"""
+    try:
+        payload = pack_control21_payload(**packet)
+    except Exception as e:
+        print(f'[{label} 控制字段错误] {e}')
+        return False
+    return send_ugcp_frame(
+        conn, MSG_CONTROL21_STREAM, payload, f'{label} 连续控制包', verbose=False)
 
 
 def send_stream_control(conn, mask, label='遥测流控制'):
@@ -941,7 +981,220 @@ def _build_default_auto_packet():
         "pump_on_off": 0,
         "ask_for_status": 0,
         "eth_control_flag": 1,
+        "rudder_angle_cdeg": 0,
     }
+
+
+def _build_auto_sti_packet(target, config):
+    """把物理左右的有符号目标映射到旧协议的两路方向位和百分比。"""
+    packet = _build_default_auto_packet()
+    speeds = (target.left_percent, target.right_percent)
+    if not config.motor1_is_left:
+        speeds = speeds[::-1]
+    for speed, direction, speed_key, direction_key in zip(
+            speeds, (config.motor1_forward_dir, config.motor2_forward_dir),
+            ('thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm'),
+            ('thrustmotor_direction', 'thrustmotor_direction2')):
+        if not math.isfinite(speed) or abs(speed) > config.max_percent:
+            raise ValueError('推进目标必须为限幅内的有限百分比')
+        magnitude = min(int(round(abs(speed))), int(config.max_percent))
+        packet[speed_key] = magnitude
+        packet[direction_key] = (direction if speed >= 0 else 1 - direction) if magnitude else 0
+    if (target.pitch_enable not in (0, 1) or
+            target.pitch_rpm not in (-config.pitch_rpm, 0, config.pitch_rpm) or
+            bool(target.pitch_enable) != bool(target.pitch_rpm)):
+        raise ValueError('pitch 目标使能与转速不一致')
+    packet['pitchmotor_enable'] = target.pitch_enable
+    packet['pitchmotor_speed_rpm'] = target.pitch_rpm
+    return packet
+
+
+def _auto_sti_escape_pressed():
+    """保留控制台 ESC 退出入口；纯计算和离线测试可以在其他系统运行。"""
+    return os.name == 'nt' and bool(ctypes.windll.user32.GetAsyncKeyState(0x1B) & 0x8000)
+
+
+def _check_auto_sti_ready(ctl_status, wrm_status, after_ctl, after_wrm,
+                          now, timeout_s):
+    """返回观察条件是否满足及拒绝原因；状态观察不是逐命令执行 ACK。"""
+    for status, generation in ((ctl_status, after_ctl), (wrm_status, after_wrm)):
+        current, row, received_at = status
+        if current <= generation or row is None or received_at is None:
+            return False, ''
+        age = now - received_at
+        if not math.isfinite(age) or age < 0 or age > timeout_s:
+            return False, '板端遥测已过期'
+    ctl, wrm = ctl_status[1], wrm_status[1]
+    if wrm.get('home_state') in (1, 2):
+        return False, '蜗杆正在回零；请先执行 calibstop，观察结束后重新进入'
+    if wrm.get('home_state') not in (0, 3, 4):
+        return False, '蜗杆回零状态未知'
+    return ctl.get('mode') == 0 and ctl.get('armed') == 0, ''
+
+
+def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
+                      config=None, controller_index=None):
+    """手柄接管：等待回中、观察板端状态、连续直控，所有已接管出口归中释放。"""
+    config = config or GamepadConfig()
+    if PID_MODE_ACTIVE.is_set():
+        print('[AUTO_STI] 请先退出 PID 模式。')
+        return
+    if gamepad_service is None or not gamepad_service.is_alive():
+        print('[AUTO_STI] 手柄采集服务不可用。')
+        return
+    indices = gamepad_service.connected_indices()
+    if controller_index is None:
+        if len(indices) != 1:
+            print(f'[AUTO_STI] 已连接槽位 {indices}；请连接一只手柄或输入 auto_sti <槽位>。')
+            return
+        controller_index = indices[0]
+    if controller_index not in (0, 1, 2, 3) or controller_index not in indices:
+        print('[AUTO_STI] 指定手柄未连接。')
+        return
+    initial = gamepad_service.snapshot(controller_index)
+    exit_seq, loss_seq = initial.exit_seq, initial.loss_seq
+    previous_stream_mask = get_stream_control_mask()
+    streams_changed = False
+    control_attempted = False
+    state = 'WAIT_CENTER'
+    after_ctl = after_wrm = 0
+    deadline = next_send = next_report = 0.0
+    last_loop = time.monotonic()
+    last_packet = None
+    reason = '控制循环结束'
+    print(f'[AUTO_STI] 绑定槽位 {controller_index}，上限 {config.max_percent:g}%；'
+          '请回中并松开 Y/A，X 或 ESC 退出。')
+    print('[AUTO_STI] 左右拨杆控制艇首转向，倒退时同向；纯横拨为零。'
+          'Y/A 按住向前/后，松开停；退出会交还控制权。')
+    try:
+        while running and not link_closed.is_set():
+            sample = gamepad_service.snapshot(controller_index)
+            # 先复制快照再取时刻，避免后台刚发布的数据比旧 now 晚而被误判。
+            now = time.monotonic()
+            if _auto_sti_escape_pressed() or sample.button_x or sample.exit_seq != exit_seq:
+                reason = 'X/ESC 退出'
+                break
+            if (not gamepad_service.is_alive() or not sample.connected or
+                    sample.index != controller_index or sample.loss_seq != loss_seq):
+                reason = '手柄断开、采集失败或连接曾中断；重新进入才能接管'
+                break
+            age = now - sample.sample_time
+            if not math.isfinite(age) or age < 0 or age > config.input_timeout_s:
+                reason = '手柄输入样本过期'
+                break
+            if state != 'WAIT_CENTER' and now - last_loop > config.input_timeout_s:
+                reason = '控制循环发生长时间停顿'
+                break
+            last_loop = now
+            # 每拍重新计算绝对目标，按键松开不会继承上一拍的运动命令。
+            target = map_gamepad_to_target(sample, config)
+            centered = (abs(sample.left_x) <= config.deadzone and
+                        abs(sample.forward) <= config.deadzone and
+                        not sample.button_y and not sample.button_a)
+            if state == 'WAIT_CENTER':
+                if not centered:
+                    time.sleep(config.poll_period_s)
+                    continue
+                after_ctl = ctl_store.snapshot()[0]
+                after_wrm = wrm_store.snapshot()[0]
+                streams_changed = True
+                if not send_stream_control(
+                        conn, previous_stream_mask | STREAM_CTL | STREAM_WRM,
+                        'AUTO_STI 状态订阅'):
+                    reason = '无法订阅板端状态'
+                    break
+                state = 'PREPARING'
+                deadline = now + config.prepare_timeout_s
+                next_send = now
+                print('[AUTO_STI] 准备接管：发送中立，等待新 PID OFF 和回零非运行状态。')
+            if state in ('PREPARING', 'ACTIVE'):
+                ctl_status = ctl_store.snapshot_with_time()
+                wrm_status = wrm_store.snapshot_with_time()
+                now = time.monotonic()
+                ready, rejection = _check_auto_sti_ready(
+                    ctl_status, wrm_status,
+                    after_ctl, after_wrm, now, config.telemetry_timeout_s)
+                if rejection:
+                    reason = rejection
+                    break
+                if state == 'ACTIVE' and not ready:
+                    reason = '板端 PID 状态不再满足直控条件'
+                    break
+                if state == 'PREPARING':
+                    if ready and centered and control_attempted:
+                        state = 'ACTIVE'
+                        next_send = now
+                        print('[AUTO_STI] 已观察到进入条件满足，开始发送手柄目标（非执行 ACK）。')
+                    elif now >= deadline:
+                        reason = '准备超时；未观察到所需状态或手柄未回中'
+                        break
+            packet = _build_auto_sti_packet(
+                target if state == 'ACTIVE' else ControlTarget(), config)
+            # 回中和松键的停止不等待下一次常规心跳；普通运动最多按10Hz发送。
+            force_stop = last_packet is not None and any(
+                last_packet[key] != 0 and packet[key] == 0 for key in (
+                    'thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm',
+                    'pitchmotor_enable'))
+            if force_stop or now >= next_send:
+                if (link_closed.is_set() or
+                        time.monotonic() - sample.sample_time > config.input_timeout_s):
+                    reason = '发送前连接失效或本轮输入已过期'
+                    break
+                # sendall 报错也可能已经发送部分字节，因此发送前就标记需要清理。
+                control_attempted = True
+                if not send_auto_control_packet(conn, packet, label='AUTO_STI'):
+                    reason = '发送失败'
+                    break
+                last_packet = packet
+                next_send = now + config.send_period_s
+                if now >= next_report:
+                    print(f'[AUTO_STI {state}] 输入前后={sample.forward:+.2f} '
+                          f'左右={sample.left_x:+.2f}；目标左={target.left_percent:+.0f}% '
+                          f'右={target.right_percent:+.0f}% pitch={packet["pitchmotor_speed_rpm"]:+d}RPM'
+                          + ('（准备阶段实际发送中立）' if state != 'ACTIVE' else ''))
+                    next_report = now + 1.0
+            time.sleep(config.poll_period_s)
+        if link_closed.is_set():
+            reason = '控制板连接已断开'
+    except KeyboardInterrupt:
+        reason = 'Ctrl+C 退出手柄模式'
+    except (OSError, ValueError, RuntimeError) as exc:
+        reason = f'输入或控制异常：{exc}'
+    finally:
+        print(f'[AUTO_STI] {reason}')
+        if control_attempted:
+            if send_neutral_and_release(conn):
+                print('[AUTO_STI] 已发送中立和释放，后续可能由 SBUS 接管；非全局急停。')
+            else:
+                print('[AUTO_STI] 中立/释放未完整发出，依赖板端现有约2.5秒 STREAM 租约。')
+        if streams_changed:
+            send_stream_control(conn, previous_stream_mask, '恢复遥测流')
+
+
+def _update_auto_rudder(packet, state, pressed, rising, dt):
+    """只在 PC 积分目标位置；板端接收绝对角度，不锁存无限旋转命令。"""
+    old_direction = state['direction']
+    force_send = any(rising.get(key, False) for key in ('R', 'F', 'V', 'T', 'Z'))
+    # 停止/回中按住期间优先；同时按 R/F 停止，松开后需重新按方向键。
+    if pressed.get('Z') or pressed.get('T'):
+        state['angle_deg'] = 0.0
+        state['direction'] = 0
+    elif pressed.get('V') or (pressed.get('R') and pressed.get('F')):
+        state['direction'] = 0
+    elif rising.get('R'):
+        state['direction'] = 1
+    elif rising.get('F'):
+        state['direction'] = -1
+
+    safe_dt = _clamp(dt, 0.0, AUTO_RUDDER_MAX_DT_S)
+    state['angle_deg'] = _clamp(
+        state['angle_deg'] + state['direction'] * AUTO_RUDDER_RATE_DEG_S * safe_dt,
+        -AUTO_RUDDER_LIMIT_DEG, AUTO_RUDDER_LIMIT_DEG)
+    if (state['angle_deg'] >= AUTO_RUDDER_LIMIT_DEG and state['direction'] > 0) or (
+            state['angle_deg'] <= -AUTO_RUDDER_LIMIT_DEG and state['direction'] < 0):
+        state['direction'] = 0
+    packet['rudder_angle_cdeg'] = int(round(state['angle_deg'] * 100.0))
+    return force_send or old_direction != state['direction']
 
 
 def _apply_thrust_direction(packet, direction_key, now_s, dir_state, init_speed=None):
@@ -980,8 +1233,8 @@ def _apply_thrust_direction_keep_speed(packet, direction_key, now_s, dir_state):
 
 def _print_auto_help(packet):
     print("[AUTO] 按键说明:")
-    print("  W: pitch_enable=1, pitch_speed=-200")
-    print("  S: pitch_enable=1, pitch_speed=200")
+    print("  W: pitch_enable=1, pitch_speed=-50")
+    print("  S: pitch_enable=1, pitch_speed=50")
     print("  X: pitch_enable=0, pitch_speed=0")
     print("  E: pump_direction=0, pump_on_off=1")
     print("  D: pump_direction=1, pump_on_off=1")
@@ -992,10 +1245,13 @@ def _print_auto_help(packet):
     print("  L: thrust1上升 thrust2下降（1秒变化20）")
     print("  U: 双推进按比例衰减，长按1秒变为按下瞬间的0.5")
     print("  N: thrustmotor1se_speed_rpm 和 thrustmotor2se_speed_rpm 同时置0")
-    print("  Z: 除 eth_control_flag 外全部清零，eth_control_flag=1")
+    print("  R/F: 尾舵顺/逆向，按一次持续改变目标；首测核对实际转向")
+    print(f"       速度 {AUTO_RUDDER_RATE_DEG_S:g}°/s，限位 ±{AUTO_RUDDER_LIMIT_DEG:g}°；到端点自动停")
+    print("  V: 尾舵停止改变目标并保持；T: 尾舵回中；R+F: 停止")
+    print("  Z: 全部清零并使尾舵回中，eth_control_flag=1")
     print("  N/Z 后首次 I/K: 双推进速度置10")
     print("  H: 显示帮助与当前包状态")
-    print("  Q/ESC: 退出 auto")
+    print("  Q/ESC: 全中立、尾舵回中并退出 auto")
     print(
         "[AUTO] 当前包状态: "
         f"pitch=({packet['pitchmotor_enable']},{packet['pitchmotor_speed_rpm']}) "
@@ -1003,37 +1259,22 @@ def _print_auto_help(packet):
         f"thrust_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
         f"thrust_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']}) "
         f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
+        f"rudder_target={packet['rudder_angle_cdeg'] / 100.0:+.2f}°(目标，非实测) "
         f"backup={packet['backup_for_thrust']} ask={packet['ask_for_status']} eth_flag={packet['eth_control_flag']}"
     )
 
 
 def run_auto_mode(conn):
-    """自动模式：1 秒发送一次控制包，按键仅修改对应字段。"""
+    """网线 AUTO 手动控制：10Hz 刷新绝对目标，所有退出路径都尝试回中并释放。"""
     if os.name != 'nt':
         print("[AUTO] 仅支持 Windows 控制台键盘读取。")
         return
 
     user32 = ctypes.windll.user32
-    vk_map = {
-        'W': ord('W'),
-        'S': ord('S'),
-        'X': ord('X'),
-        'E': ord('E'),
-        'D': ord('D'),
-        'C': ord('C'),
-        'I': ord('I'),
-        'K': ord('K'),
-        'J': ord('J'),
-        'L': ord('L'),
-        'U': ord('U'),
-        'N': ord('N'),
-        'Z': ord('Z'),
-        'H': ord('H'),
-        'Q': ord('Q'),
-        'ESC': 0x1B,
-    }
+    vk_map = AUTO_VK_MAP
 
     packet = _build_default_auto_packet()
+    rudder_state = {'angle_deg': 0.0, 'direction': 0}
     prev_pressed = {k: False for k in vk_map}
     dir_state = {
         "mode": None,
@@ -1048,172 +1289,171 @@ def run_auto_mode(conn):
 
     last_loop_s = time.monotonic()
     next_send_s = last_loop_s
+    next_report_s = last_loop_s
 
-    print("[AUTO] 已进入自动模式：每 1 秒发送一次控制包。")
-    print("[AUTO] 按键: W/S/X 俯仰, E/D/C 泵, I/K 推进方向, J/L 双推进差动, U 双推进衰减, N 双推进清零, Z 清零, H 帮助, Q 或 ESC 退出。")
+    print("[AUTO] 已进入网线手动模式：10Hz 发送控制包，尾舵初始回中。")
+    print("[AUTO] 按键: W/S/X 俯仰, E/D/C 泵, I/K/J/L/U/N 推进, R/F 尾舵顺逆转, V 尾舵停, T 尾舵回中, Z 全清零, H 帮助/快照, Q/ESC 退出。")
     _print_auto_help(packet)
 
-    while running:
-        now_s = time.monotonic()
-        dt = now_s - last_loop_s
-        last_loop_s = now_s
+    try:
+        while running:
+            now_s = time.monotonic()
+            dt = now_s - last_loop_s
+            last_loop_s = now_s
 
-        pressed = {
-            k: (user32.GetAsyncKeyState(vk) & 0x8000) != 0
-            for k, vk in vk_map.items()
-        }
-        rising = {k: pressed[k] and (not prev_pressed[k]) for k in vk_map}
-        prev_pressed = pressed
+            pressed = {
+                k: (user32.GetAsyncKeyState(vk) & 0x8000) != 0
+                for k, vk in vk_map.items()
+            }
+            rising = {k: pressed[k] and (not prev_pressed[k]) for k in vk_map}
+            prev_pressed = pressed
 
 
-        if rising['Q'] or rising['ESC']:
-            packet = _build_default_auto_packet()
-            dir_state["mode"] = None
-            dir_state["hold_start"] = now_s
-            dir_state["base_s1"] = 0.0
-            dir_state["base_s2"] = 0.0
-            dir_state["rearm_init_pending"] = True
-            send_neutral_and_release(conn)
-            print("[AUTO] 已发送 Z 清零包 + 全零停控包，退出自动模式。")
-            break
+            if rising['Q'] or rising['ESC']:
+                break
 
-        if rising['H']:
-            _print_auto_help(packet)
-            packet["ask_for_status"] = 1
+            if rising['H']:
+                _print_auto_help(packet)
+                packet["ask_for_status"] = 1
 
-        if rising['U']:
-            dir_state["u_hold_start"] = now_s
-            dir_state["u_base_s1"] = float(packet["thrustmotor1se_speed_rpm"])
-            dir_state["u_base_s2"] = float(packet["thrustmotor2se_speed_rpm"])
+            if rising['U']:
+                dir_state["u_hold_start"] = now_s
+                dir_state["u_base_s1"] = float(packet["thrustmotor1se_speed_rpm"])
+                dir_state["u_base_s2"] = float(packet["thrustmotor2se_speed_rpm"])
 
-        if rising['N']:
-            packet["thrustmotor1se_speed_rpm"] = 0
-            packet["thrustmotor2se_speed_rpm"] = 0
-            dir_state["mode"] = None
-            dir_state["base_s1"] = 0.0
-            dir_state["base_s2"] = 0.0
-            dir_state["hold_start"] = now_s
-            dir_state["rearm_init_pending"] = True
-            print("[AUTO] 已执行 N: 双推进速度置 0，推进方向状态已重置。")
+            if rising['N']:
+                packet["thrustmotor1se_speed_rpm"] = 0
+                packet["thrustmotor2se_speed_rpm"] = 0
+                dir_state["mode"] = None
+                dir_state["base_s1"] = 0.0
+                dir_state["base_s2"] = 0.0
+                dir_state["hold_start"] = now_s
+                dir_state["rearm_init_pending"] = True
+                print("[AUTO] 已执行 N: 双推进速度置 0，推进方向状态已重置。")
 
-        if rising['Z']:
-            packet = _build_default_auto_packet()
-            dir_state["mode"] = None
-            dir_state["hold_start"] = now_s
-            dir_state["base_s1"] = 0.0
-            dir_state["base_s2"] = 0.0
-            dir_state["rearm_init_pending"] = True
-            print("[AUTO] 已执行清零: 除 eth_control_flag 外全部字段置 0。")
-            _print_auto_help(packet)
+            if rising['Z']:
+                packet = _build_default_auto_packet()
+                dir_state["mode"] = None
+                dir_state["hold_start"] = now_s
+                dir_state["base_s1"] = 0.0
+                dir_state["base_s2"] = 0.0
+                dir_state["rearm_init_pending"] = True
+                print("[AUTO] 已执行清零: 除 eth_control_flag 外全部字段置 0。")
+                _print_auto_help(packet)
 
-        if rising['W']:
-            packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = -50
-        if rising['S']:
-            packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = 50
-        if rising['X']:
-            packet["pitchmotor_enable"] = 0
-            packet["pitchmotor_speed_rpm"] = 0
+            if rising['W']:
+                packet["pitchmotor_enable"] = 1
+                packet["pitchmotor_speed_rpm"] = -50
+            if rising['S']:
+                packet["pitchmotor_enable"] = 1
+                packet["pitchmotor_speed_rpm"] = 50
+            if rising['X']:
+                packet["pitchmotor_enable"] = 0
+                packet["pitchmotor_speed_rpm"] = 0
 
-        if rising['E']:
-            packet["pump_direction"] = 0
-            packet["pump_on_off"] = 1
-        if rising['D']:
-            packet["pump_direction"] = 1
-            packet["pump_on_off"] = 1
-        if rising['C']:
-            packet["pump_direction"] = 0
-            packet["pump_on_off"] = 0
+            if rising['E']:
+                packet["pump_direction"] = 0
+                packet["pump_on_off"] = 1
+            if rising['D']:
+                packet["pump_direction"] = 1
+                packet["pump_on_off"] = 1
+            if rising['C']:
+                packet["pump_direction"] = 0
+                packet["pump_on_off"] = 0
 
-        if rising['I']:
-            if dir_state["mode"] != 'I':
-                init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
-                _apply_thrust_direction(packet, 'I', now_s, dir_state, init_speed=init_speed)
-                dir_state["rearm_init_pending"] = False
-            else:
-                _apply_thrust_direction_keep_speed(packet, 'I', now_s, dir_state)
-        if rising['K']:
-            if dir_state["mode"] != 'K':
-                init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
-                _apply_thrust_direction(packet, 'K', now_s, dir_state, init_speed=init_speed)
-                dir_state["rearm_init_pending"] = False
-            else:
-                _apply_thrust_direction_keep_speed(packet, 'K', now_s, dir_state)
+            if rising['I']:
+                if dir_state["mode"] != 'I':
+                    init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
+                    _apply_thrust_direction(packet, 'I', now_s, dir_state, init_speed=init_speed)
+                    dir_state["rearm_init_pending"] = False
+                else:
+                    _apply_thrust_direction_keep_speed(packet, 'I', now_s, dir_state)
+            if rising['K']:
+                if dir_state["mode"] != 'K':
+                    init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
+                    _apply_thrust_direction(packet, 'K', now_s, dir_state, init_speed=init_speed)
+                    dir_state["rearm_init_pending"] = False
+                else:
+                    _apply_thrust_direction_keep_speed(packet, 'K', now_s, dir_state)
 
-        s1 = float(packet["thrustmotor1se_speed_rpm"])
-        s2 = float(packet["thrustmotor2se_speed_rpm"])
+            s1 = float(packet["thrustmotor1se_speed_rpm"])
+            s2 = float(packet["thrustmotor2se_speed_rpm"])
 
-        if pressed['J'] and (not pressed['L']):
-            if dir_state["mode"] == 'K':
-                s1 += THRUST_DIFF_RATE_PER_S * dt
-                s2 -= THRUST_DIFF_RATE_PER_S * dt
-            else:
-                s1 -= THRUST_DIFF_RATE_PER_S * dt
-                s2 += THRUST_DIFF_RATE_PER_S * dt
-        elif pressed['L'] and (not pressed['J']):
-            if dir_state["mode"] == 'K':
-                s1 -= THRUST_DIFF_RATE_PER_S * dt
-                s2 += THRUST_DIFF_RATE_PER_S * dt
-            else:
-                s1 += THRUST_DIFF_RATE_PER_S * dt
-                s2 -= THRUST_DIFF_RATE_PER_S * dt
+            if pressed['J'] and (not pressed['L']):
+                if dir_state["mode"] == 'K':
+                    s1 += THRUST_DIFF_RATE_PER_S * dt
+                    s2 -= THRUST_DIFF_RATE_PER_S * dt
+                else:
+                    s1 -= THRUST_DIFF_RATE_PER_S * dt
+                    s2 += THRUST_DIFF_RATE_PER_S * dt
+            elif pressed['L'] and (not pressed['J']):
+                if dir_state["mode"] == 'K':
+                    s1 -= THRUST_DIFF_RATE_PER_S * dt
+                    s2 += THRUST_DIFF_RATE_PER_S * dt
+                else:
+                    s1 += THRUST_DIFF_RATE_PER_S * dt
+                    s2 -= THRUST_DIFF_RATE_PER_S * dt
 
-        if pressed['U'] and (not pressed['I']) and (not pressed['K']) and (not pressed['J']) and (not pressed['L']):
-            u_hold_s = max(0.0, now_s - dir_state["u_hold_start"])
-            u_scale = 0.5 ** u_hold_s
-            s1 = dir_state["u_base_s1"] * u_scale
-            s2 = dir_state["u_base_s2"] * u_scale
+            if pressed['U'] and (not pressed['I']) and (not pressed['K']) and (not pressed['J']) and (not pressed['L']):
+                u_hold_s = max(0.0, now_s - dir_state["u_hold_start"])
+                u_scale = 0.5 ** u_hold_s
+                s1 = dir_state["u_base_s1"] * u_scale
+                s2 = dir_state["u_base_s2"] * u_scale
 
-        if pressed['I'] and (not pressed['K']) and dir_state["mode"] == 'I' and (not pressed['J']) and (not pressed['L']):
-            hold_s = max(0.0, now_s - dir_state["hold_start"])
-            scale = 2.0 ** hold_s
-            s1 = dir_state["base_s1"] * scale
-            s2 = dir_state["base_s2"] * scale
-        elif pressed['K'] and (not pressed['I']) and dir_state["mode"] == 'K' and (not pressed['J']) and (not pressed['L']):
-            hold_s = max(0.0, now_s - dir_state["hold_start"])
-            scale = 2.0 ** hold_s
-            s1 = dir_state["base_s1"] * scale
-            s2 = dir_state["base_s2"] * scale
+            if pressed['I'] and (not pressed['K']) and dir_state["mode"] == 'I' and (not pressed['J']) and (not pressed['L']):
+                hold_s = max(0.0, now_s - dir_state["hold_start"])
+                scale = 2.0 ** hold_s
+                s1 = dir_state["base_s1"] * scale
+                s2 = dir_state["base_s2"] * scale
+            elif pressed['K'] and (not pressed['I']) and dir_state["mode"] == 'K' and (not pressed['J']) and (not pressed['L']):
+                hold_s = max(0.0, now_s - dir_state["hold_start"])
+                scale = 2.0 ** hold_s
+                s1 = dir_state["base_s1"] * scale
+                s2 = dir_state["base_s2"] * scale
 
-        s1 = _clamp(s1, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
-        s2 = _clamp(s2, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
-        packet["thrustmotor1se_speed_rpm"] = int(round(s1))
-        packet["thrustmotor2se_speed_rpm"] = int(round(s2))
-        packet["eth_control_flag"] = 1
+            s1 = _clamp(s1, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
+            s2 = _clamp(s2, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
+            packet["thrustmotor1se_speed_rpm"] = int(round(s1))
+            packet["thrustmotor2se_speed_rpm"] = int(round(s2))
+            packet["eth_control_flag"] = 1
+            # Z 持续按下时覆盖同轮其他按键，避免清零后又被方向键重新启动。
+            if pressed['Z']:
+                packet = _build_default_auto_packet()
+                dir_state['mode'] = None
+                dir_state['base_s1'] = 0.0
+                dir_state['base_s2'] = 0.0
+                dir_state['hold_start'] = now_s
+                dir_state['rearm_init_pending'] = True
+            force_send = _update_auto_rudder(packet, rudder_state, pressed, rising, dt)
 
-        if now_s >= next_send_s:
-            send_control_packet(
-                conn,
-                packet["pitchmotor_enable"],
-                packet["pitchmotor_speed_rpm"],
-                packet["rollmotor_enable"],
-                packet["rollmotor_speed_rpm"],
-                packet["thrustmotor_direction"],
-                packet["thrustmotor_direction2"],
-                packet["thrustmotor1se_speed_rpm"],
-                packet["thrustmotor2se_speed_rpm"],
-                packet["backup_for_thrust"],
-                packet["pump_direction"],
-                packet["pump_on_off"],
-                packet["ask_for_status"],
-                packet["eth_control_flag"],
-                latched=False,
-            )
-            print(
-                "[AUTO] send "
-                f"pitch_en={packet['pitchmotor_enable']} pitch_spd={packet['pitchmotor_speed_rpm']} "
-                f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
-                f"thr_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
-                f"thr_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']})"
-            )
-            next_send_s += AUTO_SEND_PERIOD_S
-            if packet["ask_for_status"] == 1:
+            if force_send or now_s >= next_send_s:
+                if not send_auto_control_packet(conn, packet):
+                    print("[AUTO] 发送失败，停止本地目标更新并退出；板端由通信超时保护回中。")
+                    break
+                if force_send or now_s >= next_report_s:
+                    print(
+                        "[AUTO] send "
+                        f"pitch_en={packet['pitchmotor_enable']} pitch_spd={packet['pitchmotor_speed_rpm']} "
+                        f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
+                        f"thr_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
+                        f"thr_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']}) "
+                        f"rudder_target={packet['rudder_angle_cdeg'] / 100.0:+.2f}° "
+                        f"rudder_motion={rudder_state['direction']}"
+                    )
+                    next_report_s = now_s + 1.0
+                while next_send_s <= now_s:
+                    next_send_s += AUTO_SEND_PERIOD_S
                 packet["ask_for_status"] = 0
-            while next_send_s <= now_s:
-                next_send_s += AUTO_SEND_PERIOD_S
 
-        time.sleep(AUTO_KEY_POLL_S)
+            time.sleep(AUTO_KEY_POLL_S)
+    finally:
+        rudder_state['direction'] = 0
+        rudder_state['angle_deg'] = 0.0
+        if send_neutral_and_release(conn):
+            print("[AUTO] 已发送全中立及释放命令，尾舵回中；命令发送成功不等于机械动作已验证。")
+        else:
+            print("[AUTO] 回中/释放命令未完整发出；等待板端通信超时保护。")
+
 
 #  EKF 遥测($UGEKF)解析 + CSV 记录 
 # 字段顺序必须与板端 EthernetUartDriver_SendEkfTelemetry() 完全一致。
@@ -1426,10 +1666,12 @@ class UgctlStore:
         self._condition = threading.Condition()
         self._generation = 0
         self._latest = None
+        self._received_at = None
 
     def publish(self, row):
         with self._condition:
             self._latest = dict(row)
+            self._received_at = time.monotonic()
             self._generation += 1
             self._condition.notify_all()
 
@@ -1437,6 +1679,12 @@ class UgctlStore:
         with self._condition:
             latest = None if self._latest is None else dict(self._latest)
             return self._generation, latest
+
+    def snapshot_with_time(self):
+        """带本机接收时刻的快照；旧 PID 使用的二元 snapshot 接口不变。"""
+        with self._condition:
+            latest = None if self._latest is None else dict(self._latest)
+            return self._generation, latest, self._received_at
 
     def wait_for(self, predicate, after_generation, timeout_s):
         deadline = time.monotonic() + float(timeout_s)
@@ -1450,6 +1698,10 @@ class UgctlStore:
                 if remaining <= 0.0:
                     return None
                 self._condition.wait(remaining)
+
+
+class UgwrmStore(UgctlStore):
+    """蜗杆遥测独立缓存，复用同样的条件变量、代数和接收时间机制。"""
 
 
 def ekf_csv_row(row):
@@ -2027,11 +2279,25 @@ EKF_LOG_DIR = os.path.join(STATION_DIR, "logs", "ekf")
 CONTROL_LOG_DIR = os.path.join(STATION_DIR, "logs", "control")
 
 
-def receive_thread(conn, ctl_store=None):
+def receive_thread(conn, ctl_store=None, wrm_store=None, link_closed=None):
+    """唯一接收入口，初始化失败及任何退出路径均通知控制循环连接已结束。"""
+    try:
+        _receive_thread_body(conn, ctl_store, wrm_store)
+    except Exception as exc:
+        print(f'[接收线程异常] {exc}')
+    finally:
+        if link_closed is not None:
+            link_closed.set()
+        conn.close()
+
+
+def _receive_thread_body(conn, ctl_store=None, wrm_store=None):
     """负责不断接收并打印来自客户端的数据"""
     global running
     if ctl_store is None:
         ctl_store = UgctlStore()
+    if wrm_store is None:
+        wrm_store = UgwrmStore()
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
     line_buffer = ""
 
@@ -2064,6 +2330,7 @@ def receive_thread(conn, ctl_store=None):
             if row is None:
                 wrm_stat["bad"] += 1
                 return
+            wrm_store.publish(row)
             if wrm_csv is None:
                 wrm_csv_path = os.path.join(
                     CONTROL_LOG_DIR,
@@ -2203,40 +2470,22 @@ def receive_thread(conn, ctl_store=None):
     try:
         if ctl_csv is not None:
             ctl_csv.close()
+        if wrm_csv is not None:
+            wrm_csv.close()
     except Exception:
         pass
     conn.close()
     print("[接收线程] 已退出。")
 
 # ==================== 主程序 ====================
-def main():
-    global running
-
-    # 创建服务端 socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(('192.168.57.100', 8800))
-    server_socket.listen(1)
-    print("服务端已绑定 192.168.57.100:8800，等待客户端连接...")
-
-    conn, addr = server_socket.accept()
-    print(f"接收到客户端连接：{addr}")
-    if send_stream_control(conn, STREAM_EKF):
-        print("[遥测] 已声明 EKF-only；磁标定采集请单独运行 station/tools/mag_logger.py")
-    else:
-        print("[遥测警告] EKF-only 声明发送失败，请检查连接后重试 ekfon")
-
-    # 全程序只有这个线程调用 recv；PID 界面通过 ctl_store 等待 $UGCTL。
-    ctl_store = UgctlStore()
-    recv_thread = threading.Thread(
-        target=receive_thread, args=(conn, ctl_store), daemon=True)
-    recv_thread.start()
-
-    # ========== 主线程负责输入和发送 ==========
+def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
+    """主线程串行运行控制模式，手柄采集线程始终只读取设备。"""
     print("\n========== 交互控制台 ==========")
     print("仅接受下列命令；未知文本不会发送到板端")
     print("输入 'pack' 发送锁存控制包（保持到下一条命令，没有看门狗保护）")
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
+    print("输入 'auto_sti [槽位0..3] [上限%]' 进入 Xbox 模式，默认上限100%；X/ESC退出")
+    print("  例：auto_sti 0 20 使用槽位0、限制20%；纯横拨停止，Y/A按住移动pitch")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'wormon' / 'wormoff' 开 / 停蜗杆位置遥测 $UGWRM（落 CSV，不打印）")
@@ -2247,8 +2496,11 @@ def main():
     print("==================================\n")
 
     try:
-        while True:
+        while running and not link_closed.is_set():
             user_input = input(">>> ").strip()
+            if link_closed.is_set():
+                print('[命令] 控制板已断开，结束会话。')
+                break
             if not user_input:
                 continue
 
@@ -2259,6 +2511,19 @@ def main():
                 input_control_packet(conn)
             elif user_input.lower() == 'auto':
                 run_auto_mode(conn)
+            elif user_input.lower().split()[0] == 'auto_sti':
+                try:
+                    tokens = shlex.split(user_input)
+                    if len(tokens) > 3:
+                        raise ValueError('格式：auto_sti [槽位0..3] [上限%]')
+                    index = int(tokens[1]) if len(tokens) >= 2 else None
+                    config = GamepadConfig(
+                        max_percent=float(tokens[2]) if len(tokens) == 3 else 100)
+                    run_auto_sti_mode(
+                        conn, gamepad_service, ctl_store, wrm_store, link_closed,
+                        config=config, controller_index=index)
+                except ValueError as exc:
+                    print(f'[AUTO_STI 参数错误] {exc}')
             elif user_input.lower() == 'pid':
                 run_pid_mode(conn, ctl_store)
             elif user_input.lower() == 'ekfoff':
@@ -2287,21 +2552,73 @@ def main():
             elif user_input.lower() == 'snapshot':
                 send_snapshot_request(conn)
             else:
-                print("[命令] 未识别，未发送；可用 pack/auto/pid/ekfon/ekfoff/wormon/wormoff/calib/calibstop/snapshot/quit")
+                print("[命令] 未识别，未发送；可用 pack/auto/auto_sti/pid/ekfon/ekfoff/wormon/wormoff/calib/calibstop/snapshot/quit")
     except KeyboardInterrupt:
         print("\n检测到 Ctrl+C，退出。")
+
+
+def main():
+    global running
+    running = True
+    server_socket = conn = recv_thread = gamepad_service = None
+    link_closed = threading.Event()
+    try:
+        # 手柄模块默认检测；未安装 XInput 或不支持的平台仍保留原键盘控制台。
+        try:
+            gamepad_service = GamepadService()
+            gamepad_service.start()
+            print('[手柄] Xbox 检测已启动；输入 auto_sti 才接管，读数检查可运行 gamepad_monitor.py。')
+        except (OSError, RuntimeError) as exc:
+            print(f'[手柄] 检测服务不可用：{exc}')
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('192.168.57.100', 8800))
+        server_socket.listen(1)
+        print('服务端已绑定 192.168.57.100:8800，等待客户端连接...')
+        conn, addr = server_socket.accept()
+        print(f'接收到客户端连接：{addr}')
+        # 发送与接收共用有限 socket 超时；不把它视作硬实时停止保证。
+        conn.settimeout(1.0)
+        if send_stream_control(conn, STREAM_EKF):
+            print('[遥测] 已声明 EKF-only；磁标定采集请单独运行 station/tools/mag_logger.py')
+        else:
+            print('[遥测警告] EKF-only 声明发送失败，请检查连接后重试 ekfon')
+        ctl_store, wrm_store = UgctlStore(), UgwrmStore()
+        recv_thread = threading.Thread(
+            target=receive_thread,
+            args=(conn, ctl_store, wrm_store, link_closed), daemon=True)
+        recv_thread.start()
+        _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed)
+    except (KeyboardInterrupt, EOFError):
+        print('\n[退出] 控制台关闭。')
     finally:
-        print("[退出] 正在锁存中立命令并释放 Ethernet 控制权...")
-        send_neutral_and_release(conn)
-        send_stream_control(conn, 0)
-        # 通知接收线程退出
-        running = False
-        # 等待线程结束（最多2秒）
-        recv_thread.join(timeout=2)
-        # 关闭连接
-        conn.close()
-        server_socket.close()
-        print("服务端已关闭。")
+        # 清理覆盖初始化、等待连接和交互阶段，避免 Ctrl+C 后留下采集线程。
+        try:
+            if conn is not None and not link_closed.is_set():
+                print('[退出] 正在发送中立命令并释放 Ethernet 控制权...')
+                send_neutral_and_release(conn)
+                send_stream_control(conn, 0)
+        finally:
+            running = False
+            if gamepad_service is not None:
+                try:
+                    gamepad_service.stop()
+                except (OSError, RuntimeError) as exc:
+                    print(f'[退出] 手柄线程清理失败：{exc}')
+            if conn is not None:
+                try:
+                    conn.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+            if recv_thread is not None and recv_thread.ident is not None:
+                recv_thread.join(timeout=2)
+            if server_socket is not None:
+                server_socket.close()
+            print('服务端已关闭。')
 
 if __name__ == "__main__":
     main()

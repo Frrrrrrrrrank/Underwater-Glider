@@ -38,6 +38,8 @@
 #define ETHERNET_UART_MSG_CASCADE_COMMAND   0x05U
 /* 蜗杆回零：payload 1 字节，1=开始，0=取消。 */
 #define ETHERNET_UART_MSG_WORM_CALIB        0x06U
+/* AUTO 尾舵扩展：原 19 字节追加 int16 小端角度，单位 0.01 度；仅支持租约控制。 */
+#define ETHERNET_UART_MSG_CONTROL21_STREAM  0x07U
 #define ETHERNET_UART_MSG_PARAM_BLOCK     0x10U
 #define ETHERNET_UART_MSG_PARAM_COMMIT    0x11U
 
@@ -152,6 +154,9 @@ typedef struct
   uint8_t pump_on_off;
   uint8_t ask_for_status;
   uint8_t eth_control_flag;
+  /* 内部邮箱扩展，不改变旧 CONTROL19 线上布局；旧包明确清零新增字段。 */
+  int16_t rudder_angle_cdeg;
+  uint8_t rudder_valid;
 
 } EthernetUartReadoutPack;
 
@@ -174,12 +179,12 @@ typedef struct
   int16_t pump_feedback_rpm;
   int16_t umotor0_feedback_rpm;
   int16_t umotor1_feedback_rpm;
-  uint16_t servo_pulse_us;
+  uint16_t servo_pulse_us; /* 尾舵已下发脉宽，非实测位置。 */
   uint8_t limit_switch_bits;
   uint8_t displacement_valid;
   uint8_t gnrmc_valid;
   uint8_t pressure_valid;
-  uint8_t servo_mode;
+  uint8_t servo_mode; /* 0=未启动，1=中位保护，2=网线尾舵命令。 */
   uint8_t pump_speed_triggered;
   uint8_t pump_direction_reversed;
   /*EKF 状态估计（供以太网快照直接观察；x=pN, y=pE 为 NED 水平位置）*/

@@ -4,7 +4,7 @@
 #include "motor_driver.h"
 #include "pressure_sensor_driver.h"
 #include "pump_driver.h"
-#include "servo_driver.h"
+#include "rudder_driver.h"
 #include "limit_switch.h"
 #include "worm_axis.h"
 #include "ekf_bridge.h"   /* EkfBridge_CopyState / StateEstimate / g_ekf_depth_meas */
@@ -240,6 +240,8 @@ static volatile uint8_t s_rx_rearm_pending = 0U;
 #define UGCP_CRC_SIZE               ETHERNET_UART_FRAME_CRC_SIZE
 #define UGCP_MAX_FRAME_SIZE         ETHERNET_UART_FRAME_MAX_SIZE
 #define UGCP_CONTROL_PAYLOAD_SIZE  19U
+#define UGCP_CONTROL21_PAYLOAD_SIZE 21U
+#define UGCP_RUDDER_MAX_ANGLE_CDEG 4500
 #define UGCP_CASCADE_PAYLOAD_SIZE  24U
 #define UGCP_CASCADE_SCHEMA_V1      1U
 #define UGCP_PARAM_GROUP_MAG_CAL    1U
@@ -434,7 +436,13 @@ void EthernetUartDriver_UpdateSystemSnapshot(void)
       EthernetUartDriver_ClampI16(g_umotor.nodes[0].feedback_speed_rpm);
   g_ethernet_system_snapshot.umotor1_feedback_rpm =
       EthernetUartDriver_ClampI16(g_umotor.nodes[1].feedback_speed_rpm);
-  g_ethernet_system_snapshot.servo_pulse_us = g_servo_debug.current_pulse_us;
+  /* 尾舵脉宽和模式读取同一份快照，不再上报旧 DS3120 的静态初值。 */
+  {
+    RudderState rudder;
+    (void)RudderDriver_CopyState(&rudder);
+    g_ethernet_system_snapshot.servo_pulse_us = rudder.applied_pulse_us;
+    g_ethernet_system_snapshot.servo_mode = (uint8_t)rudder.source;
+  }
 
   g_ethernet_system_snapshot.limit_switch_bits = limit_bits;
   g_ethernet_system_snapshot.displacement_valid = (uint8_t)(g_displacement_sensor.valid != 0U);
@@ -443,7 +451,6 @@ void EthernetUartDriver_UpdateSystemSnapshot(void)
                 (g_dbg_view.gnrmc_latitude_valid != 0U) &&
                 (g_dbg_view.gnrmc_longitude_valid != 0U));
   g_ethernet_system_snapshot.pressure_valid = (uint8_t)(g_pressure_sensor_state.readout.pressure_valid != 0U);
-  g_ethernet_system_snapshot.servo_mode = (uint8_t)(g_servo_debug.mode & 0xFFU);
   g_ethernet_system_snapshot.pump_speed_triggered = g_io_pump_debug.speed_triggered;
   g_ethernet_system_snapshot.pump_direction_reversed = g_io_pump_debug.direction_reversed;
 
@@ -563,13 +570,18 @@ static bool EthernetUartDriver_RingPop(uint8_t *byte)
 }
 
 static bool EthernetUartDriver_ParseControlPayload(
-    const uint8_t *raw, uint16_t length, EthernetUartReadoutPack *parsed)
+    const uint8_t *raw, uint16_t length, uint8_t with_rudder,
+    EthernetUartReadoutPack *parsed)
 {
-  if (raw == NULL || parsed == NULL || length != UGCP_CONTROL_PAYLOAD_SIZE)
+  const uint16_t expected_length =
+      (with_rudder != 0U) ? UGCP_CONTROL21_PAYLOAD_SIZE : UGCP_CONTROL_PAYLOAD_SIZE;
+  if (raw == NULL || parsed == NULL || length != expected_length)
   {
     return false;
   }
 
+  /* 旧 19 字节包也覆盖尾舵状态，禁止继承上一帧偏角。 */
+  (void)memset(parsed, 0, sizeof(*parsed));
   parsed->pitchmotor_enable = raw[0];
   parsed->pitchmotor_speed_rpm = EthernetUartDriver_ReadLeI32(&raw[1]);
   parsed->rollmotor_enable = raw[5];
@@ -583,6 +595,18 @@ static bool EthernetUartDriver_ParseControlPayload(
   parsed->pump_on_off = raw[16];
   parsed->ask_for_status = raw[17];
   parsed->eth_control_flag = raw[18];
+
+  if (with_rudder != 0U)
+  {
+    uint16_t raw_angle = (uint16_t)((uint16_t)raw[19] | ((uint16_t)raw[20] << 8U));
+    int32_t angle = (raw_angle >= 0x8000U) ? ((int32_t)raw_angle - 65536) : (int32_t)raw_angle;
+    if (angle < -UGCP_RUDDER_MAX_ANGLE_CDEG || angle > UGCP_RUDDER_MAX_ANGLE_CDEG)
+    {
+      return false;
+    }
+    parsed->rudder_angle_cdeg = (int16_t)angle;
+    parsed->rudder_valid = parsed->eth_control_flag;
+  }
 
   /* CRC 能发现传输错误；这里再做语义约束，未知枚举一律 fail-closed。 */
   if (parsed->pitchmotor_enable > 1U ||
@@ -604,17 +628,21 @@ static bool EthernetUartDriver_ParseControlPayload(
 }
 //CRC校验通过后解析控制包
 static void EthernetUartDriver_HandleControl(
-    const uint8_t *payload, uint16_t payload_length, uint8_t policy)
+    const uint8_t *payload, uint16_t payload_length, uint8_t policy,
+    uint8_t with_rudder)
 {
   EthernetUartReadoutPack parsed;
   PidControlCommand pid_off;
   uint32_t now;
 
-  if (!EthernetUartDriver_ParseControlPayload(payload, payload_length, &parsed))
+  const uint16_t expected_length =
+      (with_rudder != 0U) ? UGCP_CONTROL21_PAYLOAD_SIZE : UGCP_CONTROL_PAYLOAD_SIZE;
+
+  if (!EthernetUartDriver_ParseControlPayload(payload, payload_length, with_rudder, &parsed))
   {
     g_ethernet_uart_diag.control_reject_count++;
     g_ethernet_uart_diag.control_payload_error_count++;
-    if (payload_length != UGCP_CONTROL_PAYLOAD_SIZE)
+    if (payload_length != expected_length)
     {
       g_ethernet_uart_diag.frame_length_error_count++;
     }
@@ -832,12 +860,17 @@ static void EthernetUartDriver_DispatchFrame(
   {
     case ETHERNET_UART_MSG_CONTROL19_STREAM:
       EthernetUartDriver_HandleControl(
-          payload, payload_length, ETHERNET_UART_CONTROL_POLICY_STREAM);
+          payload, payload_length, ETHERNET_UART_CONTROL_POLICY_STREAM, 0U);
       break;
 
     case ETHERNET_UART_MSG_CONTROL19_LATCHED:
       EthernetUartDriver_HandleControl(
-          payload, payload_length, ETHERNET_UART_CONTROL_POLICY_LATCHED);
+          payload, payload_length, ETHERNET_UART_CONTROL_POLICY_LATCHED, 0U);
+      break;
+
+    case ETHERNET_UART_MSG_CONTROL21_STREAM:
+      EthernetUartDriver_HandleControl(
+          payload, payload_length, ETHERNET_UART_CONTROL_POLICY_STREAM, 1U);
       break;
 
     case ETHERNET_UART_MSG_CASCADE_COMMAND:
@@ -1972,6 +2005,16 @@ bool EthernetUartDriver_CopyControlPack(
   taskENTER_CRITICAL();
   *out_pack = g_ethernet_uart_readout_pack;
   *out_eth_control_flag = g_ethernet_rx_message_flag;
+  /* 控制任务读取时再检查尾舵租约，通信任务停顿也不继续保留旧偏角。
+   * 在临界区内取 tick，避免新接收时间戳晚于预先取得的 now 造成无符号下溢。 */
+  if (*out_eth_control_flag == 0U ||
+      g_ethernet_control_policy != ETHERNET_UART_CONTROL_POLICY_STREAM ||
+      (uint32_t)(HAL_GetTick() - g_ethernet_control_last_rx_tick) >
+          ETHERNET_UART_CONTROL_TIMEOUT_MS)
+  {
+    out_pack->rudder_valid = 0U;
+    out_pack->rudder_angle_cdeg = 0;
+  }
   taskEXIT_CRITICAL();
   return true;
 }

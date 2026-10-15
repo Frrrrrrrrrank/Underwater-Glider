@@ -42,7 +42,7 @@ Core/Src/stm32h7xx_hal_msp.c \
 Glider-Core/glider_core.c \
 Glider-Core/glider_rdss_codec.c \
 Glider-Core/imu_core.c \
-Glider-Core/servo_driver.c \
+Glider-Core/rudder_driver.c \
 Glider-Core/pump_driver.c \
 Glider-Core/displacement_sensor.c \
 Glider-Core/motor_driver.c \

@@ -26,7 +26,7 @@
 #include "glider_core.h"
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
-#include "servo_driver.h"
+#include "rudder_driver.h"
 #include "motor_driver.h"
 #include "worm_axis.h"
 #include "pump_driver.h"
@@ -624,6 +624,13 @@ int main(void)
 
   /* Initialize pressure sensor non-blocking RX driver */
   PressureSensorDriver_Init(&huart1);
+
+  /* 尾舵使用 J9 / PD15 / TIM4_CH4：先写中位，再启动 333Hz PWM。 */
+  if (RudderDriver_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  g_dbg_servo_start_ok = 1U;
 
   /* Initialize thruster PWM driver on TIM15 CH1/CH2 (PE5/PE6). */
   if (ThrusterDriver_Init(&htim15) != HAL_OK)
@@ -1611,9 +1618,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 119;
+  htim4.Init.Prescaler = 99;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 19999;
+  htim4.Init.Period = 3002;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
@@ -1627,7 +1634,7 @@ static void MX_TIM4_Init(void)
     Error_Handler();
   }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
+  sConfigOC.Pulse = 1500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
@@ -2739,6 +2746,9 @@ void StartServoTask(void *argument)
   DisplacementSensorData displacement_snapshot;
   ZigzagControlOutput pid_output;
   PidControlStatus pid_status;
+  int16_t rudder_angle_cdeg = 0;
+  uint8_t rudder_active = 0U;
+  RudderState rudder_state;
 
   (void)argument;
 
@@ -2787,6 +2797,9 @@ void StartServoTask(void *argument)
     pump_enable_cmd = 0U;
     pump_direction_cmd = 0U;
     pump_source = IO_PUMP_SOURCE_OFF;
+    /* 非网线尾舵命令统一回中；本轮不接 SBUS 或自动航向。 */
+    rudder_angle_cdeg = 0;
+    rudder_active = 0U;
     worm_cmd_rpm = 0;
     stepper_cmd_rpm = 0;
     thrust1_speed_cmd = 0U;
@@ -2868,6 +2881,8 @@ void StartServoTask(void *argument)
       thrust2_speed_cmd = ethernet_pack.thrustmotor2se_speed_rpm;
       thrust1_direction_cmd = ethernet_pack.thrustmotor_direction;
       thrust2_direction_cmd = ethernet_pack.thrustmotor_direction2;
+      rudder_angle_cdeg = ethernet_pack.rudder_angle_cdeg;
+      rudder_active = ethernet_pack.rudder_valid;
     }
     else if (sbus_valid != 0U)
     {
@@ -2925,6 +2940,12 @@ void StartServoTask(void *argument)
     }
 
     /* 唯一硬件应用点：先完成源仲裁，再一次性写各执行器。 */
+    RudderDriver_Apply(rudder_angle_cdeg, rudder_active);
+    (void)RudderDriver_CopyState(&rudder_state);
+    /* 保留旧 Ozone 观察名称，内容改为真正已下发的尾舵命令。 */
+    g_dbg_servo_start_ok = rudder_state.pwm_started;
+    g_dbg_servo_step_count = rudder_state.update_count;
+    g_dbg_servo_pulse_us = rudder_state.applied_pulse_us;
     if (pitchmotor_enable_cmd != 0U)
     {
       if (motor_enabled == 0U)
