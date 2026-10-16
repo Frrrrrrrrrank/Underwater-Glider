@@ -2760,6 +2760,8 @@ void StartServoTask(void *argument)
   for(;;)
   {
     now_tick = HAL_GetTick();
+    /* roll 停机后没有 TIM1 更新中断，仍需每拍维护限位释放。 */
+    Stepper_ServiceLimits(now_tick);
     /* 蜗杆位置读出：只读 g_umotor 快照做换算与可信度判定，不发帧、不写执行器。 */
     WormAxis_Step(now_tick);
     (void)EthernetUartDriver_CopyControlPack(

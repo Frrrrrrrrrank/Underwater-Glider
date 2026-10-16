@@ -406,7 +406,7 @@ void EthernetUartDriver_UpdateSystemSnapshot(void)
   {
     alarm |= (1UL << 14);
   }
-  if (limit_bits != 0U)
+  if ((limit_bits & 0x0FU) != 0x0FU)
   {
     alarm |= (1UL << 15);
   }
