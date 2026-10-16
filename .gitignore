@@ -32,6 +32,7 @@ __pycache__/
 !/station/logs/mag/.gitkeep
 /station/logs/control/*
 !/station/logs/control/.gitkeep
+/station/logs/battery/*
 /station/logs/sessions/
 /station/plots/*
 !/station/plots/.gitkeep
@@ -39,7 +40,6 @@ __pycache__/
 # Agent 知识库(本地, 不上 GitHub)
 /AGENTS.md
 /CLAUDE.md
-/docs/AGENT_STATUS.md
+/project_status.md
 /EKF_context_for_new_codex.txt
-/docs/PID_TUNING_GUIDE.md
 /docs/

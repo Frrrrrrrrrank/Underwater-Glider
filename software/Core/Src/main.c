@@ -47,6 +47,8 @@
 #include "disk_driver.h"
 #include "thruster_driver.h"
 #include "sd_log_task.h"//SD 卡日志任务，每分钟落盘系统快照
+#include "battery_monitor.h"
+#include "battery_task.h"
 
 /* USER CODE END Includes */
 
@@ -332,6 +334,13 @@ const osThreadAttr_t Usart2Task_attributes = {
   .priority = (osPriority_t) osPriorityNormal3,
 };
 /* USER CODE BEGIN PV */
+/* 电池采样独占 ADC1，低于控制/通信任务，不在控制循环中等待转换。 */
+osThreadId_t batteryTaskHandle;
+const osThreadAttr_t batteryTask_attributes = {
+  .name = "batteryTask",
+  .stack_size = 512 * 4,
+  .priority = (osPriority_t) osPriorityBelowNormal,
+};
 /* EKF 任务句柄与属性，单一所有者，仅此任务访问滤波器单例 g_ekf */
 osThreadId_t ekfTaskHandle;
 const osThreadAttr_t ekfTask_attributes = {
@@ -614,6 +623,8 @@ int main(void)
   MX_TIM15_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+  /* 此处只初始化状态；较慢的 ADC 校准交给低优先级电池任务，不阻塞启动。 */
+  (void)BatteryMonitor_Init(&hadc1);
   g_dbg_boot_stage = 46U;
   GliderCore_Init(&huart7);
   g_dbg_boot_stage = 4U;
@@ -711,6 +722,11 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
+  batteryTaskHandle = osThreadNew(StartBatteryTask, NULL, &batteryTask_attributes);
+  if (batteryTaskHandle == NULL)
+  {
+    Error_Handler();
+  }
   EthernetTaskHandle = osThreadNew(EthernetUartDriver_RunTask, NULL, &EthernetTask_attributes);
   /* 创建 EKF 任务，基于事件触发，IMU 输入后被唤醒 */
   ekfTaskHandle = osThreadNew(StartEkfTask, NULL, &ekfTask_attributes);
@@ -820,7 +836,7 @@ static void MX_ADC1_Init(void)
   /** Common config
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV2;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_16B;
   hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
@@ -852,7 +868,7 @@ static void MX_ADC1_Init(void)
   */
   sConfig.Channel = ADC_CHANNEL_5;
   sConfig.Rank = ADC_REGULAR_RANK_1;
-  sConfig.SamplingTime = ADC_SAMPLETIME_1CYCLE_5;
+  sConfig.SamplingTime = ADC_SAMPLETIME_387CYCLES_5;
   sConfig.SingleDiff = ADC_SINGLE_ENDED;
   sConfig.OffsetNumber = ADC_OFFSET_NONE;
   sConfig.Offset = 0;

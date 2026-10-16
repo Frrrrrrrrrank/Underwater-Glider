@@ -252,7 +252,7 @@ void WormAxis_Step(uint32_t now_ms)
    * 0x0004 Bit1=静止/运动, Bit6=报警。
    * 判"电机停了没有"只能看 Bit1：0x0005/0x0006 转速寄存器在模式退出后不清零，
    * 会冻结在断电前最后一次采样值(实测 work_mode=0/静止 却读到 199/209，
-   * 见 AGENT_STATUS 风险 9-quater)。
+   * 历史观测见 project_status.md 的失效与参考经验)。
    */
   g_worm_axis.moving = ((status_word & 0x0002U) != 0U) ? 1U : 0U;
   g_worm_axis.alarm  = ((status_word & 0x0040U) != 0U) ? 1U : 0U;

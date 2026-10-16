@@ -33,7 +33,9 @@ STREAM_MAG = 0x02
 STREAM_CTL = 0x04
 # bit3：蜗杆位置遥测 $UGWRM（装机后 Ozone 不可用，位置量只能靠这条流看）
 STREAM_WRM = 0x08
-STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL | STREAM_WRM
+# bit4：电池电压及低压状态遥测 $UGBAT。
+STREAM_BAT = 0x10
+STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL | STREAM_WRM | STREAM_BAT
 
 PARAM_GROUP_MAG_CAL = 1
 PARAM_GROUP_PID = 2
@@ -482,10 +484,10 @@ def pack_param_commit_payload(group, transaction, block_count, table_crc):
 
 
 def pack_stream_control_payload(mask):
-    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL，bit3=$UGWRM。"""
+    """编码完整遥测状态：bit0..4 依次为 EKF、MAG、CTL、WRM、BAT。"""
     mask = _require_u8(mask, "stream_mask")
     if mask & ~STREAM_ALL:
-        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL/WRM 四个 bit（0..15）")
+        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL/WRM/BAT 五个 bit（0..31）")
     return bytes((mask,))
 
 

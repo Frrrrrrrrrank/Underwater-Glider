@@ -11,6 +11,15 @@ import math
 from datetime import datetime
 
 try:
+    from .battery_telemetry import (
+        BatteryAlarmMonitor, UGBAT_CSV_HEADER, ugbat_csv_row, ugbat_parse,
+    )
+except ImportError:
+    from battery_telemetry import (
+        BatteryAlarmMonitor, UGBAT_CSV_HEADER, ugbat_csv_row, ugbat_parse,
+    )
+
+try:
     from .gamepad_control import (
         ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
     )
@@ -38,6 +47,7 @@ try:
         STREAM_EKF,
         STREAM_CTL,
         STREAM_WRM,
+        STREAM_BAT,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -51,7 +61,6 @@ try:
         pack_stream_control_payload,
         pack_worm_calib_payload,
         MSG_WORM_CALIB,
-        pack_telem_control_payload,
         split_param_table,
     )
 except ImportError:
@@ -73,6 +82,7 @@ except ImportError:
         STREAM_EKF,
         STREAM_CTL,
         STREAM_WRM,
+        STREAM_BAT,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -86,7 +96,6 @@ except ImportError:
         pack_stream_control_payload,
         pack_worm_calib_payload,
         MSG_WORM_CALIB,
-        pack_telem_control_payload,
         split_param_table,
     )
 
@@ -702,7 +711,7 @@ def format_worm_status(snap):
         return ("[蜗杆] stroke_percent 不可用 span_valid=0"
                 "（本次上电尚未跑过两端限位，无法确定行程端点）")
     return ("[蜗杆] stroke_percent=%.2f%% span_valid=1"
-            "（0=前限位 PD7，100=后限位 PB4）"
+            "（0=机头前限位 PB4，100=机尾后限位 PD7）"
             % (float(snap.worm_stroke_percent_x100) / 100.0))
 
 
@@ -803,9 +812,11 @@ def send_auto_control_packet(conn, packet, label='AUTO'):
         conn, MSG_CONTROL21_STREAM, payload, f'{label} 连续控制包', verbose=False)
 
 
-def send_stream_control(conn, mask, label='遥测流控制'):
-    """设置完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL。"""
+def send_stream_control(conn, mask, label='遥测流控制', *, keep_battery=True):
+    """设置完整遥测状态；控制会话始终保留电池流，退出时才显式全关。"""
     global TELEMETRY_STREAM_MASK
+    if keep_battery:
+        mask = int(mask) | STREAM_BAT
     ok = send_ugcp_frame(
         conn,
         MSG_STREAM_CONTROL,
@@ -836,10 +847,10 @@ def get_stream_control_mask():
 
 
 def send_telem_control(conn, enabled):
-    """兼容交互命令：off=全关，on=只开 EKF。"""
-    # 保留旧布尔语义，同时让 PID 子界面能正确记住并恢复流掩码。
-    payload = pack_telem_control_payload(enabled)
-    return send_stream_control(conn, payload[0], 'EKF 遥测控制')
+    """兼容交互命令仅切换 EKF，保留电池以及其他主题订阅。"""
+    mask = get_stream_control_mask()
+    mask = mask | STREAM_EKF if enabled else mask & ~STREAM_EKF
+    return send_stream_control(conn, mask, 'EKF 遥测控制')
 
 
 def send_neutral_and_release(conn):
@@ -986,7 +997,7 @@ def _build_default_auto_packet():
 
 
 def _build_auto_sti_packet(target, config):
-    """把物理左右的有符号目标映射到旧协议的两路方向位和百分比。"""
+    """把推进百分比和 pitch/roll 转速目标填入现有直控协议。"""
     packet = _build_default_auto_packet()
     speeds = (target.left_percent, target.right_percent)
     if not config.motor1_is_left:
@@ -1006,6 +1017,12 @@ def _build_auto_sti_packet(target, config):
         raise ValueError('pitch 目标使能与转速不一致')
     packet['pitchmotor_enable'] = target.pitch_enable
     packet['pitchmotor_speed_rpm'] = target.pitch_rpm
+    if (target.roll_enable not in (0, 1) or
+            target.roll_rpm not in (-config.roll_rpm, 0, config.roll_rpm) or
+            bool(target.roll_enable) != bool(target.roll_rpm)):
+        raise ValueError('roll 目标使能与转速不一致')
+    packet['rollmotor_enable'] = target.roll_enable
+    packet['rollmotor_speed_rpm'] = target.roll_rpm
     return packet
 
 
@@ -1063,9 +1080,11 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
     last_packet = None
     reason = '控制循环结束'
     print(f'[AUTO_STI] 绑定槽位 {controller_index}，上限 {config.max_percent:g}%；'
-          '请回中并松开 Y/A，X 或 ESC 退出。')
+          '请回中并松开 Y/A 和十字键左/右，X 或 ESC 退出。')
     print('[AUTO_STI] 左右拨杆控制艇首转向，倒退时同向；纯横拨为零。'
-          'Y/A 按住向前/后，松开停；退出会交还控制权。')
+          'Y/A 按住向前/后；'
+          f'十字键左/右控制 roll +{config.roll_rpm}/-{config.roll_rpm}RPM，'
+          '松开或左右同按停；退出会交还控制权。')
     try:
         while running and not link_closed.is_set():
             sample = gamepad_service.snapshot(controller_index)
@@ -1090,7 +1109,8 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
             target = map_gamepad_to_target(sample, config)
             centered = (abs(sample.left_x) <= config.deadzone and
                         abs(sample.forward) <= config.deadzone and
-                        not sample.button_y and not sample.button_a)
+                        not sample.button_y and not sample.button_a and
+                        not sample.dpad_left and not sample.dpad_right)
             if state == 'WAIT_CENTER':
                 if not centered:
                     time.sleep(config.poll_period_s)
@@ -1134,7 +1154,7 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
             force_stop = last_packet is not None and any(
                 last_packet[key] != 0 and packet[key] == 0 for key in (
                     'thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm',
-                    'pitchmotor_enable'))
+                    'pitchmotor_enable', 'rollmotor_enable'))
             if force_stop or now >= next_send:
                 if (link_closed.is_set() or
                         time.monotonic() - sample.sample_time > config.input_timeout_s):
@@ -1150,7 +1170,8 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                 if now >= next_report:
                     print(f'[AUTO_STI {state}] 输入前后={sample.forward:+.2f} '
                           f'左右={sample.left_x:+.2f}；目标左={target.left_percent:+.0f}% '
-                          f'右={target.right_percent:+.0f}% pitch={packet["pitchmotor_speed_rpm"]:+d}RPM'
+                          f'右={target.right_percent:+.0f}% pitch={packet["pitchmotor_speed_rpm"]:+d}RPM '
+                          f'roll={packet["rollmotor_speed_rpm"]:+d}RPM'
                           + ('（准备阶段实际发送中立）' if state != 'ACTIVE' else ''))
                     next_report = now + 1.0
             time.sleep(config.poll_period_s)
@@ -1515,7 +1536,7 @@ UGWRM_FIELDS = [
     "pulse_min", "pulse_max", "span_pulses", "moving", "alarm",
     # 回零进度（schema 2 新增）
     "home_state", "home_fail", "pulse_home",
-    # 电机状态：命令 vs 反馈，用于看"发了没执行"
+    # 电机状态：安装转换后的驱动请求 vs 原始反馈，用于看"发了没执行"
     "cmd_rpm", "fb_rpm", "status_word", "err", "err_sub",
     "input_ports", "limit_bits",
     # 总线健康：与位置同一时刻，用于判断上面那些数可不可信
@@ -1532,6 +1553,7 @@ WORM_HOME_STATE_NAMES = {
 WORM_HOME_FAIL_NAMES = {
     0: "-", 1: "SEEK_TIMEOUT 一直没撞到前限位", 2: "BACKOFF_TIMEOUT 退不出前限位",
     3: "DATA_STALE 回零途中位置数据失效", 4: "CANCELLED 被取消或被 PID 接管",
+    5: "POSITION_RANGE 回零端点超出脉冲范围",
 }
 
 
@@ -2277,27 +2299,32 @@ def run_pid_mode(conn, ctl_store):
 STATION_DIR = os.path.dirname(os.path.abspath(__file__))
 EKF_LOG_DIR = os.path.join(STATION_DIR, "logs", "ekf")
 CONTROL_LOG_DIR = os.path.join(STATION_DIR, "logs", "control")
+BATTERY_LOG_DIR = os.path.join(STATION_DIR, "logs", "battery")
 
 
 def receive_thread(conn, ctl_store=None, wrm_store=None, link_closed=None):
     """唯一接收入口，初始化失败及任何退出路径均通知控制循环连接已结束。"""
+    battery_monitor = BatteryAlarmMonitor()
     try:
-        _receive_thread_body(conn, ctl_store, wrm_store)
+        _receive_thread_body(conn, ctl_store, wrm_store, battery_monitor)
     except Exception as exc:
         print(f'[接收线程异常] {exc}')
     finally:
         if link_closed is not None:
             link_closed.set()
+        battery_monitor.disconnect()
         conn.close()
 
 
-def _receive_thread_body(conn, ctl_store=None, wrm_store=None):
+def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=None):
     """负责不断接收并打印来自客户端的数据"""
     global running
     if ctl_store is None:
         ctl_store = UgctlStore()
     if wrm_store is None:
         wrm_store = UgwrmStore()
+    if battery_monitor is None:
+        battery_monitor = BatteryAlarmMonitor()
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
     line_buffer = ""
 
@@ -2316,11 +2343,48 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None):
     wrm_csv = None
     wrm_csv_path = None
     wrm_stat = {"ok": 0, "bad": 0, "last_home": None}
+    battery_csv = None
+    battery_csv_failed = False
+
+    def record_battery(row):
+        """告警先处理，电池日志失败只提示一次，不终止接收和控制会话。"""
+        nonlocal battery_csv, battery_csv_failed
+        if battery_csv_failed:
+            return
+        try:
+            if battery_csv is None:
+                os.makedirs(BATTERY_LOG_DIR, exist_ok=True)
+                path = os.path.join(
+                    BATTERY_LOG_DIR,
+                    "battery_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
+                )
+                battery_csv = open(path, "w", encoding="utf-8", newline="")
+                battery_csv.write(",".join(UGBAT_CSV_HEADER) + "\n")
+                print(f"\n[电池] 电压记录 -> {path}")
+            battery_csv.write(",".join(str(value) for value in ugbat_csv_row(row)) + "\n")
+            battery_csv.flush()
+        except (OSError, UnicodeError) as exc:
+            battery_csv_failed = True
+            print(f"\n[电池记录失败] {exc}；本次会话停止写电池 CSV，主动告警继续。", flush=True)
+            if battery_csv is not None:
+                try:
+                    battery_csv.close()
+                except OSError:
+                    pass
+                battery_csv = None
 
     def handle_line(raw_line):
         nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
         line = raw_line.strip()
         if not line:
+            return
+
+        # 电池流只由本接收线程消费，状态变化和限频提醒主动打印，无须输入命令。
+        if line.startswith("$UGBAT"):
+            row = ugbat_parse(raw_line)
+            if row is not None:
+                battery_monitor.ingest(row)
+                record_battery(row)
             return
 
         # 蜗杆位置遥测：落 CSV，不打印（10Hz，打印会把控制台刷爆）。
@@ -2431,6 +2495,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None):
         print(f"\n[客户端] {line}")
 
     while running:
+        # 即使 EKF 等主题持续有包，也必须发现电池流单独停止或损坏。
+        battery_monitor.poll()
         try:
             # 设置超时，以便能定期检查 running 标志
             conn.settimeout(1.0)
@@ -2440,7 +2506,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None):
                 break
 
             # STM32 发的是 ASCII 文本（AT 或快照十六进制行），这里做流式按行拼接。
-            text = data.decode('ascii', errors='ignore')
+            # 非 ASCII 字节必须留下替代标记，不能删除坏字节后误认成完整电池帧。
+            text = data.decode('ascii', errors='replace')
             if not text:
                 print(f"\n[客户端] (二进制) {data.hex()}")
                 continue
@@ -2463,6 +2530,11 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None):
             print(f"[接收错误] {e}")
             break
     # 线程结束前清理
+    if battery_csv is not None:
+        try:
+            battery_csv.close()
+        except OSError:
+            pass
     try:
         ekf_csv.close()
     except Exception:
@@ -2485,10 +2557,11 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
     print("输入 'pack' 发送锁存控制包（保持到下一条命令，没有看门狗保护）")
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
     print("输入 'auto_sti [槽位0..3] [上限%]' 进入 Xbox 模式，默认上限100%；X/ESC退出")
-    print("  例：auto_sti 0 20 使用槽位0、限制20%；纯横拨停止，Y/A按住移动pitch")
+    print("  例：auto_sti 0 20 使用槽位0、推进限制20%；Y/A按住移动pitch，十字键左/右控制roll +50/-50RPM")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'wormon' / 'wormoff' 开 / 停蜗杆位置遥测 $UGWRM（落 CSV，不打印）")
+    print("电池监测默认常开：低压主动报警；预警每30秒、严重低压每10秒提醒，数据失效会另行提示")
     print("输入 'calib' 开始蜗杆回零（电机会自己走到前限位）")
     print("输入 'calibstop' 中止回零")
     print("输入 'snapshot' 请求一次系统状态快照")
@@ -2579,10 +2652,12 @@ def main():
         print(f'接收到客户端连接：{addr}')
         # 发送与接收共用有限 socket 超时；不把它视作硬实时停止保证。
         conn.settimeout(1.0)
-        if send_stream_control(conn, STREAM_EKF):
-            print('[遥测] 已声明 EKF-only；磁标定采集请单独运行 station/tools/mag_logger.py')
+        # 先给旧固件可识别的声明；旧固件若拒绝 BAT 位仍能保留 EKF，并明确报监测不可用。
+        send_stream_control(conn, STREAM_EKF, '兼容 EKF 遥测声明', keep_battery=False)
+        if send_stream_control(conn, STREAM_EKF | STREAM_BAT):
+            print('[遥测] 已请求 EKF + BAT；收到有效 UGBAT 后才确认电池监测就绪')
         else:
-            print('[遥测警告] EKF-only 声明发送失败，请检查连接后重试 ekfon')
+            print('[遥测警告] EKF + BAT 声明发送失败，请检查连接后重试 ekfon')
         ctl_store, wrm_store = UgctlStore(), UgwrmStore()
         recv_thread = threading.Thread(
             target=receive_thread,
@@ -2597,7 +2672,7 @@ def main():
             if conn is not None and not link_closed.is_set():
                 print('[退出] 正在发送中立命令并释放 Ethernet 控制权...')
                 send_neutral_and_release(conn)
-                send_stream_control(conn, 0)
+                send_stream_control(conn, 0, keep_battery=False)
         finally:
             running = False
             if gamepad_service is not None:

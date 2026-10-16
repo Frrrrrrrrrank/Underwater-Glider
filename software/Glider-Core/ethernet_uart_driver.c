@@ -7,6 +7,7 @@
 #include "rudder_driver.h"
 #include "limit_switch.h"
 #include "worm_axis.h"
+#include "battery_monitor.h"
 #include "ekf_bridge.h"   /* EkfBridge_CopyState / StateEstimate / g_ekf_depth_meas */
 #include "ekf_task.h"     /* g_ekf_imu_hz */
 #include "pid_control_service.h"
@@ -227,11 +228,12 @@ static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static volatile uint32_t s_tx_busy = 0U;
 static uint32_t s_last_command_tick = 0U;
-/* 三路遥测独立控制；默认只发状态 EKF，MAG/CTL 由对应工具显式开启。 */
+/* 遥测分别订阅；默认只发 EKF，电池采样不依赖 BAT 流是否开启。 */
 static volatile uint8_t s_ekf_telem_enabled = 1U;
 static volatile uint8_t s_mag_telem_enabled = 0U;
 static volatile uint8_t s_ctl_telem_enabled = 0U;
 static volatile uint8_t s_wrm_telem_enabled = 0U;
+static volatile uint8_t s_bat_telem_enabled = 0U;
 /* HAL_BUSY 时不篡改 HAL 内部状态，由 Ethernet task 在 READY 后重试挂接。 */
 static volatile uint8_t s_rx_rearm_pending = 0U;
 
@@ -894,6 +896,8 @@ static void EthernetUartDriver_DispatchFrame(
             ((payload[0] & ETHERNET_UART_STREAM_CTL) != 0U) ? 1U : 0U;
         s_wrm_telem_enabled =
             ((payload[0] & ETHERNET_UART_STREAM_WRM) != 0U) ? 1U : 0U;
+        s_bat_telem_enabled =
+            ((payload[0] & ETHERNET_UART_STREAM_BAT) != 0U) ? 1U : 0U;
         g_ethernet_uart_diag.telemetry_control_count++;
       }
       break;
@@ -1311,6 +1315,7 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
   s_mag_telem_enabled = 0U;
   s_ctl_telem_enabled = 0U;
   s_wrm_telem_enabled = 0U;
+  s_bat_telem_enabled = 0U;
   (void)memset(s_ugcp_parse_buffer, 0, sizeof(s_ugcp_parse_buffer));
   (void)memset(&s_param_stage, 0, sizeof(s_param_stage));
   (void)memset((void *)&g_ethernet_uart_readout_pack,
@@ -1343,6 +1348,7 @@ void EthernetUartDriver_RunTask(void *argument)
   static uint32_t s_last_mag_tx_tick = 0U; /* MAG 遥测有自己的周期，不依赖 EKF */
   static uint32_t s_last_ctl_tx_tick = 0U; /* PID 控制/ACK 独立周期 */
   static uint32_t s_last_wrm_tx_tick = 0U; /* 蜗杆位置遥测独立周期 */
+  static uint32_t s_last_bat_tx_tick = 0U; /* 电池低频上报，发送成功才推进周期 */
 
   for (;;)
   {
@@ -1394,9 +1400,17 @@ void EthernetUartDriver_RunTask(void *argument)
     }
     else
     {
-      /* AT 配置完成进入透传。TELEM_CONTROL bit0/1/2 分别控制
-       * $UGEKF/$UGMAG/$UGCTL；默认只发 EKF。 */
-      if (s_snapshot_pending != 0U && s_tx_busy == 0U)
+      /* 电池帧到期后优先占用下一次空闲 TX，避免高频流/快照饿死低压告警。
+       * 每秒只占一次发送机会；链路故障或任务延迟仍须由上位机判过期。 */
+      if (s_tx_busy == 0U && s_bat_telem_enabled != 0U &&
+          (uint32_t)(now - s_last_bat_tx_tick) >= ETHERNET_UART_BAT_PERIOD_MS)
+      {
+        if (EthernetUartDriver_SendBatteryTelemetry() == HAL_OK)
+        {
+          s_last_bat_tx_tick = now;
+        }
+      }
+      else if (s_snapshot_pending != 0U && s_tx_busy == 0U)
       {
         EthernetUartDriver_SendSystemSnapshot();
         if (s_tx_busy != 0U)
@@ -1798,6 +1812,72 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
   return EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)i);
 }
 
+/* 电池遥测 schema 1：所有电压均为整数毫伏，禁止把发送时刻当成采样时刻。
+ * $UGBAT,1,seq,t_ms,adc_raw,battery_mv,filtered_mv,valid,state,sample_age_ms,error_count*HH
+ * 静态缓冲在 UART 中断发送期间保持有效；仅本以太网任务调用。 */
+HAL_StatusTypeDef EthernetUartDriver_SendBatteryTelemetry(void)
+{
+  static char line[160];
+  static uint32_t sequence = 0U;
+  static const char hex_chars[] = "0123456789ABCDEF";
+  BatteryState battery;
+  HAL_StatusTypeDef status;
+  uint32_t now;
+  uint32_t age;
+  uint8_t checksum = 0U;
+  int length;
+  int i;
+
+  if (s_uart == NULL)
+  {
+    return HAL_ERROR;
+  }
+  if (s_tx_busy != 0U)
+  {
+    g_ethernet_uart_diag.tx_busy_count++;
+    return HAL_BUSY;
+  }
+  if (!BatteryMonitor_CopyState(&battery))
+  {
+    return HAL_ERROR;
+  }
+  /* 在快照之后取时间，避免被电池任务抢占后产生新时间戳减旧 now 的下溢。 */
+  now = HAL_GetTick();
+  age = (battery.sample_count != 0U) ? now - battery.last_sample_ms : UINT32_MAX;
+  if (battery.valid != 0U && age > BATTERY_STALE_MS)
+  {
+    battery.valid = 0U;
+    battery.state = BATTERY_STATE_INVALID;
+  }
+  length = snprintf(line, sizeof(line),
+      "$UGBAT,1,%lu,%lu,%lu,%lu,%lu,%u,%u,%lu,%lu",
+      (unsigned long)(sequence + 1U), (unsigned long)now,
+      (unsigned long)battery.adc_raw, (unsigned long)battery.battery_mv,
+      (unsigned long)battery.filtered_mv, (unsigned int)battery.valid,
+      (unsigned int)battery.state, (unsigned long)age,
+      (unsigned long)battery.error_count);
+  if (length < 0 || (size_t)length + 6U > sizeof(line))
+  {
+    return HAL_ERROR;
+  }
+  for (i = 1; i < length; ++i)
+  {
+    checksum ^= (uint8_t)line[i];
+  }
+  line[length++] = '*';
+  line[length++] = hex_chars[checksum >> 4U];
+  line[length++] = hex_chars[checksum & 0x0FU];
+  line[length++] = '\r';
+  line[length++] = '\n';
+  line[length] = '\0';
+  status = EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)length);
+  if (status == HAL_OK)
+  {
+    sequence++;
+  }
+  return status;
+}
+
 /*
  * 蜗杆位置遥测 $UGWRM（schema 1）
  *
@@ -1808,8 +1888,8 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
  *     station 的 pack 直接推电机时根本不在 PID 会话中，那时 $UGCTL 一个字都不会出来。
  *
  * 为什么把总线诊断量和位置量放【同一行】：
- *   EMI 尚未治理（AGENT_STATUS 风险 9-penta），位置数据的可信度必须能和总线健康
- *   对照着看 —— 位置跳变的同时 overrun/poll_fail 也在涨，那就是通讯问题不是机械问题。
+ *   历史运行相关误码仍需复验（见 project_status.md 的链路质量问题），位置数据应和
+ *   总线健康对照：位置跳变时若 overrun/poll_fail 同时增长，优先检查通信，不能仅凭相关性定因。
  *   拆成两条语句发，这个时间相关性就丢了。
  *
  * 其它约束：

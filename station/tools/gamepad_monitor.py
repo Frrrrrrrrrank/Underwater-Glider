@@ -85,10 +85,11 @@ def main(argv=None):
                 target = map_gamepad_to_target(sample, config)
                 print(
                     "槽位={} 横向={:+.3f} 前后={:+.3f} X/Y/A={}/{}/{} "
-                    "左={:+.1f}% 右={:+.1f}% pitch={}RPM 失连序号={}".format(
+                    "十字键左/右={}/{} 左={:+.1f}% 右={:+.1f}% pitch={}RPM roll={}RPM 失连序号={}".format(
                         selected_index, sample.left_x, sample.forward,
                         int(sample.button_x), int(sample.button_y), int(sample.button_a),
-                        target.left_percent, target.right_percent, target.pitch_rpm,
+                        int(sample.dpad_left), int(sample.dpad_right),
+                        target.left_percent, target.right_percent, target.pitch_rpm, target.roll_rpm,
                         sample.loss_seq,
                     ),
                     flush=True,

@@ -34,7 +34,7 @@ def _validate_index(index):
         raise ValueError("手柄槽位必须是 0 到 3 的整数")
     return int(index)
 
-
+#数据定义
 @dataclass(frozen=True)
 class GamepadConfig:
     """原型参数集中定义；百分率是控制目标，不表示实测推力。"""
@@ -50,6 +50,7 @@ class GamepadConfig:
     motor1_is_left: bool = True
     motor1_forward_dir: int = 0
     motor2_forward_dir: int = 1
+    roll_rpm: int = 50
 
     def __post_init__(self):
         deadzone = _finite_number(self.deadzone, "deadzone")
@@ -60,10 +61,11 @@ class GamepadConfig:
             if _finite_number(getattr(self, name), name) <= 0:
                 raise ValueError("{} 必须大于 0".format(name))
         _bounded_number(self.max_percent, "max_percent", 0, 100)
-        if (isinstance(self.pitch_rpm, bool) or
-                not isinstance(self.pitch_rpm, Integral) or
-                not 1 <= self.pitch_rpm <= 32767):
-            raise ValueError("pitch_rpm 必须是 1 到 32767 的整数")
+        for name in ("pitch_rpm", "roll_rpm"):
+            value = getattr(self, name)
+            if (isinstance(value, bool) or not isinstance(value, Integral) or
+                    not 1 <= value <= 32767):
+                raise ValueError("{} 必须是 1 到 32767 的整数".format(name))
         if not isinstance(self.motor1_is_left, bool):
             raise ValueError("motor1_is_left 必须是布尔值")
         for name in ("motor1_forward_dir", "motor2_forward_dir"):
@@ -87,16 +89,20 @@ class GamepadSnapshot:
     exit_seq: int = 0
     loss_seq: int = 0
     error: str = ""
+    dpad_left: bool = False
+    dpad_right: bool = False
 
 
 @dataclass(frozen=True)
 class ControlTarget:
-    """与协议无关的意图：左右有符号百分率以及 pitch 按住运动状态。"""
+    """与协议无关的意图：左右有符号百分率以及 pitch/roll 按住运动状态。"""
 
     left_percent: float = 0
     right_percent: float = 0
     pitch_enable: int = 0
     pitch_rpm: int = 0
+    roll_enable: int = 0
+    roll_rpm: int = 0
 
 
 def apply_axis_deadzone(value, deadzone):
@@ -136,13 +142,13 @@ def _validate_connected_sample(sample, index):
         raise ValueError(sample.error or "手柄未连接")
     _bounded_number(sample.left_x, "left_x", -1, 1)
     _bounded_number(sample.forward, "forward", -1, 1)
-    for name in ("button_x", "button_y", "button_a"):
+    for name in ("button_x", "button_y", "button_a", "dpad_left", "dpad_right"):
         if not isinstance(getattr(sample, name), bool):
             raise ValueError("{} 必须是布尔值".format(name))
 
 
 def map_gamepad_to_target(sample, config):
-    """从有效快照生成当前意图；松开不延续上一帧的 pitch 运动。"""
+    """从有效快照生成当前意图；松开不延续上一帧的 pitch/roll 运动。"""
     if not isinstance(config, GamepadConfig):
         raise ValueError("config 必须是 GamepadConfig")
     if not isinstance(sample, GamepadSnapshot):
@@ -156,7 +162,12 @@ def map_gamepad_to_target(sample, config):
     pitch_rpm = 0
     if sample.button_y != sample.button_a:
         pitch_rpm = -config.pitch_rpm if sample.button_y else config.pitch_rpm
-    return ControlTarget(left, right, int(pitch_rpm != 0), pitch_rpm)
+    # 十字键左正右负；同按或全松开时禁用 roll 并请求零转速。
+    roll_rpm = 0
+    if sample.dpad_left != sample.dpad_right:
+        roll_rpm = config.roll_rpm if sample.dpad_left else -config.roll_rpm
+    return ControlTarget(left, right, int(pitch_rpm != 0), pitch_rpm,
+                         int(roll_rpm != 0), roll_rpm)
 
 
 class _XInputGamepad(ctypes.Structure):
@@ -219,6 +230,8 @@ class XInputBackend:
             button_x=bool(gamepad.wButtons & 0x4000),
             button_y=bool(gamepad.wButtons & 0x8000),
             button_a=bool(gamepad.wButtons & 0x1000),
+            dpad_left=bool(gamepad.wButtons & 0x0004),
+            dpad_right=bool(gamepad.wButtons & 0x0008),
         )
 
 

@@ -54,8 +54,10 @@
 #define ETHERNET_UART_STREAM_CTL 0x04U
 /* bit3：蜗杆位置遥测 $UGWRM。装机后 Ozone 不可用，位置量只能靠这条流看。 */
 #define ETHERNET_UART_STREAM_WRM 0x08U
+/* bit4：电池总压与采样质量 $UGBAT，不影响板端独立采样。 */
+#define ETHERNET_UART_STREAM_BAT 0x10U
 #define ETHERNET_UART_STREAM_ALL \
-  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM)
+  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM | ETHERNET_UART_STREAM_BAT)
 
 /* EKF 遥测定义，单行 ASCII 帧上限（NMEA 风格 $UGEKF,...*HH），以及周期(ms)。
  * 行内全部字段定点格式化，正常约 200B，留足余量到 512；100ms=10Hz。 */
@@ -64,6 +66,7 @@
 #define ETHERNET_UART_MAG_PERIOD_MS 100U
 #define ETHERNET_UART_CTL_PERIOD_MS 100U
 #define ETHERNET_UART_WRM_PERIOD_MS 100U
+#define ETHERNET_UART_BAT_PERIOD_MS 1000U
 
 typedef struct
 {
@@ -236,6 +239,8 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void);
 
 /* 蜗杆位置遥测 $UGWRM：位置量与总线诊断量同行，便于对照判断数据可信度。 */
 HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void);
+/* 电池状态独立低频上报，使用整数毫伏，保留现有快照布局。 */
+HAL_StatusTypeDef EthernetUartDriver_SendBatteryTelemetry(void);
 /* 控制/泵任务每周期先整体复制一次，避免逐字段散读时跨越一次新包发布。 */
 bool EthernetUartDriver_CopyControlPack(
     EthernetUartReadoutPack *out_pack,

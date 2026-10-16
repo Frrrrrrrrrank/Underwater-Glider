@@ -65,7 +65,7 @@
  *  2) 帧长直接等于占线时间。应答长度 = 3 + 2*13 + 2 = 31 字节, @115200 8N1
  *     每字节 86.8us => 约 2.7ms; 读 16 个则是 37 字节/3.2ms。
  *     Motor_ReceiveExact() 是逐字节阻塞接收, 而 Usart2Task 与 servoTask/
- *     EthernetTask 同为 osPriorityNormal3(见 AGENT_STATUS 风险 9-bis),
+ *     EthernetTask 同为 osPriorityNormal3(见 project_status.md 的链路质量问题),
  *     时间片切换只要让 CPU 离开接收循环超过 86.8us 就会触发 ORE 丢字节。
  *     帧越长暴露的抢占窗口越多, 故先用最小帧验证总线是否仍然干净。
  * 确认 g_umotor.bus_diag.overrun_count 不再增长后, 可再考虑放宽到 16 以取得

@@ -43,6 +43,7 @@ Glider-Core/glider_core.c \
 Glider-Core/glider_rdss_codec.c \
 Glider-Core/imu_core.c \
 Glider-Core/rudder_driver.c \
+Glider-Core/battery_monitor.c \
 Glider-Core/pump_driver.c \
 Glider-Core/displacement_sensor.c \
 Glider-Core/motor_driver.c \
@@ -55,6 +56,7 @@ Glider-App/estimation/ekf_bridge.c \
 Glider-App/estimation/control/zigzag_control.c \
 Glider-App/estimation/control/pid_control_service.c \
 Glider-App/tasks/ekf_task.c \
+Glider-App/tasks/battery_task.c \
 Glider-App/common/glider_time.c \
 Glider-Core/disk_driver.c \
 Glider-Core/limit_switch.c \

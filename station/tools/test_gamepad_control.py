@@ -1,4 +1,4 @@
-"""手柄输入、双推进混合与接管保护的离线验证，不读取手柄或连接控制板。"""
+"""手柄输入、双推进混合、pitch/roll 按住运动与接管保护的离线验证。"""
 
 import contextlib
 from dataclasses import FrozenInstanceError, replace
@@ -84,7 +84,7 @@ class GamepadMappingTests(unittest.TestCase):
         self.assertEqual((target.left_percent, target.right_percent), (0, 0))
 
     def test_pitch_buttons_require_hold_and_conflicting_buttons_disable(self):
-        config = gamepad.GamepadConfig()
+        config = gamepad.GamepadConfig(pitch_rpm=50)
         for y, a, expected in ((True, False, (1, -50)),
                                (False, True, (1, 50)),
                                (False, False, (0, 0)),
@@ -93,6 +93,42 @@ class GamepadMappingTests(unittest.TestCase):
                 target = gamepad.map_gamepad_to_target(
                     sample(button_y=y, button_a=a), config)
                 self.assertEqual((target.pitch_enable, target.pitch_rpm), expected)
+
+    def test_direction_pad_requires_hold_and_conflicting_buttons_stop_roll(self):
+        config = gamepad.GamepadConfig()
+        self.assertEqual(config.roll_rpm, 50)
+        for left, right, expected in ((True, False, (1, 50)),
+                                     (False, True, (1, -50)),
+                                     (False, False, (0, 0)),
+                                     (True, True, (0, 0))):
+            with self.subTest(left=left, right=right):
+                target = gamepad.map_gamepad_to_target(
+                    sample(dpad_left=left, dpad_right=right), config)
+                self.assertEqual((target.roll_enable, target.roll_rpm), expected)
+                self.assertEqual((target.pitch_enable, target.pitch_rpm), (0, 0))
+                self.assertEqual((target.left_percent, target.right_percent), (0, 0))
+
+    def test_roll_pitch_and_thruster_commands_are_independent(self):
+        config = gamepad.GamepadConfig(roll_rpm=75)
+        baseline = gamepad.map_gamepad_to_target(
+            sample(forward=0.6, left_x=0.4, button_y=True), config)
+        for changes, expected in (({'dpad_left': True}, 75),
+                                  ({'dpad_right': True}, -75)):
+            with self.subTest(changes=changes):
+                target = gamepad.map_gamepad_to_target(
+                    sample(forward=0.6, left_x=0.4, button_y=True, **changes), config)
+                self.assertEqual(target, replace(baseline, roll_enable=1, roll_rpm=expected))
+                self.assertEqual(target.pitch_rpm, -config.pitch_rpm)
+
+    def test_invalid_roll_configuration_and_pad_values_are_rejected(self):
+        for value in (True, 0, -1, 1.5, 32768, float('nan')):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    gamepad.GamepadConfig(roll_rpm=value)
+        for key in ('dpad_left', 'dpad_right'):
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    gamepad.map_gamepad_to_target(sample(**{key: 1}), gamepad.GamepadConfig())
 
     def test_invalid_input_is_rejected_instead_of_becoming_plausible_zero(self):
         config = gamepad.GamepadConfig()
@@ -105,9 +141,10 @@ class GamepadMappingTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gamepad.map_gamepad_to_target(sample(connected=False), config)
 
-    def test_x_suppresses_pitch_and_thrust_in_the_same_sample(self):
+    def test_x_suppresses_roll_pitch_and_thrust_in_the_same_sample(self):
         target = gamepad.map_gamepad_to_target(
-            sample(forward=1.0, button_y=True, button_x=True), gamepad.GamepadConfig())
+            sample(forward=1.0, button_y=True, dpad_left=True, button_x=True),
+            gamepad.GamepadConfig())
         self.assertEqual(target, gamepad.ControlTarget())
 
 
@@ -173,6 +210,21 @@ class GamepadSamplingTests(unittest.TestCase):
         self.assertEqual(failed.sample_time, before.sample_time)
         self.assertEqual(failed.loss_seq, before.loss_seq + 1)
 
+    def test_direction_pad_state_is_sampled_and_invalid_state_loses_input(self):
+        self.backend.current = sample(dpad_left=True)
+        held = self.poll()
+        self.assertTrue(held.dpad_left)
+        self.assertFalse(held.dpad_right)
+        self.backend.current = sample()
+        released = self.poll()
+        self.assertFalse(released.dpad_left or released.dpad_right)
+        self.backend.current = sample(dpad_right='按下')
+        failed = self.poll()
+        self.assertFalse(failed.connected)
+        self.assertEqual(failed.sample_time, released.sample_time)
+        self.assertEqual(failed.loss_seq, released.loss_seq + 1)
+        self.assertFalse(failed.dpad_left or failed.dpad_right)
+
     def test_stop_after_worker_start_failure_does_not_join_unstarted_thread(self):
         worker = mock.Mock(ident=None)
         worker.is_alive.return_value = False
@@ -203,10 +255,16 @@ class XInputDecodingTests(unittest.TestCase):
         backend._get_state = get_state
         for axis, expected_axis in ((-32768, -1.0), (0, 0.0), (32767, 1.0)):
             for mask, expected_buttons in (
-                    (0, (False, False, False)),
-                    (0x4000, (True, False, False)),
-                    (0x8000, (False, True, False)),
-                    (0x1000, (False, False, True))):
+                    (0, (False, False, False, False, False)),
+                    (0x4000, (True, False, False, False, False)),
+                    (0x8000, (False, True, False, False, False)),
+                    (0x1000, (False, False, True, False, False)),
+                    (0x0001, (False, False, False, False, False)),
+                    (0x0002, (False, False, False, False, False)),
+                    (0x0004, (False, False, False, True, False)),
+                    (0x0008, (False, False, False, False, True)),
+                    (0x000C, (False, False, False, True, True)),
+                    (0xD00C, (True, True, True, True, True))):
                 with self.subTest(axis=axis, mask=mask):
                     raw.update(axis=axis, buttons=mask)
                     result = backend.poll(2)
@@ -214,7 +272,8 @@ class XInputDecodingTests(unittest.TestCase):
                     self.assertEqual(result.index, 2)
                     self.assertEqual((result.left_x, result.forward),
                                      (expected_axis, expected_axis))
-                    self.assertEqual((result.button_x, result.button_y, result.button_a),
+                    self.assertEqual((result.button_x, result.button_y, result.button_a,
+                                      result.dpad_left, result.dpad_right),
                                      expected_buttons)
 
     def test_disconnected_and_other_xinput_error_codes_both_invalidate_input(self):
@@ -234,7 +293,8 @@ class XInputDecodingTests(unittest.TestCase):
 class GamepadPacketTests(unittest.TestCase):
     def test_packet_keeps_independent_channels_and_disables_unused_actuators(self):
         target = gamepad.ControlTarget(25, -60, 1, -50)
-        packet = contcp_t._build_auto_sti_packet(target, gamepad.GamepadConfig())
+        packet = contcp_t._build_auto_sti_packet(target, gamepad.GamepadConfig(pitch_rpm=50))
+        self.assertEqual((target.roll_enable, target.roll_rpm), (0, 0))
         payload = ugcp.pack_control21_payload(**packet)
         self.assertEqual((packet['thrustmotor1se_speed_rpm'],
                           packet['thrustmotor2se_speed_rpm']), (25, 60))
@@ -248,6 +308,31 @@ class GamepadPacketTests(unittest.TestCase):
             self.assertEqual(packet[field], 0, field)
         self.assertEqual(packet['eth_control_flag'], 1)
         self.assertEqual(len(payload), 21)
+
+    def test_direction_pad_encodes_signed_roll_rpm_in_existing_frame(self):
+        config = gamepad.GamepadConfig()
+        for left, right, expected in ((True, False, 50), (False, True, -50),
+                                     (False, False, 0), (True, True, 0)):
+            with self.subTest(left=left, right=right):
+                target = gamepad.map_gamepad_to_target(
+                    sample(dpad_left=left, dpad_right=right), config)
+                packet = contcp_t._build_auto_sti_packet(target, config)
+                frame = ugcp.build_frame(ugcp.MSG_CONTROL21_STREAM,
+                                        ugcp.pack_control21_payload(**packet), seq=12)
+                kind, sequence, payload = ugcp.parse_frame(frame)
+                self.assertEqual((kind, sequence, len(payload)), (ugcp.MSG_CONTROL21_STREAM, 12, 21))
+                self.assertEqual(payload[5], int(expected != 0))
+                self.assertEqual(struct.unpack_from('<i', payload, 6)[0], expected)
+                self.assertEqual(payload[:5], bytes(5))
+                self.assertEqual(payload[12:14], bytes(2))
+
+    def test_roll_packet_rejects_inconsistent_enable_or_unconfigured_speed(self):
+        config = gamepad.GamepadConfig()
+        for enabled, rpm in ((0, 50), (0, -50), (1, 0), (1, 49), (1, -49), (2, 50)):
+            with self.subTest(enabled=enabled, rpm=rpm):
+                target = gamepad.ControlTarget(roll_enable=enabled, roll_rpm=rpm)
+                with self.assertRaises(ValueError):
+                    contcp_t._build_auto_sti_packet(target, config)
 
     def test_motor_swap_and_forward_polarity_are_explicit_configuration(self):
         config = gamepad.GamepadConfig(
@@ -329,7 +414,7 @@ class AutoStiHarness:
 
     @staticmethod
     def is_motion(payload):
-        return payload[0] != 0 or any(payload[12:14])
+        return payload[0] != 0 or payload[5] != 0 or any(payload[12:14])
 
     def sendall(self, frame):
         parsed = ugcp.parse_frame(frame)
@@ -403,8 +488,8 @@ class AutoStiLoopTests(unittest.TestCase):
         self.assertEqual(releases[-2:], [bytes(18) + b'\x01', bytes(19)])
         masks = [parsed[2][0] for _, parsed in harness.sent
                  if parsed[0] == ugcp.MSG_STREAM_CONTROL]
-        self.assertEqual(masks[0], harness.old_mask | ugcp.STREAM_CTL | ugcp.STREAM_WRM)
-        self.assertEqual(masks[-1], harness.old_mask)
+        self.assertEqual(masks[0], harness.old_mask | ugcp.STREAM_CTL | ugcp.STREAM_WRM | ugcp.STREAM_BAT)
+        self.assertEqual(masks[-1], harness.old_mask | ugcp.STREAM_BAT)
 
     def test_initial_non_neutral_waits_without_sending_then_requires_new_board_state(self):
         harness = AutoStiHarness(
@@ -429,6 +514,37 @@ class AutoStiLoopTests(unittest.TestCase):
             self.assertLessEqual(later - earlier, 0.121)
         self.assert_cleanup(harness)
 
+    def test_initial_direction_pad_hold_requires_release_before_takeover(self):
+        for initial in ({'dpad_left': True}, {'dpad_right': True},
+                        {'dpad_left': True, 'dpad_right': True}):
+            with self.subTest(initial=initial):
+                harness = AutoStiHarness(
+                    [(0.0, initial), (0.20, {'dpad_left': False, 'dpad_right': False}),
+                     (0.32, {'dpad_right': True})], fault_at=0.54)
+                harness.run()
+                self.assertTrue(harness.motions())
+                self.assertTrue(all(at >= 0.199 for at, _ in harness.controls()))
+                self.assertTrue(all(struct.unpack_from('<i', payload, 6)[0] == -50
+                                    for _, payload in harness.motions()))
+                self.assert_cleanup(harness)
+
+    def test_roll_release_or_conflict_stops_without_waiting_for_heartbeat(self):
+        for changes in ({'dpad_left': False}, {'dpad_right': True}):
+            with self.subTest(changes=changes):
+                harness = AutoStiHarness(
+                    [(0.20, {'forward': 1.0, 'button_y': True, 'dpad_left': True}),
+                     (0.26, changes)], fault_at=0.44)
+                harness.run()
+                self.assertTrue(any(payload[5] for _, payload in harness.controls()))
+                stopped = [(at, payload) for at, payload in harness.controls()
+                           if at >= 0.259 and payload[5] == 0]
+                self.assertTrue(stopped)
+                self.assertLessEqual(stopped[0][0], 0.281)
+                self.assertEqual(struct.unpack_from('<i', stopped[0][1], 6)[0], 0)
+                self.assertEqual(stopped[0][1][0], 1)
+                self.assertEqual(stopped[0][1][12:14], bytes((100, 100)))
+                self.assert_cleanup(harness)
+
     def test_center_and_pitch_release_send_without_waiting_for_next_heartbeat(self):
         harness = AutoStiHarness(
             [(0.20, {'forward': 1.0, 'button_y': True}),
@@ -445,10 +561,11 @@ class AutoStiLoopTests(unittest.TestCase):
         for fault in ('x', 'missed_x', 'reconnect', 'disconnect', 'stale',
                       'worker', 'link', 'escape'):
             with self.subTest(fault=fault):
-                harness = AutoStiHarness([(0.20, {'forward': 1.0})],
+                harness = AutoStiHarness([(0.20, {'forward': 1.0, 'dpad_left': True})],
                                         fault_at=0.36, fault=fault)
                 harness.run()
                 self.assertTrue(harness.motions())
+                self.assertTrue(any(payload[5] for _, payload in harness.motions()))
                 self.assertTrue(all(at < 0.361 for at, _ in harness.motions()))
                 self.assertLess(harness.elapsed, 0.50)
                 self.assert_cleanup(harness)
@@ -472,7 +589,7 @@ class AutoStiLoopTests(unittest.TestCase):
     def test_active_pid_or_homing_takeover_causes_exit(self):
         for fault in ('pid', 'homing'):
             with self.subTest(fault=fault):
-                harness = AutoStiHarness([(0.20, {'forward': 1.0})],
+                harness = AutoStiHarness([(0.20, {'forward': 1.0, 'dpad_right': True})],
                                         fault_at=0.40, fault=fault)
                 harness.run()
                 self.assertTrue(harness.motions())
@@ -480,7 +597,8 @@ class AutoStiLoopTests(unittest.TestCase):
                 self.assert_cleanup(harness)
 
     def test_active_telemetry_timeout_stops_further_motion(self):
-        harness = AutoStiHarness([(0.20, {'forward': 1.0})], telemetry_until=0.30)
+        harness = AutoStiHarness([(0.20, {'forward': 1.0, 'dpad_left': True})],
+                                telemetry_until=0.30)
         harness.run()
         self.assertTrue(harness.motions())
         self.assertLess(harness.elapsed, 1.50)
@@ -489,7 +607,7 @@ class AutoStiLoopTests(unittest.TestCase):
     def test_send_failure_attempts_cleanup_and_never_retries_motion(self):
         for fail_motion, fail_stream in ((True, False), (False, True)):
             with self.subTest(fail_motion=fail_motion):
-                harness = AutoStiHarness([(0.20, {'forward': 1.0})],
+                harness = AutoStiHarness([(0.20, {'dpad_left': True})],
                                         fail_motion=fail_motion, fail_stream=fail_stream)
                 harness.run()
                 self.assertFalse(harness.motions())
@@ -497,6 +615,9 @@ class AutoStiLoopTests(unittest.TestCase):
                             if parsed[0] == ugcp.MSG_CONTROL21_STREAM and
                             harness.is_motion(parsed[2])]
                 self.assertEqual(len(attempts), int(fail_motion))
+                if fail_motion:
+                    self.assertEqual(attempts[0][1][5], 1)
+                    self.assertEqual(struct.unpack_from('<i', attempts[0][1], 6)[0], 50)
                 self.assert_cleanup(harness)
 
     def test_multiple_controllers_require_explicit_selection(self):
