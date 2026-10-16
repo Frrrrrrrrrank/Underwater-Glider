@@ -27,7 +27,7 @@ extern "C" {
  */
 void LimitSwitch_ReadStates(volatile uint8_t states[LIMIT_SWITCH_COUNT]);
 
-/* PB3 触发阻止正 RPM，PB5 触发阻止负 RPM；只读取，不更新旧四路状态。 */
+/* PB5 触发阻止正 RPM，PB3 触发阻止负 RPM；只读取，不更新旧四路状态。 */
 uint8_t LimitSwitch_ReadRollActiveMask(void);
 
 #ifdef __cplusplus

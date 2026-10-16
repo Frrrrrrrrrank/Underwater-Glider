@@ -48,8 +48,8 @@ static void WormAxis_HomingFail(WormHomingFail reason)
 }
 
 /*
- * 两段式回零状态机。刻意写成【线性】的：SEEK -> BACKOFF -> DONE，只有超时/取消/
- * 数据失效三条支线通向 FAILED，没有任何回环。
+ * 两段式回零状态机：SEEK -> BACKOFF -> DONE；超时、取消、数据失效或
+ * 端点超出脉冲范围时进入 FAILED，没有任何回环。
  * 2026-07-31 那次事故的教训是"别把大状态机塞进收发路径"，这里的做法是：
  * 状态机完全不发帧、不写执行器，只根据 GPIO 电平和时间推进，产出一个建议转速。
  *
@@ -108,7 +108,7 @@ static void WormAxis_HomingStep(uint32_t now_ms, int32_t pulse, uint8_t fresh)
       }
       else
       {
-        /* 负向 = 朝前限位（实测：-RPM 使 pulse 递减、走向 PD7）。 */
+        /* 逻辑负向朝机头；ServoTask 转成实际正 RPM 后走向 PB4，原始脉冲递增。 */
         s_home_rpm = -WORM_HOME_SEEK_RPM;
       }
       break;
@@ -118,15 +118,19 @@ static void WormAxis_HomingStep(uint32_t now_ms, int32_t pulse, uint8_t fresh)
       {
         /*
          * 开关刚刚释放 —— 以【释放沿】为零点。
-         * 释放沿比触发沿重复性好得多：触发点受撞击速度和过冲影响，
-         * 释放点只由开关自身回差决定，而且是慢速通过的。
-         * 手册方式 17(负限位回零)用的就是这个策略。
+         * 慢速退出能减小触发过冲的影响，但零点仍受开关回差和位置轮询延迟影响。
          */
+        int64_t rear_pulse = (int64_t)pulse - WORM_STROKE_PULSES;
+        if (rear_pulse < INT32_MIN)
+        {
+          WormAxis_HomingFail(WORM_HOME_FAIL_POSITION_RANGE);
+          break;
+        }
         g_worm_axis.pulse_home_front = pulse;
         /* 合成行程端点：一端实测、另一端由已知全行程常数推出，
            于是 stroke_percent 立刻可用，不必再跑另一端。 */
-        g_worm_axis.pulse_min_seen = pulse;
-        g_worm_axis.pulse_max_seen = pulse + WORM_STROKE_PULSES;
+        g_worm_axis.pulse_min_seen = (int32_t)rear_pulse;
+        g_worm_axis.pulse_max_seen = pulse;
         g_worm_axis.reference_kind = (uint8_t)WORM_REF_HOMED;
         g_worm_axis.home_state = (uint8_t)WORM_HOME_DONE;
         g_worm_axis.home_done_count++;
@@ -179,7 +183,7 @@ void WormAxis_Step(uint32_t now_ms)
   uint16_t status_word;
   uint32_t silence_ms;
   uint8_t  fresh;
-  int32_t  span;
+  int64_t  span;
   float    ratio;
 
   /*
@@ -241,8 +245,7 @@ void WormAxis_Step(uint32_t now_ms)
   }
 
   g_worm_axis.pulse = pulse;
-  /* rev 只是给人核对细分用的诊断量：实测行程 145mm/33.577转 = 4.32mm/转 对不上
-     任何标准导程，说明细分或导程与假设不符 —— 所以位置换算不走 rev 这条路。 */
+  /* rev 保持驱动器原始方向，仅供核对细分；行程百分比直接使用脉冲跨度。 */
   g_worm_axis.rev = (float)pulse / WORM_PULSES_PER_REV;
   g_worm_axis.data_fresh = fresh;
   /*
@@ -262,7 +265,7 @@ void WormAxis_Step(uint32_t now_ms)
 
   /*
    * 极值跟踪【只在 POWER_ON 自标定模式下做】。
-   * 一旦回零成功进入 HOMED，端点就由"回零点 + 已知全行程常数"唯一确定，
+   * 一旦回零成功进入 HOMED，前端为回零点，后端为"回零点 - 已知全行程常数"，
    * 不能再让它随实际走位漂移 —— 否则质量块稍微越过释放沿一点，
    * 零点就被拉走了，绝对位置的意义也就没了。
    */
@@ -277,15 +280,16 @@ void WormAxis_Step(uint32_t now_ms)
    * 行程百分比 —— 本模块的主输出，也是"电机现在处于总行程哪里"的直接答案。
    * 纯粹是脉冲比例，不含导程/细分的任何假设，因此比 rev/mm 都可靠。
    *
-   * 端点直接取本次上电见过的极值：开机后把质量块跑一遍两端即完成自标定，
-   * 不需要等下一轮的回零功能。跨度不足全行程 90% 时判为"还没跑过两端"，
-   * 输出置 0 并由 span_valid=0 明示不可用，避免把半程当成全程。
+   * POWER_ON 时使用本次上电极值；HOMED 时使用回零合成端点。
+   * 新机构前端原始脉冲最大，故从 max 向 min 计算 0% -> 100%。
+   * 跨度不足全行程 90% 或超出诊断字段范围时，输出 0 且 span_valid=0。
+   * 差值先用 64 位计算，避免原始计数接近 int32 边界时有符号溢出。
    */
-  span = g_worm_axis.pulse_max_seen - g_worm_axis.pulse_min_seen;
-  g_worm_axis.span_pulses = span;
-  if (span >= WORM_SPAN_MIN_PULSES)
+  span = (int64_t)g_worm_axis.pulse_max_seen - g_worm_axis.pulse_min_seen;
+  g_worm_axis.span_pulses = (span >= 0 && span <= INT32_MAX) ? (int32_t)span : 0;
+  if (span >= WORM_SPAN_MIN_PULSES && span <= INT32_MAX)
   {
-    ratio = (float)(pulse - g_worm_axis.pulse_min_seen) / (float)span;
+    ratio = (float)((int64_t)g_worm_axis.pulse_max_seen - pulse) / (float)span;
     g_worm_axis.span_valid = 1U;
     g_worm_axis.stroke_percent = 100.0f * ratio;
     g_worm_axis.mm_from_front = WORM_STROKE_MM * ratio;

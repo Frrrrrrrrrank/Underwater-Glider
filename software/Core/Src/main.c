@@ -3,6 +3,7 @@
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
+  * @note           : pitch 安装修正在 StartServoTask 最终下发处统一取反，详见该任务头注释。
   ******************************************************************************
   * @attention
   *
@@ -402,6 +403,7 @@ volatile uint32_t g_dbg_servo_step_count = 0U;
 volatile uint32_t g_dbg_servo_pulse_us = 1500U;
 volatile uint32_t g_rc_ctrl_mode = 0U;
 volatile uint32_t g_rc_ctrl_off_reason = 0U;
+/* pitch 安装转换后的驱动请求，与原始反馈同方向；仍可能被驱动层限位阻挡。 */
 volatile int32_t g_rc_worm_cmd_rpm = 0;
 volatile int32_t g_rc_stepper_cmd_rpm = 0;
 volatile uint16_t g_rc_sw_left_outer = 0U;
@@ -2703,6 +2705,13 @@ void Start_IMU_Task(void *argument)
 * @brief Function implementing the servoTask thread.
 * @param argument: here to control the motors, pitch for UMotor_SetTargetSpeedById,roll for Stepper_SetContinuousSignedRpm
 * @retval None
+* @note pitch 新机构安装方向修正：所有来源先按逻辑 RPM 仲裁，负数向机头、正数向机尾。
+*       只在本任务最终调用 UMotor_SetTargetSpeedById 前乘一次 WORM_INSTALL_SIGN=-1。
+*       键盘/手柄、SBUS、PID 和回零共用此处；不要在各入口或 PID 参数里重复补偿安装翻转。
+*       驱动器实际正 RPM 向机头 PB4，负 RPM 向机尾 PD7，底层按此实际方向做限位。
+*       回零逻辑 -350/+35 对应驱动器实际 +350/-35；原始位置反馈不取反。
+*       g_rc_worm_cmd_rpm 和 UGWRM.cmd_rpm 记录转换后的驱动请求，便于对照原始反馈；
+*       UGCTL.worm_rpm 仍是 PID 逻辑输出，二者符号不同不代表控制错误。
 */
 /* USER CODE END Header_StartServoTask */
 void StartServoTask(void *argument)
@@ -2725,8 +2734,9 @@ void StartServoTask(void *argument)
   uint16_t sw_left_mid_1 = 0U;
   uint16_t sw_left_mid_2 = 0U;
   uint16_t sw_right_outer = 0U;
-  int32_t worm_cmd_rpm = 0;
-  int32_t homing_worm_rpm = 0; /* 回零状态机本拍要求的蜗杆转速 */
+  int32_t worm_cmd_rpm = 0;   /* 仲裁后的逻辑转速：负向机头、正向机尾 */
+  int32_t worm_motor_rpm = 0; /* 安装转换后的驱动器实际方向请求 */
+  int32_t homing_worm_rpm = 0; /* 回零状态机本拍要求的逻辑转速 */
   int32_t stepper_cmd_rpm = 0;
   uint8_t thrust1_speed_cmd = 0U;
   uint8_t thrust2_speed_cmd = 0U;
@@ -2948,6 +2958,10 @@ void StartServoTask(void *argument)
     g_dbg_servo_start_ok = rudder_state.pwm_started;
     g_dbg_servo_step_count = rudder_state.update_count;
     g_dbg_servo_pulse_us = rudder_state.applied_pulse_us;
+    /* pitch 唯一安装方向转换点；各来源已限幅到 +/-600，取反不会溢出。
+     * 未使能时每拍明确归零，防止诊断值残留上一拍的驱动请求。 */
+    worm_motor_rpm = (pitchmotor_enable_cmd != 0U)
+                         ? WORM_INSTALL_SIGN * worm_cmd_rpm : 0;
     if (pitchmotor_enable_cmd != 0U)
     {
       if (motor_enabled == 0U)
@@ -2955,7 +2969,7 @@ void StartServoTask(void *argument)
         UMotor_SetMotorEnable(RC_WORM_MOTOR_SLOT, 1U);
         motor_enabled = 1U;
       }
-      UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, worm_cmd_rpm);
+      UMotor_SetTargetSpeedById(RC_WORM_MOTOR_NODE_ID, worm_motor_rpm);
     }
     else
     {
@@ -3013,7 +3027,7 @@ void StartServoTask(void *argument)
 
     g_rc_ctrl_mode = mode;
     g_rc_ctrl_off_reason = off_reason;
-    g_rc_worm_cmd_rpm = worm_cmd_rpm;
+    g_rc_worm_cmd_rpm = worm_motor_rpm;
     g_rc_stepper_cmd_rpm = stepper_cmd_rpm;
 
     osDelay(RC_CONTROL_PERIOD_MS);//循环定义位置

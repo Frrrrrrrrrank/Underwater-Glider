@@ -740,11 +740,12 @@ uint8_t UMotor_SetNodeRegisterMap(uint8_t slot, const UMotorNodeRegisterMap *map
 }
 
 /*
- * 限位方向判定（唯一实现，setter 与电机任务共用）。
+ * 限位方向判定：电机任务统一按驱动器原始 RPM 判断。
  *
  * 硬件事实
- *   states[1] = PB4，被压时为 0 —— 挡 +RPM（上位机 S 方向）
- *   states[3] = PD7，被压时为 0 —— 挡 -RPM（上位机 W 方向，即“前限位”）
+ *   states[1] = PB4，机头前限位，被压时为 0 —— 挡原始 +RPM。
+ *   states[3] = PD7，机尾后限位，被压时为 0 —— 挡原始 -RPM。
+ *   上层逻辑负向朝前、正向朝后，安装方向转换已在 StartServoTask 完成。
  * 只判当前电平、不做粘性锁存：滑块压住时一直挡，退出来就立刻放行，
  * 这样“撞哪边挡哪边、反方向永远能走”，不存在需要解锁的状态。
  */
@@ -774,12 +775,13 @@ void UMotor_SetTargetSpeedById(uint8_t node_id, int32_t target_speed_rpm)
   }
 
   /*
-   * 这里不做限位钳位：target_speed_rpm 保存的是“应用层原始意图”。
+   * 这里不做限位钳位：target_speed_rpm 保存驱动器原始 RPM 请求，
+   * 蜗杆已由 StartServoTask 完成安装方向转换。
    * 限位判定全部集中在电机任务 Motor_ProcessOneNode()（唯一发帧的地方），
    * 好处有二：
    *  1) 单一判定点，不会出现“setter 已经钳成 0、任务侧再也看不出撞了限位”
    *     从而无法触发释放使能的情况；
-   *  2) Ozone 里 target_speed_rpm 能如实反映上位机要什么，
+   *  2) Ozone 里 target_speed_rpm 反映安装转换后的驱动请求，
    *     和 g_motor_internal.last_sent_speed_rpm（实际发出去的）对照即可定位问题。
    */
   for (i = 0U; i < UMOTOR_NODE_COUNT; i++)
@@ -827,7 +829,7 @@ static void Motor_ProcessOneNode(uint8_t index, uint32_t now_tick)
   /*
    * 限位释放判定，每拍都重算，不锁存：
    *  - 当前目标方向撞限位 => 置 1，下面的使能块会写 0x0039=0，保持电流掉下来；
-   *  - 目标非 0 且方向没被挡（例如撞前限位后上位机按 S 给 +200）=> 清 0，
+   *  - 目标非 0 且方向没被挡（例如撞前限位 PB4 后请求原始 -200 RPM）=> 清 0，
    *    使能块自动写 0x0039=1，随后速度块发 0x0033+0x0037，电机反向退出限位。
    * 目标为 0 时保持当前释放状态不变，避免“松手就自动上电”。
    */

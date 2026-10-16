@@ -112,8 +112,8 @@ void test_exit_critical(void)
 static void set_limits(uint8_t mask)
 {
     test_gpiob.IDR = GPIO_PIN_4 |
-        ((mask & ROLL_LIMIT_POS_ACTIVE) ? 0U : GPIO_PIN_3) |
-        ((mask & ROLL_LIMIT_NEG_ACTIVE) ? 0U : GPIO_PIN_5);
+        ((mask & ROLL_LIMIT_POS_ACTIVE) ? 0U : GPIO_PIN_5) |
+        ((mask & ROLL_LIMIT_NEG_ACTIVE) ? 0U : GPIO_PIN_3);
     test_gpiod.IDR = GPIO_PIN_7;
 }
 
@@ -232,9 +232,9 @@ static void test_gpio(void)
         reset((uint8_t)mask);
         assert(LimitSwitch_ReadRollActiveMask() == mask);
         LimitSwitch_ReadStates(levels);
-        assert(levels[0] == ((mask & ROLL_LIMIT_POS_ACTIVE) ? 0U : 1U));
+        assert(levels[0] == ((mask & ROLL_LIMIT_NEG_ACTIVE) ? 0U : 1U));
         assert(levels[1] == 1U && levels[3] == 1U);
-        assert(levels[2] == ((mask & ROLL_LIMIT_NEG_ACTIVE) ? 0U : 1U));
+        assert(levels[2] == ((mask & ROLL_LIMIT_POS_ACTIVE) ? 0U : 1U));
         test_gpiob.IDR &= ~GPIO_PIN_4;
         test_gpiod.IDR &= ~GPIO_PIN_7;
         LimitSwitch_ReadStates(levels);
