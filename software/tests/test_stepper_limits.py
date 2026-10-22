@@ -41,13 +41,14 @@ extern TIM_TypeDef test_tim1;
 #define TIM_EGR_UG 1U
 #define __HAL_TIM_ENABLE_IT(h, m) ((h)->Instance->DIER |= (m))
 #define __HAL_TIM_DISABLE_IT(h, m) ((h)->Instance->DIER &= ~(m))
-#define __HAL_TIM_CLEAR_FLAG(h, m) ((h)->Instance->SR &= ~(m))
+#define __HAL_TIM_CLEAR_FLAG(h, m) test_clear_flag((h), (m))
 #define __HAL_TIM_SET_COUNTER(h, v) ((h)->Instance->CNT = (v))
 #define __HAL_TIM_DISABLE(h) ((h)->Instance->CR1 &= ~TIM_CR1_CEN)
 #define __HAL_TIM_SET_COMPARE(h, ch, v) ((h)->Instance->CCR2 = (v))
 #define __HAL_TIM_SET_AUTORELOAD(h, v) ((h)->Instance->ARR = (v))
 #define __NOP() test_nop()
 void test_nop(void);
+void test_clear_flag(TIM_HandleTypeDef *tim, uint32_t mask);
 uint32_t HAL_GetTick(void);
 GPIO_PinState HAL_GPIO_ReadPin(GPIO_TypeDef *port, uint16_t pin);
 void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state);
@@ -95,6 +96,53 @@ static unsigned inject_on_nop;
 static uint8_t injected_mask;
 static HAL_StatusTypeDef start_result;
 static StepperState state(void);
+/* 简化的 PWM2 模型：ARR/CCR 只在 UG/UEV 装载，低电平起步、停止回低。
+ * 记录电气下降沿，不能模拟驱动器最小脉宽、IRQ延迟分布或机械丢步。 */
+static uint32_t active_arr, active_ccr;
+static unsigned pulse_high, pwm_enabled, startup_loaded;
+static int32_t electrical_position;
+
+static void set_output_level(unsigned high)
+{
+    if (pulse_high != 0U && high == 0U)
+    {
+        electrical_position += (test_gpioe.ODR & GPIO_PIN_13) ? 1 : -1;
+    }
+    pulse_high = high;
+}
+
+void test_clear_flag(TIM_HandleTypeDef *tim, uint32_t mask)
+{
+    if ((tim->Instance->EGR & TIM_EGR_UG) != 0U)
+    {
+        assert((tim->Instance->CR1 & TIM_CR1_CEN) == 0U);
+        active_arr = tim->Instance->ARR;
+        active_ccr = tim->Instance->CCR2;
+        tim->Instance->CNT = 0U;
+        tim->Instance->EGR = 0U;
+        tim->Instance->SR |= TIM_FLAG_UPDATE;
+        startup_loaded = 1U;
+    }
+    tim->Instance->SR &= ~mask;
+}
+
+static void timer_ticks(uint32_t count)
+{
+    while (count-- != 0U)
+    {
+        assert((test_tim1.CR1 & TIM_CR1_CEN) != 0U && pwm_enabled != 0U);
+        ++test_tim1.CNT;
+        if (test_tim1.CNT > active_arr)
+        {
+            test_tim1.CNT = 0U;
+            active_arr = test_tim1.ARR;
+            active_ccr = test_tim1.CCR2;
+            test_tim1.SR |= TIM_FLAG_UPDATE;
+        }
+        assert(active_ccr > 0U && active_ccr <= active_arr);
+        set_output_level(test_tim1.CNT >= active_ccr);
+    }
+}
 
 void test_enter_critical(void)
 {
@@ -155,14 +203,24 @@ HAL_StatusTypeDef HAL_TIM_PWM_Start(TIM_HandleTypeDef *tim, uint32_t channel)
 {
     assert(tim->Instance == TIM1 && channel == TIM_CHANNEL_2);
     assert(critical_depth > 0U && in_irq == 0U);
+    assert(startup_loaded != 0U && tim->Instance->CNT == 0U);
+    assert((tim->Instance->SR & TIM_FLAG_UPDATE) == 0U);
+    assert(pulse_high == 0U && pwm_enabled == 0U);
+    startup_loaded = 0U;
     ++starts;
-    if (start_result == HAL_OK) { tim->Instance->CR1 |= TIM_CR1_CEN; }
+    if (start_result == HAL_OK)
+    {
+        pwm_enabled = 1U;
+        tim->Instance->CR1 |= TIM_CR1_CEN;
+    }
     return start_result;
 }
 
 HAL_StatusTypeDef HAL_TIM_PWM_Stop(TIM_HandleTypeDef *tim, uint32_t channel)
 {
     assert(tim->Instance == TIM1 && channel == TIM_CHANNEL_2);
+    set_output_level(0U);
+    pwm_enabled = 0U;
     tim->Instance->CR1 &= ~TIM_CR1_CEN;
     return HAL_OK;
 }
@@ -195,6 +253,9 @@ static void reset(uint8_t mask)
     memset(&test_tim1, 0, sizeof(test_tim1));
     memset(&test_gpioe, 0, sizeof(test_gpioe));
     starts = 0U;
+    active_arr = active_ccr = 0U;
+    pulse_high = pwm_enabled = startup_loaded = 0U;
+    electrical_position = 0;
     tick = 0U;
     inject_on_nop = 0U;
     start_result = HAL_OK;
@@ -206,14 +267,25 @@ static void reset(uint8_t mask)
     assert(state().running == 0U);
 }
 
-static void irq(void)
+static void dispatch_irq(void)
 {
     unsigned before = critical_entries;
     assert(critical_depth == 0U);
+    /* 与真实 HAL_TIM_IRQHandler 一致，先清本次 UIF，再调用更新回调。 */
+    test_tim1.SR &= ~TIM_FLAG_UPDATE;
     in_irq = 1U;
     Stepper_TIM_IRQHandler();
     in_irq = 0U;
     assert(critical_entries == before);
+}
+
+static void irq(void)
+{
+    if ((test_tim1.CR1 & TIM_CR1_CEN) != 0U)
+    {
+        timer_ticks(active_arr + 1U - test_tim1.CNT);
+    }
+    dispatch_irq();
 }
 
 static void service(uint32_t now)
@@ -510,6 +582,140 @@ static void test_integer_ranges(void)
     assert(state().requested_rpm == -1 && state().pulse_rpm == -30);
 }
 
+static void test_release_arm_contract(void)
+{
+    reset(0U);
+    assert(Stepper_ArmReleaseStop(0U) == 0U);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_ALL_ACTIVE) == 0U);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_POS_ACTIVE) == 0U);
+    set_limits(ROLL_LIMIT_POS_ACTIVE);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_NEG_ACTIVE) == 0U);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_POS_ACTIVE) == 1U);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_POS_ACTIVE) == 1U);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_NEG_ACTIVE) == 0U);
+    assert(state().release_seq == 0U);
+    Stepper_Stop();
+    assert(state().release_armed_mask == ROLL_LIMIT_POS_ACTIVE);
+    Stepper_SetContinuousSignedRpm(-100);
+    assert(state().running == 1U && state().release_armed_mask == ROLL_LIMIT_POS_ACTIVE);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_POS_ACTIVE) == 1U);
+    Stepper_DisarmReleaseStop();
+    assert(state().release_armed_mask == 0U);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_POS_ACTIVE) == 0U);
+    set_limits(0U);
+    irq();
+    assert(state().running == 1U && state().release_seq == 0U);
+}
+
+static void test_release_capture_and_history(void)
+{
+    int sign;
+    for (sign = -1; sign <= 1; sign += 2)
+    {
+        uint8_t mask = sign > 0 ? ROLL_LIMIT_NEG_ACTIVE : ROLL_LIMIT_POS_ACTIVE;
+        reset(mask);
+        assert(Stepper_ArmReleaseStop(mask) == 1U);
+        Stepper_SetContinuousSignedRpm(sign * 100);
+        irq();
+        set_limits(0U);
+        service(10U);
+        assert(state().running == 1U && state().release_seq == 0U);
+        irq();
+        assert(state().running == 0U && state().last_stop_reason == STEPPER_STOP_RELEASE);
+        assert(state().release_armed_mask == 0U && state().release_mask == mask);
+        assert(state().release_seq == 1U && state().release_pos == sign * 2);
+        assert(state().current_pos == electrical_position && state().blocked_mask == mask);
+        Stepper_Stop();
+        Stepper_DisarmReleaseStop();
+        Stepper_SetContinuousSignedRpm(0);
+        assert(state().release_seq == 1U && state().release_pos == sign * 2);
+        assert(state().last_stop_reason == STEPPER_STOP_RELEASE);
+        /* 释放抖动也不重新出脉冲，历史位置不随后续去抖更新。 */
+        set_limits(mask);
+        service(20U);
+        set_limits(0U);
+        service(30U);
+        service(30U + STEPPER_LIMIT_RELEASE_MS);
+        assert(state().running == 0U && state().blocked_mask == 0U);
+        assert(state().release_seq == 1U && state().release_pos == sign * 2);
+        set_limits(mask);
+        assert(Stepper_ArmReleaseStop(mask) == 1U);
+        Stepper_MoveRelative(sign * 5, 100U);
+        set_limits(0U);
+        irq();
+        assert(state().running == 0U && state().release_seq == 2U);
+        assert(state().release_pos == sign * 3 && state().release_mask == mask);
+    }
+}
+
+static void test_release_start_race_and_limit_priority(void)
+{
+    reset(ROLL_LIMIT_NEG_ACTIVE);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_NEG_ACTIVE) == 1U);
+    inject_on_nop = 1U;
+    injected_mask = 0U;
+    Stepper_SetContinuousSignedRpm(100);
+    assert(state().running == 0U && starts == 0U && state().release_seq == 0U);
+    assert(state().last_stop_reason == STEPPER_STOP_START_FAILED);
+    reset(ROLL_LIMIT_NEG_ACTIVE);
+    assert(Stepper_ArmReleaseStop(ROLL_LIMIT_NEG_ACTIVE) == 1U);
+    Stepper_SetContinuousSignedRpm(100);
+    set_limits(ROLL_LIMIT_POS_ACTIVE);
+    irq();
+    assert(state().running == 0U && state().last_stop_reason == STEPPER_STOP_LIMIT);
+    assert(state().release_seq == 0U && state().limit_stop_count == 1U);
+}
+
+static void test_stop_counts_pending_and_partial_pulses(void)
+{
+    unsigned pending, high;
+    for (pending = 0U; pending <= 1U; ++pending)
+    {
+        for (high = 0U; high <= 1U; ++high)
+        {
+            reset(0U);
+            Stepper_MoveRelative(10, 100U);
+            if (pending != 0U) timer_ticks(active_arr + 1U);
+            timer_ticks(high ? active_ccr + 1U : 1U);
+            Stepper_Stop();
+            assert(state().current_pos == (int32_t)(pending + high));
+            assert(state().current_pos == electrical_position);
+            assert(state().running == 0U);
+            irq();
+            assert(state().current_pos == electrical_position);
+        }
+    }
+    /* ISR 晚到高半周期，停机产生额外下降沿，不能谎报恰好到了有限目标。 */
+    reset(0U);
+    Stepper_MoveRelative(1, 100U);
+    timer_ticks(active_arr + 1U + active_ccr + 1U);
+    dispatch_irq();
+    assert(state().current_pos == 2 && state().target_pos == 1);
+    assert(state().current_pos == electrical_position && state().running == 0U);
+}
+
+static void test_preload_commit_and_stop_phase(void)
+{
+    reset(0U);
+    Stepper_MoveRelative(4, 100U);
+    assert(state().current_pos == 0 && electrical_position == 0);
+    assert(active_arr == 1249U && active_ccr == 625U);
+    irq();
+    assert(state().pulse_rpm == 30);
+    assert(test_tim1.CCR2 < 400U && active_ccr == 625U);
+    timer_ticks(400U);
+    Stepper_Stop();
+    assert(state().current_pos == 1 && electrical_position == 1);
+    reset(0U);
+    Stepper_MoveRelative(4, 100U);
+    irq();
+    irq();
+    assert(state().pulse_rpm == 65 && active_ccr < 400U);
+    timer_ticks(400U);
+    Stepper_Stop();
+    assert(state().current_pos == 3 && electrical_position == 3);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -526,6 +732,11 @@ int main(int argc, char **argv)
     else if (strcmp(argv[1], "start_race") == 0) { test_start_race_and_hal_failure(); }
     else if (strcmp(argv[1], "stop") == 0) { test_zero_and_stop_semantics(); }
     else if (strcmp(argv[1], "ranges") == 0) { test_integer_ranges(); }
+    else if (strcmp(argv[1], "arm") == 0) { test_release_arm_contract(); }
+    else if (strcmp(argv[1], "capture") == 0) { test_release_capture_and_history(); }
+    else if (strcmp(argv[1], "release_race") == 0) { test_release_start_race_and_limit_priority(); }
+    else if (strcmp(argv[1], "stop_phase") == 0) { test_stop_counts_pending_and_partial_pulses(); }
+    else if (strcmp(argv[1], "preload") == 0) { test_preload_commit_and_stop_phase(); }
     else { assert(0); }
     assert(critical_depth == 0U);
     return 0;
@@ -611,6 +822,21 @@ class StepperLimitHostTests(unittest.TestCase):
 
     def test_integer_extremes_and_requested_vs_configured_speed(self):
         self.run_case("ranges")
+
+    def test_release_arm_validation_idempotence_and_explicit_disarm(self):
+        self.run_case("arm")
+
+    def test_release_capture_stops_once_and_preserves_history_through_debounce(self):
+        self.run_case("capture")
+
+    def test_release_before_start_fails_and_opposite_limit_has_priority(self):
+        self.run_case("release_race")
+
+    def test_stop_accounts_pending_update_and_high_phase_falling_edge(self):
+        self.run_case("stop_phase")
+
+    def test_pwm_preload_is_committed_at_update_and_start_has_no_fake_step(self):
+        self.run_case("preload")
 
 
 if __name__ == "__main__":

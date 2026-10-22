@@ -33,7 +33,7 @@ extern TIM_HandleTypeDef htim1;
 
 /* 电机驱动器细分：改成你现在的 1600 */
 #define STEPPER_PULSES_PER_REV 1600U
-/* TIM1 的基准计数频率：你在 IOC 里配了 Prescaler 使得它变为 1 MHz (1微秒一次) */
+/* 与 main 的 TIM1 配置一致：100MHz / (PSC=99 + 1) = 1MHz。 */
 #define STEPPER_TIM_FREQ_HZ    1000000U
 
 /* 步进电机起步/停止时的最小转速 (防止定时器溢出或堵转) */
@@ -63,15 +63,23 @@ typedef struct {
     volatile uint8_t blocked_mask;
     volatile uint8_t release_pending_mask;
     volatile uint8_t last_stop_reason;
+    volatile uint8_t release_armed_mask;
+    volatile uint8_t release_mask;
+    volatile int32_t release_pos;
+    volatile uint32_t release_seq;
 } StepperCtrl_t;
 
 static StepperCtrl_t g_stepper = {0};
 /* 只有任务服务写时间戳；中断只置禁止位、取消对应释放计时。 */
 static uint32_t s_release_since_ms[2] = {0U, 0U};
+/* ARR/CCR2 都预装载：寄存器读回的是待装载值，不能用它判断当前高半周期。 */
+static volatile uint32_t s_active_period_ticks;
+static volatile uint32_t s_pending_period_ticks;
+static volatile uint32_t s_pending_rpm;
 
 static void Stepper_StartMove(int32_t pulses, uint16_t rpm);
 
-/* 以下三个内部函数仅在 TIM1 中断内或任务短临界区内调用。 */
+/* 以下内部状态操作只在 TIM1 中断内或任务短临界区内调用。 */
 static void Stepper_LatchLimits(uint8_t raw_mask)
 {
     raw_mask &= ROLL_LIMIT_ALL_ACTIVE;
@@ -87,10 +95,41 @@ static uint8_t Stepper_IsDirectionBlocked(int8_t direction)
     return ((g_stepper.blocked_mask & mask) != 0U) ? 1U : 0U;
 }
 
+/* 记录已经产生的脉冲下降沿；先检查边界，避免有符号坐标溢出。 */
+static uint8_t Stepper_RecordPulse(void)
+{
+    if (((g_stepper.direction > 0) && (g_stepper.current_pos == INT32_MAX)) ||
+        ((g_stepper.direction < 0) && (g_stepper.current_pos == INT32_MIN)))
+    {
+        return 0U;
+    }
+    g_stepper.step_count++;
+    if (g_stepper.pulses_remaining != 0U) g_stepper.pulses_remaining--;
+    g_stepper.current_pos += g_stepper.direction;
+    return 1U;
+}
+
 static void Stepper_StopInternal(StepperStopReason reason)
 {
     uint8_t was_running = g_stepper.is_running;
 
+    /* 直接冻结计数器；HAL 的 DISABLE 宏在通道仍使能时可能保留 CEN。
+     * PWM2 高有效、停机低电平：补计未服务的 UEV，以及截断高电平的下降沿。
+     * UIF 只能表示至少一次更新；长时间屏蔽中断或过短脉宽仍须实测，不是机械反馈。 */
+    STEPPER_TIM->Instance->CR1 &= ~TIM_CR1_CEN;
+    if (was_running != 0U)
+    {
+        if ((STEPPER_TIM->Instance->SR & TIM_FLAG_UPDATE) != 0U)
+        {
+            s_active_period_ticks = s_pending_period_ticks;
+            if (Stepper_RecordPulse() == 0U) reason = STEPPER_STOP_RANGE;
+        }
+        if ((s_active_period_ticks >= 2U) &&
+            (STEPPER_TIM->Instance->CNT >= s_active_period_ticks / 2U))
+        {
+            if (Stepper_RecordPulse() == 0U) reason = STEPPER_STOP_RANGE;
+        }
+    }
     __HAL_TIM_DISABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
     (void)HAL_TIM_PWM_Stop(STEPPER_TIM, STEPPER_TIM_CH);
     (void)HAL_TIM_Base_Stop(STEPPER_TIM);
@@ -109,7 +148,7 @@ static void Stepper_StopInternal(StepperStopReason reason)
     {
         g_stepper.limit_stop_count++;
     }
-    /* 保留请求、目标位置与限位状态，便于区分中止运动和到达目标。 */
+    /* 保留请求、目标、释放武装与捕获历史；普通分支退出校准时显式 Disarm。 */
 }
 
 void Stepper_ServiceLimits(uint32_t now_ms)
@@ -158,8 +197,41 @@ uint8_t Stepper_CopyState(StepperState *out_state)
     out_state->raw_limit_mask = g_stepper.raw_limit_mask;
     out_state->blocked_mask = g_stepper.blocked_mask;
     out_state->last_stop_reason = g_stepper.last_stop_reason;
+    out_state->release_armed_mask = g_stepper.release_armed_mask;
+    out_state->release_mask = g_stepper.release_mask;
+    out_state->release_pos = g_stepper.release_pos;
+    out_state->release_seq = g_stepper.release_seq;
     taskEXIT_CRITICAL();
     return 1U;
+}
+
+uint8_t Stepper_ArmReleaseStop(uint8_t mask)
+{
+    uint8_t accepted = 0U;
+    if ((mask != ROLL_LIMIT_POS_ACTIVE) && (mask != ROLL_LIMIT_NEG_ACTIVE)) return 0U;
+    taskENTER_CRITICAL();
+    if (g_stepper.release_armed_mask == mask)
+    {
+        accepted = 1U;
+    }
+    else if ((g_stepper.is_running == 0U) && (g_stepper.release_armed_mask == 0U))
+    {
+        Stepper_LatchLimits(LimitSwitch_ReadRollActiveMask());
+        if ((g_stepper.raw_limit_mask & mask) != 0U)
+        {
+            g_stepper.release_armed_mask = mask;
+            accepted = 1U;
+        }
+    }
+    taskEXIT_CRITICAL();
+    return accepted;
+}
+
+void Stepper_DisarmReleaseStop(void)
+{
+    taskENTER_CRITICAL();
+    g_stepper.release_armed_mask = 0U;
+    taskEXIT_CRITICAL();
 }
 
 /* Debug watch helpers for SBUS-controlled test */
@@ -289,6 +361,9 @@ void Stepper_Init(void)
     g_stepper = (StepperCtrl_t){0};
     s_release_since_ms[0] = 0U;
     s_release_since_ms[1] = 0U;
+    s_active_period_ticks = 0U;
+    s_pending_period_ticks = 0U;
+    s_pending_rpm = 0U;
     Stepper_LatchLimits(LimitSwitch_ReadRollActiveMask());
 
     /* 初始化负极端恒定为低电平，模拟 GND */
@@ -311,9 +386,11 @@ static void Stepper_UpdateARR(uint32_t rpm)
     uint32_t arr = STEPPER_TIM_FREQ_HZ / pulses_per_sec;
     if (arr < 2) arr = 2;
     
-    /* 直接修改定时器寄存器生效。这比调用 `__HAL_TIM_SET_AUTORELOAD` 更快更纯粹 */
+    /* ARR 与 CCR2 同时在下个 UEV 装载，避免变速时旧 CCR 大于新 ARR 而丢脉冲。 */
     STEPPER_TIM->Instance->ARR = arr - 1;
     STEPPER_TIM->Instance->CCR2 = arr / 2; // 维持 50% 的脉宽占空比
+    s_pending_period_ticks = arr;
+    s_pending_rpm = rpm;
 }
 
 static void Stepper_StartMove(int32_t pulses, uint16_t rpm)
@@ -342,8 +419,8 @@ static void Stepper_StartMove(int32_t pulses, uint16_t rpm)
                       (direction > 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
     taskEXIT_CRITICAL();
 
-    /* 忠于手册 3.3.4 时序图：DR至少提前PU下降沿50μs确定状态。
-     * 此处加一个简易的软件延时(远大于50us)，确保方向信号被驱动器光耦稳定锁别后再出脉冲！ */
+    /* 保留方向建立等待；实际持续时间与驱动器输入时序需要台架测量确认。
+     * PWM2 从低半周期开始，启动不会立即产生脉冲下降沿。 */
     for (volatile uint32_t delay_cnt = 0; delay_cnt < 20000; delay_cnt++) {
         __NOP();
     }
@@ -357,6 +434,14 @@ static void Stepper_StartMove(int32_t pulses, uint16_t rpm)
         taskEXIT_CRITICAL();
         return;
     }
+    if ((g_stepper.release_armed_mask != 0U) &&
+        ((g_stepper.raw_limit_mask & g_stepper.release_armed_mask) == 0U))
+    {
+        /* 武装后、真正出脉冲前已经释放，不能制造一个虚假的释放参考。 */
+        Stepper_StopInternal(STEPPER_STOP_START_FAILED);
+        taskEXIT_CRITICAL();
+        return;
+    }
     /* 最后才发布运动参数，等待方向建立期间快照仍是完整的停机状态。
      * 脉冲幅值用无符号运算得到，INT32_MIN 也不会产生取负溢出。 */
     g_stepper.direction = direction;
@@ -367,6 +452,10 @@ static void Stepper_StartMove(int32_t pulses, uint16_t rpm)
     g_stepper.current_rpm = STEPPER_START_RPM;
     g_stepper.target_pos = (int32_t)target;
     Stepper_UpdateARR(g_stepper.current_rpm);
+    /* 停机时 UG 一次性提交 PSC/ARR/CCR2；清掉它产生的 UIF，避免假计一步。 */
+    STEPPER_TIM->Instance->EGR = TIM_EGR_UG;
+    s_active_period_ticks = s_pending_period_ticks;
+    __HAL_TIM_SET_COUNTER(STEPPER_TIM, 0U);
     __HAL_TIM_CLEAR_FLAG(STEPPER_TIM, TIM_FLAG_UPDATE);
     __HAL_TIM_ENABLE_IT(STEPPER_TIM, TIM_IT_UPDATE);
     if (HAL_TIM_PWM_Start(STEPPER_TIM, STEPPER_TIM_CH) == HAL_OK)
@@ -444,22 +533,34 @@ void Stepper_TIM_IRQHandler(void)
 {
     if (g_stepper.is_running != 0U) 
     {
+        /* HAL 已清本次 UIF；本次 UEV 也已把上一拍预装载值变为有效周期。 */
+        s_active_period_ticks = s_pending_period_ticks;
+        g_stepper.current_rpm = s_pending_rpm;
         Stepper_LatchLimits(LimitSwitch_ReadRollActiveMask());
         if (g_stepper.pulses_remaining > 0U) 
         {
-            if (((g_stepper.direction > 0) && (g_stepper.current_pos == INT32_MAX)) ||
-                ((g_stepper.direction < 0) && (g_stepper.current_pos == INT32_MIN)))
+            if (Stepper_RecordPulse() == 0U)
             {
                 Stepper_StopInternal(STEPPER_STOP_RANGE);
                 return;
             }
-            /* 更新中断先计入已结束的周期；位置只是脉冲估算，不是机械反馈。 */
-            g_stepper.step_count++;
-            g_stepper.pulses_remaining--;
-            g_stepper.current_pos += g_stepper.direction;
             if (Stepper_IsDirectionBlocked(g_stepper.direction) != 0U)
             {
                 Stepper_StopInternal(STEPPER_STOP_LIMIT);
+                return;
+            }
+            if ((g_stepper.release_armed_mask != 0U) &&
+                ((g_stepper.raw_limit_mask & g_stepper.release_armed_mask) == 0U))
+            {
+                uint8_t released_mask = g_stepper.release_armed_mask;
+                g_stepper.release_armed_mask = 0U;
+                Stepper_StopInternal(STEPPER_STOP_RELEASE);
+                if (g_stepper.last_stop_reason == (uint8_t)STEPPER_STOP_RELEASE)
+                {
+                    g_stepper.release_mask = released_mask;
+                    g_stepper.release_pos = g_stepper.current_pos;
+                    g_stepper.release_seq++;
+                }
                 return;
             }
             
@@ -496,8 +597,7 @@ void Stepper_TIM_IRQHandler(void)
                 }
                 
                 /* 为了优化 CPU 的运算及打断资源，只有侦测到速度变更才去查表(或重算)定时器装载值 */
-                if (calc_rpm != g_stepper.current_rpm) {
-                    g_stepper.current_rpm = calc_rpm;
+                if (calc_rpm != s_pending_rpm) {
                     Stepper_UpdateARR(calc_rpm);
                 }
                 /* ========================================================= */

@@ -50,7 +50,7 @@ class GamepadConfig:
     motor1_is_left: bool = True
     motor1_forward_dir: int = 0
     motor2_forward_dir: int = 1
-    roll_rpm: int = 50
+    roll_rpm: int = 300
 
     def __post_init__(self):
         deadzone = _finite_number(self.deadzone, "deadzone")

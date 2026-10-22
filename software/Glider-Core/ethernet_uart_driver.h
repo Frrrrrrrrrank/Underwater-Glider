@@ -36,7 +36,7 @@
 #define ETHERNET_UART_MSG_SNAPSHOT_REQ      0x03U
 #define ETHERNET_UART_MSG_CONTROL19_LATCHED 0x04U
 #define ETHERNET_UART_MSG_CASCADE_COMMAND   0x05U
-/* 蜗杆回零：payload 1 字节，1=开始，0=取消。 */
+/* 双轴校准：沿用 0x06/1 字节，1=同时校准 pitch+roll，0=取消两轴。 */
 #define ETHERNET_UART_MSG_WORM_CALIB        0x06U
 /* AUTO 尾舵扩展：原 19 字节追加 int16 小端角度，单位 0.01 度；仅支持租约控制。 */
 #define ETHERNET_UART_MSG_CONTROL21_STREAM  0x07U
@@ -52,7 +52,7 @@
 #define ETHERNET_UART_STREAM_EKF 0x01U
 #define ETHERNET_UART_STREAM_MAG 0x02U
 #define ETHERNET_UART_STREAM_CTL 0x04U
-/* bit3：蜗杆位置遥测 $UGWRM。装机后 Ozone 不可用，位置量只能靠这条流看。 */
+/* bit3：双轴位置与校准遥测 $UGWRM，schema3 追加 roll 字段。 */
 #define ETHERNET_UART_STREAM_WRM 0x08U
 /* bit4：电池总压与采样质量 $UGBAT，不影响板端独立采样。 */
 #define ETHERNET_UART_STREAM_BAT 0x10U
@@ -65,7 +65,7 @@
 #define ETHERNET_UART_EKF_PERIOD_MS 100U//遥测频率定义
 #define ETHERNET_UART_MAG_PERIOD_MS 100U
 #define ETHERNET_UART_CTL_PERIOD_MS 100U
-#define ETHERNET_UART_WRM_PERIOD_MS 100U
+#define ETHERNET_UART_WRM_PERIOD_MS 200U /* 双轴合并帧先用 5Hz，保留 BAT 优先调度。 */
 #define ETHERNET_UART_BAT_PERIOD_MS 1000U
 
 typedef struct

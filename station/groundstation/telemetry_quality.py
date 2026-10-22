@@ -67,6 +67,11 @@ def evaluate_telemetry_quality(
             mark(WORM_TRAVEL_FIELDS, "worm_span_invalid")
         elif cleaned.get("span_valid") != 1:
             unknown_reasons.append("worm_span_validity_not_reported")
+        # roll 为软件脉冲估算，参考有效性独立于 pitch 的驱动反馈新鲜度。
+        if cleaned.get("roll_valid") == 0:
+            mark(("roll_percent",), "roll_reference_invalid")
+        elif cleaned.get("roll_valid") != 1:
+            unknown_reasons.append("roll_validity_not_reported")
 
     # UGCTL 的 armed/output_valid/fault 是独立运行状态，本阶段不据此否定整行诊断数据。
     reasons = list(dict.fromkeys(invalid_fields.values())) + unknown_reasons

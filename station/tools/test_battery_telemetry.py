@@ -334,13 +334,15 @@ class BatterySubscriptionTests(unittest.TestCase):
         def console(*_args):
             masks = [ugcp.parse_frame(call.args[0])[2][0]
                      for call in conn.sendall.call_args_list]
-            self.assertEqual(masks, [ugcp.STREAM_EKF, ugcp.STREAM_EKF | ugcp.STREAM_BAT])
-            self.assertEqual(contcp_t.get_stream_control_mask(), ugcp.STREAM_EKF | ugcp.STREAM_BAT)
+            base = ugcp.STREAM_EKF | ugcp.STREAM_CTL | ugcp.STREAM_WRM
+            self.assertEqual(masks, [base, base | ugcp.STREAM_BAT])
+            self.assertEqual(contcp_t.get_stream_control_mask(), base | ugcp.STREAM_BAT)
 
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(contcp_t, "running", True))
             stack.enter_context(mock.patch.object(contcp_t, "TELEMETRY_STREAM_MASK", 0))
             stack.enter_context(mock.patch.object(contcp_t, "GamepadService", return_value=service))
+            stack.enter_context(mock.patch.object(contcp_t, "_start_monitor_bridge", return_value=None))
             stack.enter_context(mock.patch.object(contcp_t.socket, "socket", return_value=listener))
             stack.enter_context(mock.patch.object(contcp_t.threading, "Thread", return_value=worker))
             stack.enter_context(mock.patch.object(contcp_t, "_run_console", side_effect=console))

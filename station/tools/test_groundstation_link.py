@@ -21,7 +21,7 @@ from groundstation.legacy_telemetry import (  # noqa: E402
     EKF_INT_FIELDS,
     UGCTL_FIELDS,
     UGCTL_INT_FIELDS,
-    UGWRM_FIELDS,
+    UGWRM_FIELDS_V2 as UGWRM_FIELDS,
     UGWRM_INT_FIELDS,
     decode_telemetry_line,
 )

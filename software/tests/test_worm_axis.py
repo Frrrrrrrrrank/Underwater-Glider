@@ -1,4 +1,4 @@
-"""编译真实蜗杆位置与回零模块，用模拟电机反馈验证新 pitch 机构的方向和参考状态。"""
+"""编译真实双轴校准模块，用模拟反馈覆盖方向、释放捕获、一次启动及失败联锁。"""
 
 from pathlib import Path
 import os
@@ -23,6 +23,8 @@ void test_exit_critical(void);
 HARNESS = r"""
 #include "worm_axis.h"
 #include "motor_driver.h"
+#include "stepper_driver.h"
+#include "limit_switch.h"
 #include <assert.h>
 #include <limits.h>
 #include <stddef.h>
@@ -32,6 +34,15 @@ HARNESS = r"""
 volatile UMotor g_umotor;
 volatile uint8_t g_limit_switch_states[4] = {1U, 1U, 1U, 1U};
 static unsigned critical_depth;
+static StepperState roll = {.running = 1U};
+static uint8_t roll_snapshot_valid = 1U;
+
+uint8_t Stepper_CopyState(StepperState *out)
+{
+    assert(out != NULL);
+    *out = roll;
+    return roll_snapshot_valid;
+}
 
 void test_enter_critical(void) { ++critical_depth; }
 void test_exit_critical(void)
@@ -102,6 +113,118 @@ static void finish_homing(void)
     near_value(state().stroke_percent, 0.0f, 0.0001f);
     assert(state().home_done_count == 1U);
     assert(homing_rpm(0U) == 0);
+}
+
+static WormCalibrationOutput output(void)
+{
+    WormCalibrationOutput out;
+    assert(WormAxis_GetCalibrationOutput(&out) == state().calib_hold);
+    assert(WormAxis_GetCalibrationOutput(NULL) == state().calib_hold);
+    assert(out.calib_state == state().calib_state);
+    return out;
+}
+
+static void stopped(void)
+{
+    assert(state().calib_hold == 1U);
+    assert(output().pitch_rpm == 0);
+    assert(output().roll_action == WORM_ROLL_ACTION_STOP);
+    assert(output().roll_rpm == 0);
+}
+
+/* 模拟 ServoTask 的一次命令及驱动快照，不在测试中实现第二套校准状态机。 */
+static void acknowledge_backoff(void)
+{
+    WormCalibrationOutput first = output();
+    assert(first.roll_action == WORM_ROLL_ACTION_START_BACKOFF);
+    assert(output().roll_action == first.roll_action); /* 查询不得消费 START。 */
+    roll.running = 1U;
+    roll.last_stop_reason = STEPPER_STOP_NONE;
+    roll.release_armed_mask = first.roll_release_arm_mask;
+    WormAxis_ConfirmRollCommand(1U);
+    assert(output().roll_action == WORM_ROLL_ACTION_KEEP_BACKOFF);
+}
+
+static void capture_release(uint8_t mask, int32_t pos)
+{
+    roll.current_pos = pos;
+    roll.release_pos = pos;
+    roll.release_mask = mask;
+    roll.release_seq++;
+    roll.release_armed_mask = 0U;
+    roll.running = 0U;
+    roll.last_stop_reason = STEPPER_STOP_RELEASE;
+    roll.raw_limit_mask = 0U;
+    roll.blocked_mask = mask;
+}
+
+static uint32_t measure_roll(uint32_t now, int32_t negative, int32_t positive)
+{
+    roll.raw_limit_mask = roll.blocked_mask = ROLL_LIMIT_NEG_ACTIVE;
+    roll.running = 0U;
+    roll.last_stop_reason = STEPPER_STOP_LIMIT;
+    feed(now += 20U, -2, 1U);
+    assert(state().roll.home_state == WORM_ROLL_HOME_BACKOFF_NEG);
+    assert(output().roll_rpm == WORM_ROLL_BACKOFF_RPM);
+    assert(output().roll_release_arm_mask == ROLL_LIMIT_NEG_ACTIVE);
+    acknowledge_backoff();
+    capture_release(ROLL_LIMIT_NEG_ACTIVE, negative);
+    feed(now += 20U, -2, 1U);
+    assert(output().roll_action == WORM_ROLL_ACTION_STOP);
+    assert(state().roll.home_state == WORM_ROLL_HOME_BACKOFF_NEG);
+    /* STOP 覆写停止原因后仍使用已捕获位置；不能把 seq 历史当新一轮释放。 */
+    roll.last_stop_reason = STEPPER_STOP_COMMAND;
+    roll.blocked_mask = 0U;
+    feed(now += 20U, -2, 1U);
+    assert(state().roll.pulse_min == negative);
+    assert(state().roll.home_state == WORM_ROLL_HOME_SEEK_POS);
+    assert(output().roll_rpm == WORM_ROLL_SEEK_RPM);
+
+    roll.raw_limit_mask = roll.blocked_mask = ROLL_LIMIT_POS_ACTIVE;
+    roll.last_stop_reason = STEPPER_STOP_LIMIT;
+    feed(now += 20U, -2, 1U);
+    assert(state().roll.home_state == WORM_ROLL_HOME_BACKOFF_POS);
+    assert(output().roll_rpm == -WORM_ROLL_BACKOFF_RPM);
+    assert(output().roll_release_arm_mask == ROLL_LIMIT_POS_ACTIVE);
+    acknowledge_backoff();
+    capture_release(ROLL_LIMIT_POS_ACTIVE, positive);
+    feed(now += 20U, -2, 1U);
+    assert(output().roll_action == WORM_ROLL_ACTION_STOP);
+    roll.blocked_mask = 0U;
+    feed(now += 20U, -2, 1U);
+    return now;
+}
+
+static uint32_t complete_center(uint32_t now, uint8_t immediate)
+{
+    WormCalibrationOutput start = output();
+    assert(start.roll_action == WORM_ROLL_ACTION_START_CENTER);
+    assert(start.roll_rpm == WORM_ROLL_CENTER_RPM);
+    assert(output().roll_action == WORM_ROLL_ACTION_START_CENTER);
+    roll.target_pos = start.roll_center_pos;
+    roll.running = 1U;
+    roll.last_stop_reason = STEPPER_STOP_NONE;
+    if (immediate)
+    {
+        /* 距离很短时在 20ms 内完成，也必须消费明确的启动回执。 */
+        roll.running = 0U;
+        roll.current_pos = roll.target_pos;
+        roll.last_stop_reason = STEPPER_STOP_COMPLETED;
+    }
+    WormAxis_ConfirmRollCommand(1U);
+    assert(output().roll_action == WORM_ROLL_ACTION_KEEP_CENTER);
+    if (!immediate)
+    {
+        feed(now += 20U, -2, 1U);
+        assert(output().roll_action == WORM_ROLL_ACTION_KEEP_CENTER);
+        roll.running = 0U;
+        roll.current_pos = roll.target_pos;
+        roll.last_stop_reason = STEPPER_STOP_COMPLETED;
+    }
+    feed(now += 20U, -2, 1U);
+    assert(state().roll.home_state == WORM_ROLL_HOME_DONE);
+    assert(state().roll.valid == 1U);
+    return now;
 }
 
 static void test_power_on_endpoints(void)
@@ -225,15 +348,18 @@ static void test_homed_endpoints_do_not_drift(void)
 
 static void test_reference_loss_and_recovery(void)
 {
+    uint32_t done;
     finish_homing();
-    feed(80U + WORM_AXIS_REF_LOST_MS - 1U, -2, 0U);
+    done = complete_center(measure_roll(80U, -1000, 1000), 1U);
+    assert(state().calib_state == WORM_CALIB_DONE);
+    feed(done + WORM_AXIS_REF_LOST_MS - 1U, -2, 0U);
     assert(state().reference_kind == WORM_REF_HOMED && state().data_fresh == 0U);
-    feed(80U + WORM_AXIS_REF_LOST_MS, -2, 0U);
+    feed(done + WORM_AXIS_REF_LOST_MS, -2, 0U);
     assert(state().reference_kind == WORM_REF_NONE);
     assert(state().reference_lost_count == 1U);
     assert(state().home_state == WORM_HOME_IDLE);
     assert(homing_rpm(0U) == 0);
-    feed(80U + WORM_AXIS_REF_LOST_MS + 20U, -100, 1U);
+    feed(done + WORM_AXIS_REF_LOST_MS + 20U, -100, 1U);
     assert(state().reference_kind == WORM_REF_POWER_ON);
     assert(state().pulse_min_seen == -100 && state().pulse_max_seen == -100);
     assert(state().span_pulses == 0 && state().span_valid == 0U);
@@ -298,6 +424,267 @@ static void test_homed_extreme_raw_pulse(void)
     assert(state().span_valid == 1U && state().reference_kind == WORM_REF_HOMED);
 }
 
+static void test_joint_success(uint8_t roll_first, uint8_t immediate)
+{
+    uint32_t now;
+    if (roll_first) { begin_seek(); now = 40U; }
+    else { finish_homing(); now = 80U; }
+    now = measure_roll(now, -1000, 1000);
+    assert(state().roll.valid == 1U && state().roll.span_pulses == 2000);
+    assert(output().roll_center_pos == 0);
+    near_value(state().roll.stroke_percent, 100.0f, 0.001f);
+    now = complete_center(now, immediate);
+    near_value(state().roll.stroke_percent, 50.0f, 0.001f);
+    if (roll_first)
+    {
+        assert(state().calib_state == WORM_CALIB_RUNNING);
+        assert(output().roll_action == WORM_ROLL_ACTION_STOP);
+        assert(output().pitch_rpm == -WORM_HOME_SEEK_RPM);
+        g_limit_switch_states[1] = 0U;
+        feed(now += 20U, 10, 1U);
+        g_limit_switch_states[1] = 1U;
+        feed(now += 20U, -2, 1U);
+    }
+    assert(state().calib_state == WORM_CALIB_DONE);
+    assert(state().calib_fail == WORM_CALIB_FAIL_NONE);
+    stopped();
+    WormAxis_ReleaseCalibrationHold();
+    assert(state().calib_hold == 0U && WormAxis_GetCalibrationOutput(NULL) == 0U);
+    /* 新一轮必须作废旧 roll 跨度，不能沿用上一轮计数。 */
+    WormAxis_RequestCalibration();
+    feed(now += 20U, -2, 1U);
+    assert(state().roll.valid == 0U && state().roll.span_pulses == 0);
+    assert(state().calib_state == WORM_CALIB_RUNNING);
+    WormAxis_ReleaseCalibrationHold();
+    assert(state().calib_hold == 1U);
+}
+
+static void test_roll_bad_span(int32_t negative, int32_t positive)
+{
+    finish_homing();
+    (void)measure_roll(80U, negative, positive);
+    assert(state().calib_state == WORM_CALIB_FAILED);
+    assert(state().calib_fail == WORM_CALIB_FAIL_ROLL);
+    assert(state().roll.home_fail == WORM_ROLL_FAIL_SPAN);
+    assert(state().roll.valid == 0U);
+    stopped();
+}
+
+static void test_integer_endpoints(void)
+{
+    uint32_t now;
+    finish_homing();
+    now = measure_roll(80U, INT32_MAX - 1001, INT32_MAX);
+    assert(output().roll_center_pos == INT32_MAX - 501);
+    now = complete_center(now, 1U);
+    near_value(state().roll.stroke_percent, 100.0f * 500.0f / 1001.0f, 0.001f);
+    /* 诊断保留范围外的实际估计，不钳成端点；分子用 int64 避免溢出。 */
+    roll.current_pos = INT32_MIN;
+    feed(now + 20U, -2, 1U);
+    assert(state().roll.stroke_percent < -400000000.0f);
+}
+
+static void test_roll_faults(const char *kind)
+{
+    uint32_t now;
+    finish_homing();
+    if (strcmp(kind, "both_limits") == 0)
+    {
+        roll.raw_limit_mask = ROLL_LIMIT_ALL_ACTIVE;
+        feed(100U, -2, 1U);
+        assert(state().roll.home_fail == WORM_ROLL_FAIL_LIMIT_CONFLICT);
+    }
+    else if (strcmp(kind, "roll_snapshot") == 0)
+    {
+        roll_snapshot_valid = 0U;
+        feed(100U, -2, 1U);
+        assert(state().roll.home_fail == WORM_ROLL_FAIL_DRIVER);
+    }
+    else if (strcmp(kind, "roll_range") == 0)
+    {
+        roll.last_stop_reason = STEPPER_STOP_RANGE;
+        feed(100U, -2, 1U);
+        assert(state().roll.home_fail == WORM_ROLL_FAIL_DRIVER);
+    }
+    else if (strcmp(kind, "roll_seek_timeout") == 0)
+    {
+        WormAxis_RequestCalibration(); /* 不许刷新起始 20ms 的超时。 */
+        feed(20U + WORM_ROLL_SEEK_TIMEOUT_MS, -2, 1U);
+        assert(state().roll.home_fail == WORM_ROLL_FAIL_SEEK_TIMEOUT);
+    }
+    else
+    {
+        now = measure_roll(80U, -1000, 1000);
+        if (strcmp(kind, "center_start_fail") == 0)
+        {
+            WormAxis_ConfirmRollCommand(0U);
+            assert(state().roll.home_fail == WORM_ROLL_FAIL_DRIVER);
+        }
+        else
+        {
+            roll.target_pos = output().roll_center_pos;
+            roll.running = 1U;
+            roll.last_stop_reason = STEPPER_STOP_NONE;
+            WormAxis_ConfirmRollCommand(1U);
+            if (strcmp(kind, "center_timeout") == 0)
+            {
+                feed(now + WORM_ROLL_CENTER_TIMEOUT_MS, -2, 1U);
+                assert(state().roll.home_fail == WORM_ROLL_FAIL_CENTER_TIMEOUT);
+            }
+            else
+            {
+                roll.running = 0U;
+                roll.current_pos = roll.target_pos;
+                roll.last_stop_reason = STEPPER_STOP_LIMIT;
+                if (strcmp(kind, "center_wrong_count") == 0)
+                {
+                    roll.last_stop_reason = STEPPER_STOP_COMPLETED;
+                    roll.current_pos++;
+                }
+                feed(now + 20U, -2, 1U);
+                assert(state().roll.home_fail == WORM_ROLL_FAIL_DRIVER);
+            }
+        }
+    }
+    assert(state().calib_state == WORM_CALIB_FAILED);
+    assert(state().roll.valid == 0U);
+    stopped();
+}
+
+static void test_release_faults(const char *kind)
+{
+    finish_homing();
+    roll.raw_limit_mask = roll.blocked_mask = ROLL_LIMIT_NEG_ACTIVE;
+    roll.running = 0U;
+    roll.last_stop_reason = STEPPER_STOP_LIMIT;
+    roll.release_seq = UINT32_MAX; /* 本次捕获允许回绕，不能用 > 判断事件。 */
+    feed(100U, -2, 1U);
+    if (strcmp(kind, "backoff_start_fail") == 0)
+    {
+        WormAxis_ConfirmRollCommand(0U);
+    }
+    else
+    {
+        acknowledge_backoff();
+        if (strcmp(kind, "backoff_timeout") == 0)
+        {
+            feed(100U + WORM_ROLL_BACKOFF_TIMEOUT_MS, -2, 1U);
+            assert(state().roll.home_fail == WORM_ROLL_FAIL_BACKOFF_TIMEOUT);
+        }
+        else if (strcmp(kind, "release_no_event") == 0)
+        {
+            roll.running = 0U;
+            roll.last_stop_reason = STEPPER_STOP_RELEASE;
+            feed(120U, -2, 1U);
+        }
+        else
+        {
+            capture_release(ROLL_LIMIT_NEG_ACTIVE, -1000);
+            assert(roll.release_seq == 0U);
+            if (strcmp(kind, "release_wrong_mask") == 0)
+            {
+                roll.release_mask = ROLL_LIMIT_POS_ACTIVE;
+            }
+            feed(120U, -2, 1U);
+            if (strcmp(kind, "release_moved") == 0)
+            {
+                roll.current_pos++;
+                feed(140U, -2, 1U);
+            }
+            else if (strcmp(kind, "release_bounce") == 0)
+            {
+                roll.raw_limit_mask = ROLL_LIMIT_NEG_ACTIVE;
+                feed(140U, -2, 1U);
+                assert(output().roll_action == WORM_ROLL_ACTION_STOP);
+                feed(100U + WORM_ROLL_BACKOFF_TIMEOUT_MS, -2, 1U);
+                assert(state().roll.home_fail == WORM_ROLL_FAIL_BACKOFF_TIMEOUT);
+            }
+        }
+    }
+    assert(state().calib_state == WORM_CALIB_FAILED);
+    assert(state().roll.valid == 0U);
+    stopped();
+}
+
+static void test_repeated_start_and_retry(void)
+{
+    begin_seek();
+    WormAxis_RequestCalibration();
+    feed(20U + WORM_HOME_SEEK_TIMEOUT_MS, -2, 1U);
+    assert(state().home_fail == WORM_HOME_FAIL_SEEK_TIMEOUT);
+    stopped();
+    roll.last_stop_reason = STEPPER_STOP_START_FAILED;
+    WormAxis_RequestCalibration();
+    feed(40000U, -2, 1U);
+    assert(state().calib_state == WORM_CALIB_RUNNING);
+    stopped();
+    /* 实际驱动在已停机时保留旧错误；第一条新 SEEK 必须获准重新尝试。 */
+    roll.running = 0U;
+    feed(40020U, -2, 1U);
+    assert(state().calib_state == WORM_CALIB_RUNNING);
+    assert(output().roll_action == WORM_ROLL_ACTION_CONTINUOUS);
+    assert(output().roll_rpm == -WORM_ROLL_SEEK_RPM);
+    /* 新一轮实际下发仍失败时，main 的即时回执必须同拍停 pitch。 */
+    WormAxis_ConfirmRollCommand(0U);
+    assert(state().calib_fail == WORM_CALIB_FAIL_ROLL);
+    stopped();
+}
+
+static void test_cancel_and_pid(const char *kind)
+{
+    if (strcmp(kind, "cancel_pending") == 0)
+    {
+        WormAxis_RequestCalibration();
+        WormAxis_CancelCalibration();
+        WormAxis_RequestCalibration(); /* 待消费的取消优先。 */
+        feed(0U, -2, 1U);
+    }
+    else
+    {
+        uint32_t now;
+        finish_homing();
+        now = measure_roll(80U, -1000, 1000);
+        assert(state().roll.valid == 1U);
+        if (strcmp(kind, "pid_cancel") == 0)
+        {
+            WormAxis_CancelCalibrationForPid(); /* 不等待下一拍。 */
+            assert(state().calib_fail == WORM_CALIB_FAIL_PID);
+        }
+        else
+        {
+            WormAxis_CancelCalibration();
+            feed(now + 20U, -2, 1U);
+        }
+    }
+    assert(state().calib_state == WORM_CALIB_CANCELLED);
+    assert(state().roll.valid == 0U);
+    stopped();
+}
+
+static void test_pitch_fails_after_finishing(void)
+{
+    finish_homing();
+    assert(state().calib_state == WORM_CALIB_RUNNING);
+    feed(80U + WORM_AXIS_STALE_MS, -2, 0U);
+    assert(state().home_fail == WORM_HOME_FAIL_DATA_STALE);
+    assert(state().calib_fail == WORM_CALIB_FAIL_PITCH);
+    assert(state().roll.home_fail == WORM_ROLL_FAIL_OTHER_AXIS);
+    stopped();
+}
+
+static void test_timeout_wrap(void)
+{
+    uint32_t start = UINT32_MAX - 10U;
+    feed(start - 20U, -2, 1U);
+    WormAxis_RequestCalibration();
+    feed(start, -2, 1U);
+    feed(start + WORM_HOME_SEEK_TIMEOUT_MS - 1U, -2, 1U);
+    assert(state().calib_state == WORM_CALIB_RUNNING);
+    feed(start + WORM_HOME_SEEK_TIMEOUT_MS, -2, 1U);
+    assert(state().home_fail == WORM_HOME_FAIL_SEEK_TIMEOUT);
+    stopped();
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2);
@@ -319,6 +706,22 @@ int main(int argc, char **argv)
     else if (strcmp(argv[1], "home_boundary") == 0) { test_home_endpoint_range(1U); }
     else if (strcmp(argv[1], "span_overflow") == 0) { test_span_overflow_is_invalid(); }
     else if (strcmp(argv[1], "raw_extreme") == 0) { test_homed_extreme_raw_pulse(); }
+    else if (strcmp(argv[1], "joint_pitch_first") == 0) { test_joint_success(0U, 0U); }
+    else if (strcmp(argv[1], "joint_roll_first") == 0) { test_joint_success(1U, 0U); }
+    else if (strcmp(argv[1], "joint_immediate") == 0) { test_joint_success(0U, 1U); }
+    else if (strcmp(argv[1], "small_span") == 0) { test_roll_bad_span(0, 31); }
+    else if (strcmp(argv[1], "reverse_span") == 0) { test_roll_bad_span(1000, -1000); }
+    else if (strcmp(argv[1], "huge_span") == 0) { test_roll_bad_span(INT32_MIN, INT32_MAX); }
+    else if (strcmp(argv[1], "roll_integer") == 0) { test_integer_endpoints(); }
+    else if (strcmp(argv[1], "retry") == 0) { test_repeated_start_and_retry(); }
+    else if (strcmp(argv[1], "pitch_wait_stale") == 0) { test_pitch_fails_after_finishing(); }
+    else if (strcmp(argv[1], "timeout_wrap") == 0) { test_timeout_wrap(); }
+    else if (strncmp(argv[1], "cancel_", 7U) == 0 || strcmp(argv[1], "pid_cancel") == 0)
+        { test_cancel_and_pid(argv[1]); }
+    else if (strncmp(argv[1], "release_", 8U) == 0 || strncmp(argv[1], "backoff_", 8U) == 0)
+        { test_release_faults(argv[1]); }
+    else if (strncmp(argv[1], "center_", 7U) == 0 || strncmp(argv[1], "roll_", 5U) == 0 ||
+             strcmp(argv[1], "both_limits") == 0) { test_roll_faults(argv[1]); }
     else { assert(0); }
     assert(critical_depth == 0U);
     return 0;
@@ -343,6 +746,9 @@ class WormAxisHostTests(unittest.TestCase):
             "/* 主机测试不启动调度器。 */\n#include <stddef.h>\n", encoding="utf-8",
         )
         (work / "task.h").write_text(TASK_STUB, encoding="utf-8")
+        (work / "stm32h7xx_hal.h").write_text(
+            "#include <stdint.h>\n", encoding="utf-8",
+        )
         (work / "harness.c").write_text(HARNESS, encoding="utf-8")
         cls.env = dict(os.environ)
         cls.env["PATH"] = str(Path(compiler).parent) + os.pathsep + cls.env.get("PATH", "")
@@ -407,6 +813,42 @@ class WormAxisHostTests(unittest.TestCase):
 
     def test_homed_raw_extremes_keep_fraction_sign_without_overflow(self):
         self.run_case("raw_extreme")
+
+    def test_both_axis_completion_orders_and_sub_tick_center_completion(self):
+        for case in ("joint_pitch_first", "joint_roll_first", "joint_immediate"):
+            with self.subTest(case=case):
+                self.run_case(case)
+
+    def test_roll_span_is_remeasured_and_checked_in_64_bits(self):
+        for case in ("small_span", "reverse_span", "huge_span", "roll_integer"):
+            with self.subTest(case=case):
+                self.run_case(case)
+
+    def test_driver_limit_and_center_errors_stop_both_axes(self):
+        for case in ("both_limits", "roll_snapshot", "roll_range", "roll_seek_timeout",
+                     "center_start_fail", "center_timeout", "center_wrong_count", "center_limit"):
+            with self.subTest(case=case):
+                self.run_case(case)
+
+    def test_backoff_requires_new_matching_release_and_stable_stop(self):
+        for case in ("backoff_start_fail", "backoff_timeout", "release_no_event",
+                     "release_wrong_mask", "release_moved", "release_bounce"):
+            with self.subTest(case=case):
+                self.run_case(case)
+
+    def test_repeated_request_keeps_timeout_and_failed_round_can_retry(self):
+        self.run_case("retry")
+
+    def test_cancel_including_pending_start_and_pid_holds_both_stopped(self):
+        for case in ("cancel_pending", "cancel_center", "pid_cancel"):
+            with self.subTest(case=case):
+                self.run_case(case)
+
+    def test_pitch_feedback_must_stay_fresh_until_roll_finishes(self):
+        self.run_case("pitch_wait_stale")
+
+    def test_phase_timeout_crosses_uint32_tick_wrap(self):
+        self.run_case("timeout_wrap")
 
 
 if __name__ == "__main__":

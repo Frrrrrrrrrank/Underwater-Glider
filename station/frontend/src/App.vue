@@ -38,8 +38,9 @@ const controls = [
   { label: '油囊位移', target: 'target_displacement_mm', feedback: 'displacement_mm', error: 'displacement_error_mm', unit: 'mm' },
 ]
 const actuatorRows: { topic: Topic; keys: string[] }[] = [
-  { topic: 'ugwrm', keys: ['stroke_percent', 'ref_kind'] }, { topic: 'ugwrm', keys: ['cmd_rpm', 'fb_rpm'] },
-  { topic: 'ugwrm', keys: ['home_state', 'alarm'] }, { topic: 'ugctl', keys: ['pump_enable', 'pump_direction'] },
+  { topic: 'ugwrm', keys: ['stroke_percent', 'roll_percent'] }, { topic: 'ugwrm', keys: ['cmd_rpm', 'fb_rpm'] },
+  { topic: 'ugwrm', keys: ['home_state', 'roll_home_state'] }, { topic: 'ugctl', keys: ['pump_enable', 'pump_direction'] },
+  { topic: 'ugwrm', keys: ['calib_state', 'calib_hold'] },
   { topic: 'ugctl', keys: ['worm_rpm', 'thrust_pct'] },
 ]
 const controlFields = ['mode', 'armed', 'output_valid', 'fault', 'core_fault', 'pid_valid']
@@ -77,9 +78,11 @@ function timeLabel(value: string | null | undefined) {
             <div class="panel-note">深度向下为正；目标值表示板端当前快照，不代表从本页发出了指令。</div>
           </section>
           <section class="panel actuator-panel">
-            <header class="panel-heading"><h2>蜗杆与浮力系统</h2><span class="panel-meta">行程参考 <DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="span_valid" /> · 反馈新鲜 <DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="data_fresh" /></span></header>
+            <header class="panel-heading"><h2>双轴与浮力系统</h2><span class="panel-meta">pitch 参考 <DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="span_valid" /> · 反馈新鲜 <DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="data_fresh" /></span></header>
             <div class="panel-scroll"><table class="data-table paired-table"><tbody><tr v-for="(row, index) in actuatorRows" :key="index"><template v-for="key in row.keys" :key="key"><th>{{ definition(row.topic, key).label }}<small v-if="definition(row.topic, key).unit"> {{ definition(row.topic, key).unit }}</small></th><td class="numeric"><DataValue :sample="telemetry[row.topic]" :topic="row.topic" :field="key" /></td></template></tr></tbody></table>
             <div class="worm-track"><span>前端 0%</span><div><i v-if="!fieldIssue(telemetry.ugwrm, 'ugwrm', 'stroke_percent')" :style="{ left: Math.max(0, Math.min(100, Number(telemetry.ugwrm?.data.stroke_percent))) + '%' }"></i></div><span>后端 100%</span></div>
+            <div class="worm-track" data-testid="roll-track"><span>PB3 0%</span><div><i v-if="!fieldIssue(telemetry.ugwrm, 'ugwrm', 'roll_percent')" :style="{ left: Math.max(0, Math.min(100, Number(telemetry.ugwrm?.data.roll_percent))) + '%' }"></i></div><span>PB5 100%</span></div>
+            <p class="roll-note">roll 为脉冲估算；50% 是行程中点，不代表艇体水平。</p>
             </div>
           </section>
           <TrendPanel :estimate="telemetry.ugekf" :control="telemetry.ugctl" :now="now" :active="!!telemetry.ugekf?.fresh" />

@@ -7,7 +7,7 @@ const binary = { 0: '否', 1: '是' }
 export const topics: { key: Topic; label: string; description: string }[] = [
   { key: 'ugekf', label: '状态估计', description: 'UGEKF · 姿态、深度与估计质量' },
   { key: 'ugctl', label: '控制反馈', description: 'UGCTL · 控制器快照与回执' },
-  { key: 'ugwrm', label: '蜗杆与总线', description: 'UGWRM · 位置、回零与驱动器' },
+  { key: 'ugwrm', label: '双轴与总线', description: 'UGWRM · pitch / roll 位置与校准' },
 ]
 
 // 显示名称、单位和枚举只有这一份定义，监控与诊断共同使用。
@@ -49,16 +49,24 @@ export const fields: Record<Topic, FieldDefinition[]> = {
     field('data_fresh', '驱动反馈新鲜', '', 0, binary), field('ref_kind', '位置参考', '', 0, { 0: '无参考', 1: '上电参考', 2: '回零参考' }), field('ref_lost', '参考丢失次数'),
     field('pulse_min', '最小原始脉冲', 'pulse'), field('pulse_max', '最大原始脉冲', 'pulse'), field('span_pulses', '行程跨度', 'pulse'),
     field('moving', '电机运动', '', 0, binary), field('alarm', '驱动器报警', '', 0, binary),
-    field('home_state', '回零状态', '', 0, { 0: '未回零', 1: '趋近前限位', 2: '慢速退出', 3: '回零完成', 4: '回零失败' }),
-    field('home_fail', '回零失败原因', '', 0, { 0: '无', 1: '趋近超时', 2: '退出超时', 3: '反馈过期', 4: '已取消', 5: '回零端点超出脉冲范围' }), field('pulse_home', '回零点脉冲', 'pulse'),
+    field('home_state', 'pitch 校准阶段', '', 0, { 0: '未校准', 1: '趋近前限位', 2: '慢速退出', 3: 'pitch 完成', 4: 'pitch 失败' }),
+    field('home_fail', 'pitch 失败原因', '', 0, { 0: '无', 1: '趋近超时', 2: '退出超时', 3: '反馈过期', 4: '已取消', 5: '端点超出脉冲范围', 6: '两端限位同时触发', 7: 'roll 失败，联合停止' }), field('pulse_home', 'pitch 零点脉冲', 'pulse'),
     field('cmd_rpm', '电机指令转速', 'rpm'), field('fb_rpm', '电机反馈转速', 'rpm'), field('status_word', '驱动状态字'), field('err', '驱动错误码'), field('err_sub', '驱动错误子码'),
     field('input_ports', '驱动输入位图'), field('limit_bits', '限位输入位图'), field('poll_ok', '总线轮询成功次数'), field('poll_fail', '总线轮询失败次数'),
     field('overrun', '串口溢出次数'), field('enable_resync', '使能重同步次数'), field('last_error', '最近总线错误码'),
+    field('roll_pulse', 'roll 软件计数', 'pulse'), field('roll_pulse_min', 'roll PB3 零端', 'pulse'),
+    field('roll_pulse_max', 'roll PB5 满端', 'pulse'), field('roll_span_pulses', 'roll 实测跨度', 'pulse'),
+    field('roll_percent', 'roll 位置估算', '%', 2), field('roll_valid', 'roll 参考有效', '', 0, binary),
+    field('roll_home_state', 'roll 校准阶段', '', 0, { 0: '未校准', 1: '趋近 PB3', 2: '退出 PB3', 3: '趋近 PB5', 4: '退出 PB5', 5: '返回 50%', 6: 'roll 完成', 7: 'roll 失败' }),
+    field('roll_home_fail', 'roll 失败原因', '', 0, { 0: '无', 1: '寻端超时', 2: '退出超时', 3: '回中超时', 4: '两端限位冲突', 5: '驱动停止或启动失败', 6: '跨度无效', 7: '已取消', 8: '另一轴失败' }),
+    field('calib_state', '双轴校准状态', '', 0, { 0: '未校准', 1: '校准中', 2: '双轴完成', 3: '失败', 4: '已取消' }),
+    field('calib_fail', '双轴校准失败原因', '', 0, { 0: '无', 1: 'pitch 失败', 2: 'roll 失败', 3: '已取消', 4: 'PID 接管' }), field('calib_hold', '校准控制保持', '', 0, binary),
   ],
 }
 
 export const invalidReasonLabels: Record<string, string> = {
   non_finite: '数值无效', ekf_not_valid: '估计未就绪', worm_span_invalid: '行程参考未建立', worm_feedback_stale: '驱动反馈过期',
+  roll_reference_invalid: 'roll 参考未建立',
 }
 export function definition(topic: Topic, key: string): FieldDefinition {
   return fields[topic].find(item => item.key === key) ?? field(key, key, '', 3)
@@ -75,6 +83,10 @@ export function fieldIssue(sample: TelemetrySample | undefined, topic: Topic, ke
     const flags = sample.data.fl
     if (typeof flags !== 'number' || !Number.isInteger(flags) || flags < 0) return '估计有效性未知'
     if ((flags & 2) === 0) return '估计未就绪'
+  }
+  if (topic === 'ugwrm' && key === 'roll_percent') {
+    if (sample.data.roll_valid !== 0 && sample.data.roll_valid !== 1) return 'roll 参考有效性未知'
+    if (sample.data.roll_valid !== 1) return 'roll 参考未建立'
   }
   if (topic === 'ugwrm' && ['stroke_percent', 'mm_from_front'].includes(key)) {
     if (sample.data.span_valid !== 0 && sample.data.span_valid !== 1) return '行程参考有效性未知'

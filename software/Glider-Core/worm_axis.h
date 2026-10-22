@@ -1,9 +1,9 @@
 /*
  * worm_axis.h
  *
- * 蜗杆(移动质量块)轴的位置与回零层：
+ * Pitch/roll 位置与双轴校准层：
  *  1) 保留驱动器原始脉冲，换算机头端 0%、机尾端 100% 的行程位置；
- *  2) 判断数据新鲜度与零点参考，并产生回零所需的逻辑转速。
+ *  2) 同时校准 pitch 机头参考及 roll 两端跨度，再把 roll 移到 50%。
  *
  * 本模块不发 MODBUS 帧、不写执行器。StartServoTask 每 20ms 调用 WormAxis_Step()，
  * 再仲裁回零/控制请求；pitch 安装方向只在该任务的最终下发处转换一次。
@@ -102,8 +102,78 @@ typedef enum
   WORM_HOME_FAIL_BACKOFF_TIMEOUT = 2U, /* 退不出前限位 */
   WORM_HOME_FAIL_DATA_STALE      = 3U, /* 回零途中位置数据失效，不敢再动 */
   WORM_HOME_FAIL_CANCELLED       = 4U, /* 被上位机或 PID 接管取消 */
-  WORM_HOME_FAIL_POSITION_RANGE  = 5U  /* 回零推算的端点超出 int32 脉冲范围 */
+  WORM_HOME_FAIL_POSITION_RANGE  = 5U, /* 回零推算的端点超出 int32 脉冲范围 */
+  WORM_HOME_FAIL_LIMIT_CONFLICT  = 6U, /* 两端开关同时触发 */
+  WORM_HOME_FAIL_OTHER_AXIS      = 7U  /* roll 失败，联合停止 */
 } WormHomingFail;
+
+/* Roll 为开环脉冲估算；每次校准重新测量，断电不保存。以下边界须按实机收紧。 */
+#define WORM_ROLL_SEEK_RPM               50
+#define WORM_ROLL_BACKOFF_RPM            30
+#define WORM_ROLL_CENTER_RPM             50
+#define WORM_ROLL_SEEK_TIMEOUT_MS    120000U
+#define WORM_ROLL_BACKOFF_TIMEOUT_MS  15000U
+#define WORM_ROLL_CENTER_TIMEOUT_MS  120000U
+#define WORM_ROLL_MIN_SPAN_PULSES        32
+#define WORM_ROLL_MAX_SPAN_PULSES    200000
+
+typedef enum {
+  WORM_ROLL_HOME_IDLE = 0U,
+  WORM_ROLL_HOME_SEEK_NEG = 1U,
+  WORM_ROLL_HOME_BACKOFF_NEG = 2U,
+  WORM_ROLL_HOME_SEEK_POS = 3U,
+  WORM_ROLL_HOME_BACKOFF_POS = 4U,
+  WORM_ROLL_HOME_CENTER = 5U,
+  WORM_ROLL_HOME_DONE = 6U,
+  WORM_ROLL_HOME_FAILED = 7U
+} WormRollHomingState;
+
+typedef enum {
+  WORM_ROLL_FAIL_NONE = 0U,
+  WORM_ROLL_FAIL_SEEK_TIMEOUT = 1U,
+  WORM_ROLL_FAIL_BACKOFF_TIMEOUT = 2U,
+  WORM_ROLL_FAIL_CENTER_TIMEOUT = 3U,
+  WORM_ROLL_FAIL_LIMIT_CONFLICT = 4U,
+  WORM_ROLL_FAIL_DRIVER = 5U,
+  WORM_ROLL_FAIL_SPAN = 6U,
+  WORM_ROLL_FAIL_CANCELLED = 7U,
+  WORM_ROLL_FAIL_OTHER_AXIS = 8U
+} WormRollHomingFail;
+
+typedef enum {
+  WORM_CALIB_IDLE = 0U, WORM_CALIB_RUNNING = 1U, WORM_CALIB_DONE = 2U,
+  WORM_CALIB_FAILED = 3U, WORM_CALIB_CANCELLED = 4U
+} WormCalibrationState;
+
+typedef enum {
+  WORM_CALIB_FAIL_NONE = 0U, WORM_CALIB_FAIL_PITCH = 1U,
+  WORM_CALIB_FAIL_ROLL = 2U, WORM_CALIB_FAIL_CANCELLED = 3U,
+  WORM_CALIB_FAIL_PID = 4U
+} WormCalibrationFail;
+
+typedef enum {
+  WORM_ROLL_ACTION_STOP = 0U,
+  WORM_ROLL_ACTION_CONTINUOUS = 1U,
+  WORM_ROLL_ACTION_START_BACKOFF = 2U,
+  WORM_ROLL_ACTION_KEEP_BACKOFF = 3U,
+  WORM_ROLL_ACTION_START_CENTER = 4U,
+  WORM_ROLL_ACTION_KEEP_CENTER = 5U
+} WormRollAction;
+
+typedef struct {
+  int32_t pulse, pulse_min, pulse_max, span_pulses;
+  float stroke_percent; /* PB3 负端释放点为 0%，PB5 正端释放点为 100%。 */
+  uint8_t valid, home_state, home_fail;
+} WormRollState;
+
+typedef struct {
+  int32_t pitch_rpm;       /* 逻辑域；最终安装方向转换仍只在 main。 */
+  int32_t roll_rpm;
+  int32_t roll_center_pos;
+  uint8_t roll_action;
+  uint8_t roll_release_arm_mask;
+  uint8_t calib_state;
+} WormCalibrationOutput;
 
 typedef struct
 {
@@ -126,6 +196,8 @@ typedef struct
   uint8_t  home_fail;            /* WormHomingFail，仅在 home_state=FAILED 时有意义 */
   int32_t  pulse_home_front;     /* 回零点：前限位释放沿处的脉冲值 */
   uint32_t home_done_count;      /* 成功回零次数 */
+  WormRollState roll;
+  uint8_t calib_state, calib_fail, calib_hold;
 } WormAxisState;
 
 /* Ozone 观察点；上层若要用位置，必须同时判 data_fresh 与 reference_kind。 */
@@ -142,10 +214,24 @@ void WormAxis_Step(uint32_t now_ms);
 void WormAxis_CopyState(WormAxisState *out_state);
 
 /*
- * 请求 / 取消一次回零。以太网任务收到上位机命令后调用，只置标志，不做任何动作，
- * 真正的状态推进全部发生在 ServoTask 的 WormAxis_Step() 里。
- * 重复请求会重新开始；DONE/FAILED 状态下再次请求也能重来。
+ * 请求/取消双轴校准：跨任务安全邮箱，由下一拍 Step 消费。运行中重复请求不续超时。
+ * 终态仍保持停止；只有 ServoTask 见到新的中立输入后才能释放 hold。
  */
+void WormAxis_RequestCalibration(void);
+void WormAxis_CancelCalibration(void);
+void WormAxis_ReleaseCalibrationHold(void);
+/* 仅 ServoTask 调用：立即取消，用于同拍 PID 接管并停止 roll。 */
+void WormAxis_CancelCalibrationForPid(void);
+
+/* 纯查询，hold 期间返回 1；START 动作只能由 Confirm 消费，重复 Get 不丢动作。
+ * START_BACKOFF: Stop -> ArmReleaseStop(mask) -> 反向连续命令 -> Confirm。
+ * START_CENTER: MoveAbsolute(center, rpm) -> Confirm。
+ * KEEP_* 不发送任何运动命令；释放捕获/定步可能在下个 20ms 之前已完成。
+ * Confirm(0) 同步令两轴输出停止；调用者必须在同一拍重新读取并施加停止。 */
+uint8_t WormAxis_GetCalibrationOutput(WormCalibrationOutput *out);
+void WormAxis_ConfirmRollCommand(uint8_t accepted);
+
+/* 旧调用名兼容双轴校准，不再表示只操作 pitch。新代码使用上面的校准 API。 */
 void WormAxis_RequestHoming(void);
 void WormAxis_CancelHoming(void);
 

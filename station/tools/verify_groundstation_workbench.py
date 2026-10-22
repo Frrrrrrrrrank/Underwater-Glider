@@ -25,7 +25,7 @@ import websockets
 from groundstation.app import create_app
 from groundstation.models import LinkStatus
 from groundstation.state_store import StateStore
-from groundstation.legacy_telemetry import EKF_FIELDS, UGCTL_FIELDS, UGWRM_FIELDS
+from groundstation.legacy_telemetry import EKF_FIELDS, UGCTL_FIELDS, UGWRM_FIELDS, UGWRM_FIELDS_V2
 from groundstation.session_recorder import disabled_recording_snapshot
 
 
@@ -191,6 +191,26 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode):
             await asyncio.sleep(0.5)
             if await cdp.evaluate("!!document.querySelector('[data-testid=metric-depth] .data-value.unavailable')"):
                 raise AssertionError("测试遥测恢复后深度未恢复")
+        # 校准遥测缺失/无效时不显示假位置，pitch 反馈过期不影响有效 roll 估算。
+        for case, expected_available in (('valid', True), ('legacy_wrm', False),
+                ('invalid_roll', False), ('missing_roll_validity', False), ('pitch_stale', True)):
+            fixture_mode['case'] = case
+            await asyncio.sleep(.4)
+            await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim() === '主页').click()")
+            await asyncio.sleep(.1)
+            available = await cdp.evaluate("!document.querySelector('[data-testid=home-metric-roll_percent] .data-value.unavailable')")
+            if available != expected_available:
+                raise AssertionError({'roll_home_case': case, 'available': available})
+            await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim() === '运行监控').click()")
+            await asyncio.sleep(.1)
+            pointer = await cdp.evaluate("!!document.querySelector('[data-testid=roll-track] i')")
+            if pointer != expected_available:
+                raise AssertionError({'roll_track_case': case, 'pointer': pointer})
+            results.append({'roll_case': case, 'available': available, 'pointer': pointer})
+        fixture_mode['case'] = 'valid'
+        await asyncio.sleep(.4)
+        await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim() === '主页').click()")
+        await asyncio.sleep(.1)
         server.should_exit = True
         for _ in range(60):
             live = await cdp.evaluate("document.querySelector('[data-testid=workbench]').dataset.coreLive")
@@ -242,13 +262,24 @@ def main():
             ctl.update(schema=2, t_ms=ekf["t_ms"], target_depth=2, depth=ekf["depth"], depth_error=2-ekf["depth"],
                        mode=2, pitch_sp_deg=-5, pitch_deg=-5, displacement_mm=90, target_displacement_mm=90)
             wrm = dict.fromkeys(UGWRM_FIELDS, 0)
-            wrm.update(schema=2, t_ms=ekf["t_ms"], span_valid=1, data_fresh=1, stroke_percent=50, mm_from_front=72.5, ref_kind=2, home_state=3)
+            wrm.update(schema=3, t_ms=ekf["t_ms"], span_valid=1, data_fresh=1, stroke_percent=0, mm_from_front=0, ref_kind=2, home_state=3,
+                       roll_pulse=500, roll_pulse_min=0, roll_pulse_max=1000, roll_span_pulses=1000, roll_percent=50,
+                       roll_valid=1, roll_home_state=6, calib_state=2, calib_hold=1)
             if fixture_mode['case'] == 'missing_validity':
                 ekf.pop('fl')
             elif fixture_mode['case'] == 'non_finite':
                 ekf['depth'] = float('nan')
             elif fixture_mode['case'] == 'invalid_attitude':
                 ekf['pitch_deg'] = float('nan')
+            elif fixture_mode['case'] == 'legacy_wrm':
+                wrm = {name: wrm[name] for name in UGWRM_FIELDS_V2}
+                wrm['schema'] = 2
+            elif fixture_mode['case'] == 'invalid_roll':
+                wrm['roll_valid'] = 0
+            elif fixture_mode['case'] == 'missing_roll_validity':
+                wrm.pop('roll_valid')
+            elif fixture_mode['case'] == 'pitch_stale':
+                wrm['data_fresh'] = 0
             for topic, data in (("ugekf", ekf), ("ugctl", ctl), ("ugwrm", wrm)):
                 store.publish_telemetry(topic, data, session_id="browser-verification-only")
 

@@ -89,6 +89,10 @@ h1, h2, p, dl, dd, ol, pre { margin: 0; }
 .worm-track { display: flex; align-items: center; gap: 10px; padding: 15px 12px 8px; color: var(--muted); font-size: 9px; }
 .worm-track > div { flex: 1; height: 3px; position: relative; background: #3b4d5d; margin: 0 4px; }
 .worm-track i { width: 7px; height: 11px; position: absolute; top: -4px; transform: translateX(-50%); border-radius: 2px; background: var(--blue); }
+/* 双轴摘要保持六行，详细有效位和失败原因仍可在诊断页查看。 */
+.actuator-panel .paired-table th, .actuator-panel .paired-table td { padding-top: 4px; padding-bottom: 4px; }
+.actuator-panel .worm-track { padding-top: 4px; padding-bottom: 4px; }
+.roll-note { margin: 0; padding: 2px 12px 5px; color: var(--muted); font-size: 9px; }
 .inline-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); padding: 9px 13px; font-size: 10px; }
 .inline-summary strong { color: #b8c8d6; font-weight: 400; }
 .trend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 11px 12px; min-height: 0; flex: 1; }

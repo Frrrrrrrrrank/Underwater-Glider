@@ -493,7 +493,7 @@ typedef enum
   RC_CTRL_MODE_OPEN_LOOP_SPEED = 1U,
   RC_CTRL_MODE_ETH = 2U,
   RC_CTRL_MODE_PID_ETH = 3U,
-  RC_CTRL_MODE_WORM_HOMING = 4U /* 蜗杆回零接管：只驱动蜗杆，其余执行器保持零 */
+  RC_CTRL_MODE_WORM_HOMING = 4U /* 保留诊断编号：双轴校准接管，泵/推进保持零 */
 } RcControlMode;
 
 static uint32_t RcControl_IsSwitchUp(uint16_t raw)
@@ -561,6 +561,76 @@ static int32_t RcControl_MapStickToSignedRpm(uint16_t raw, uint16_t max_rpm)
   }
 
   return RcControl_ClampSigned(signed_rpm, (int32_t)max_rpm);
+}
+
+/* 校准终态只接受新收到的全中立命令，不能恢复校准前缓存的运动目标。 */
+static uint8_t RcControl_IsEthernetNeutral(const EthernetUartReadoutPack *pack)
+{
+  return (pack->pitchmotor_speed_rpm == 0 && pack->rollmotor_speed_rpm == 0 &&
+          pack->thrustmotor1se_speed_rpm == 0U && pack->thrustmotor2se_speed_rpm == 0U &&
+          pack->pump_on_off == 0U && pack->rudder_angle_cdeg == 0) ? 1U : 0U;
+}
+
+/* 只在本任务应用校准动作。KEEP 不写连续速度，否则会撤销释放沿停止或定步回中。 */
+static uint8_t RcControl_ApplyCalibrationRoll(const WormCalibrationOutput *out)
+{
+  StepperState state;
+  uint8_t accepted;
+  switch (out->roll_action)
+  {
+    case WORM_ROLL_ACTION_STOP:
+      Stepper_DisarmReleaseStop();
+      Stepper_SetContinuousSignedRpm(0);
+      return 1U;
+    case WORM_ROLL_ACTION_CONTINUOUS:
+      Stepper_DisarmReleaseStop();
+      Stepper_SetContinuousSignedRpm(out->roll_rpm);
+      if (Stepper_CopyState(&state) == 0U ||
+          state.last_stop_reason == STEPPER_STOP_START_FAILED ||
+          state.last_stop_reason == STEPPER_STOP_RANGE)
+      {
+        WormAxis_ConfirmRollCommand(0U);
+        Stepper_Stop();
+        return 0U;
+      }
+      return 1U;
+    case WORM_ROLL_ACTION_START_BACKOFF:
+      Stepper_DisarmReleaseStop();
+      Stepper_Stop();
+      accepted = Stepper_ArmReleaseStop(out->roll_release_arm_mask);
+      if (accepted != 0U)
+      {
+        Stepper_SetContinuousSignedRpm(out->roll_rpm);
+        accepted = Stepper_CopyState(&state);
+        accepted = (accepted != 0U && (state.running != 0U ||
+                    state.last_stop_reason == STEPPER_STOP_RELEASE)) ? 1U : 0U;
+      }
+      WormAxis_ConfirmRollCommand(accepted);
+      break;
+    case WORM_ROLL_ACTION_START_CENTER:
+      Stepper_DisarmReleaseStop();
+      Stepper_Stop();
+      Stepper_MoveAbsolute(out->roll_center_pos, (uint16_t)out->roll_rpm);
+      accepted = Stepper_CopyState(&state);
+      accepted = (accepted != 0U && (state.running != 0U ||
+                  (state.current_pos == out->roll_center_pos &&
+                   state.last_stop_reason == STEPPER_STOP_COMPLETED))) ? 1U : 0U;
+      WormAxis_ConfirmRollCommand(accepted);
+      break;
+    case WORM_ROLL_ACTION_KEEP_BACKOFF:
+    case WORM_ROLL_ACTION_KEEP_CENTER:
+      return 1U;
+    default:
+      accepted = 0U;
+      WormAxis_ConfirmRollCommand(0U);
+      break;
+  }
+  if (accepted == 0U)
+  {
+    Stepper_DisarmReleaseStop();
+    Stepper_Stop();
+  }
+  return accepted;
 }
 
 extern void DemoFatFS(void);
@@ -1513,12 +1583,12 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 120-1;
+  htim1.Init.Prescaler = 100-1; /* 当前 TIM1 时钟 100MHz，计数频率固定为 1MHz。 */
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 1000-1;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
   {
     Error_Handler();
@@ -1530,7 +1600,8 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  /* roll 驱动器上升沿有效：PWM2 在 CNT=0 时为低，更新中断在下降沿后计数/停机。 */
+  sConfigOC.OCMode = TIM_OCMODE_PWM2;
   sConfigOC.Pulse = 500;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
@@ -1541,13 +1612,14 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
   {
     Error_Handler();
   }
   sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_ENABLE;
   sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
   sBreakDeadTimeConfig.DeadTime = 0;
   sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
@@ -2728,6 +2800,8 @@ void Start_IMU_Task(void *argument)
 *       回零逻辑 -350/+35 对应驱动器实际 +350/-35；原始位置反馈不取反。
 *       g_rc_worm_cmd_rpm 和 UGWRM.cmd_rpm 记录转换后的驱动请求，便于对照原始反馈；
 *       UGCTL.worm_rpm 仍是 PID 逻辑输出，二者符号不同不代表控制错误。
+*       calib 同时校准 pitch/roll；worm_axis 只产出动作，本任务独占驱动写入。
+*       roll 定步回中和退出限位只启动一次；终态等待新中立命令后才恢复手动。
 */
 /* USER CODE END Header_StartServoTask */
 void StartServoTask(void *argument)
@@ -2752,7 +2826,14 @@ void StartServoTask(void *argument)
   uint16_t sw_right_outer = 0U;
   int32_t worm_cmd_rpm = 0;   /* 仲裁后的逻辑转速：负向机头、正向机尾 */
   int32_t worm_motor_rpm = 0; /* 安装转换后的驱动器实际方向请求 */
-  int32_t homing_worm_rpm = 0; /* 回零状态机本拍要求的逻辑转速 */
+  WormCalibrationOutput calibration_output = {0};
+  uint8_t calibration_override = 0U;
+  uint8_t calibration_terminal_seen = 0U;
+  uint32_t hold_eth_sequence = 0U;
+  uint32_t hold_sbus_tick = 0U;
+  uint32_t eth_sequence = 0U;
+  uint32_t sbus_tick = 0U;
+  StepperState stepper_state;
   int32_t stepper_cmd_rpm = 0;
   uint8_t thrust1_speed_cmd = 0U;
   uint8_t thrust2_speed_cmd = 0U;
@@ -2788,10 +2869,13 @@ void StartServoTask(void *argument)
     now_tick = HAL_GetTick();
     /* roll 停机后没有 TIM1 更新中断，仍需每拍维护限位释放。 */
     Stepper_ServiceLimits(now_tick);
-    /* 蜗杆位置读出：只读 g_umotor 快照做换算与可信度判定，不发帧、不写执行器。 */
+    /* 双轴位置与校准状态推进；硬件写入仍在下面的唯一应用点。 */
     WormAxis_Step(now_tick);
+    taskENTER_CRITICAL();
     (void)EthernetUartDriver_CopyControlPack(
         &ethernet_pack, &ethernet_control_flag);
+    eth_sequence = g_ethernet_uart_diag.control_packet_count;
+    taskEXIT_CRITICAL();
     (void)EkfBridge_CopyState(&state_estimate);//ServoTask每轮调用PID
     /* 位移数据由 USART3Task 更新，这里整体取一次快照供本轮控制使用。 */
     taskENTER_CRITICAL();
@@ -2810,13 +2894,40 @@ void StartServoTask(void *argument)
     (void)PidControlService_CopyStatus(&pid_status);
 
     channel_count = SbusDriver_GetChannels(
-        channels, SBUS_CHANNEL_COUNT, &frame_lost, &failsafe, NULL);
+        channels, SBUS_CHANNEL_COUNT, &frame_lost, &failsafe, &sbus_tick);
     sbus_valid =
         (channel_count >= SBUS_CHANNEL_COUNT &&
          SbusDriver_IsFrameFresh(now_tick, RC_FRAME_TIMEOUT_MS) != 0U &&
          failsafe == 0U && frame_lost == 0U)
             ? 1U
             : 0U;
+
+    calibration_override = WormAxis_GetCalibrationOutput(&calibration_output);
+    if (calibration_override != 0U && calibration_output.calib_state != WORM_CALIB_RUNNING)
+    {
+      if (calibration_terminal_seen == 0U)
+      {
+        calibration_terminal_seen = 1U;
+        hold_eth_sequence = eth_sequence;
+        hold_sbus_tick = sbus_tick;
+      }
+      else if ((ethernet_control_flag != 0U && eth_sequence != hold_eth_sequence &&
+                RcControl_IsEthernetNeutral(&ethernet_pack) != 0U) ||
+               (ethernet_control_flag == 0U && sbus_valid != 0U && sbus_tick != hold_sbus_tick &&
+                RcControl_IsSwitchUp(channels[SBUS_CH_SWITCH_LEFT_OUTER]) != 0U &&
+                RcControl_IsSwitchUp(channels[SBUS_CH_SWITCH_LEFT_MID_1]) != 0U &&
+                RcControl_IsSwitchUp(channels[SBUS_CH_SWITCH_LEFT_MID_2]) != 0U &&
+                RcControl_IsSwitchUp(channels[SBUS_CH_SWITCH_RIGHT_OUTER]) != 0U))
+      {
+        WormAxis_ReleaseCalibrationHold();
+        calibration_override = WormAxis_GetCalibrationOutput(&calibration_output);
+        calibration_terminal_seen = 0U;
+      }
+    }
+    else
+    {
+      calibration_terminal_seen = 0U;
+    }
 
     mode = RC_CTRL_MODE_OFF;
     off_reason = RC_OFF_REASON_NONE;
@@ -2877,21 +2988,22 @@ void StartServoTask(void *argument)
         off_reason =
             RC_OFF_REASON_PID_FAULT_BASE + (uint32_t)pid_status.fault;
       }
-      /* PID 一旦接管，回零必须让路：两者都想开蜗杆，绝不能同时生效。 */
-      WormAxis_CancelHoming();
+      /* PID 接管时同步终止两轴校准，不能遗留 roll 的回中动作。 */
+      WormAxis_CancelCalibrationForPid();
+      calibration_override = 0U;
     }
     /*
-     * 蜗杆回零：优先级仅次于 PID，高于直接以太网控制和 SBUS。
+     * 双轴校准：优先级仅次于 PID，高于直接以太网控制和 SBUS。
      * 放在这里的理由：用户在 AUTO 模式下输 calib 时，ethernet_control_flag 是 1，
      * 若排在它后面就永远轮不到。而 PID armed 时上面那条分支已经把回零取消掉了。
-     * 回零【只】驱动蜗杆，泵/推进器/步进保持本轮开头清好的零值。
+     * 两轴分别完成并等待；泵/推进保持本轮开头清好的零值。
      */
-    else if (WormAxis_GetHomingWormRpm(&homing_worm_rpm) != 0U)
+    else if (calibration_override != 0U)
     {
       mode = RC_CTRL_MODE_WORM_HOMING;
       pitchmotor_enable_cmd = 1U;
       worm_cmd_rpm = RcControl_ClampSigned(
-          homing_worm_rpm, RC_WORM_MOTOR_MAX_RPM);
+          calibration_output.pitch_rpm, RC_WORM_MOTOR_MAX_RPM);
     }
     else if (ethernet_control_flag != 0U)
     {
@@ -2968,6 +3080,17 @@ void StartServoTask(void *argument)
     }
 
     /* 唯一硬件应用点：先完成源仲裁，再一次性写各执行器。 */
+    if (calibration_override != 0U)
+    {
+      if (RcControl_ApplyCalibrationRoll(&calibration_output) == 0U)
+      {
+        /* roll 启动失败回执在本拍停止 pitch，不能等下一个 20ms。 */
+        pitchmotor_enable_cmd = 0U;
+        worm_cmd_rpm = 0;
+      }
+      (void)Stepper_CopyState(&stepper_state);
+      stepper_cmd_rpm = stepper_state.pulse_rpm;
+    }
     RudderDriver_Apply(rudder_angle_cdeg, rudder_active);
     (void)RudderDriver_CopyState(&rudder_state);
     /* 保留旧 Ozone 观察名称，内容改为真正已下发的尾舵命令。 */
@@ -2998,13 +3121,19 @@ void StartServoTask(void *argument)
       }
     }
 
-    if (rollmotor_enable_cmd != 0U)
+    if (calibration_override != 0U)
     {
+      /* 已按动作类型应用；KEEP 期间不得用连续速度覆盖定步运动。 */
+    }
+    else if (rollmotor_enable_cmd != 0U)
+    {
+      Stepper_DisarmReleaseStop();
       Stepper_SetContinuousSignedRpm(stepper_cmd_rpm);
     }
     else
     {
       stepper_cmd_rpm = 0;
+      Stepper_DisarmReleaseStop();
       Stepper_SetContinuousSignedRpm(0);
     }
 

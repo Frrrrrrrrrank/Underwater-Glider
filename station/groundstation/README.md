@@ -11,6 +11,68 @@
 URGC 是设备 socket 的唯一所有者，因此运行它时不要同时启动 `contcp_t.py`，否则两个程序会
 竞争同一个 8800 端口。旧脚本仍保留，可在不启动 URGC 时单独使用。
 
+UGWRM 兼容 schema2 的原 30 字段和 schema3 的 41 字段。schema3 在原字段后追加
+roll 脉冲、两端位置、跨度、百分比、有效位、阶段/失败原因，以及整次校准状态/失败原因/保持位。
+旧版没有的字段为 null，CSV 新增尾列为空；旧 CSV 原列名及顺序保持不变。
+新固件的 UGWRM 默认 5Hz，订阅仍为原 WRM 位，不增加主题或网页控制接口。
+
+单独运行 `python -B station/contcp_t.py` 时，`calib` 同时启动 pitch 与 roll 校准，
+`calibstop` 取消两轴。pitch 从 PB4 释放后建立前端 0%，跨度为 281321；roll 每次从
+PB3 释放点 0% 测到 PB5 释放点 100%，再回到 50%。只有两轴都成功才报告整次完成。
+完成、失败或取消后需新中立命令重新接管；auto_sti 会先发中立并等待保持位解除。
+校准没有通信租约，断链不代表停止。roll 为开环脉冲估算，50% 不代表艇体水平；参考只存 RAM。
+
+## contcp_t 双终端监控（无需更新固件）
+
+在仓库根目录分别打开两个终端：
+
+```powershell
+# 终端一：沿用控制台、手柄与日志
+python -B station/contcp_t.py
+```
+
+```powershell
+# 终端二：只读固定面板，默认每秒刷新5次；Ctrl+C退出面板
+python -B station/monitor.py
+```
+
+`contcp_t` 自动提供本机 `http://127.0.0.1:8801/snapshot`，monitor 仅从这里读取。
+仍只有 contcp_t 的接收线程访问板端连接；无需启动网页后端，也不需要 FastAPI 或额外安装包。
+监控可先于板端连接启动；关闭或卡住 monitor 不会发送控制命令、改变订阅或关闭板端连接。
+contcp_t 退出后面板显示不可用，并等待它再次启动；contcp_t 本身仍沿用单次 accept 的连接流程。
+
+端口冲突时原控制台继续工作，监控接口会提示不可用。可在终端一先设置
+`$env:UG_MONITOR_PORT = '8802'`，终端二使用 `python -B station/monitor.py --port 8802`。
+`python -B station/monitor.py --once` 只打印一次，适合检查接口或重定向输出。
+
+| 面板项目 | 数据含义与限制 |
+| --- | --- |
+| Pitch 百分比 | UGWRM；ref_kind=2 为校准行程，1 只能表示本次观测范围且标为未校准；无参考/跨度无效/反馈过期时不可用 |
+| Roll 百分比、校准状态 | UGWRM schema3；schema2 没有的字段显示未上报；roll 百分比依赖自己的有效位 |
+| 姿态与深度 | 有效 UGEKF 的 pitch/roll/yaw（°）和深度（m），不使用 PID OFF 时的清零占位值 |
+| 电池 | UGBAT 滤波总电压（V）和有效性；考虑 valid、板端样本年龄及本机停流超时，无 SOC 估算 |
+| 四个限位 | UGWRM.limit_bits：bit0=PB3/Roll 0%，bit1=PB4/Pitch机头，bit2=PB5/Roll 100%，bit3=PD7/Pitch机尾；0触发、1释放；未知不显示成释放 |
+| PID | 模式、阶段、ARM、故障、请求深度/俯仰及有效算法俯仰设定；参数有效位与CRC。请求深度不等于上浮阶段的即时目标 |
+| 整套 Kp/Ki/Kd、限幅参数 | 当前固件没有读回接口，显示未上报；不把本机草稿或P/I/D输出分量当作生效参数 |
+| 左右最终 PWM 百分比及µs | 当前固件没有上报，显示未上报；UGCTL.thrust_pct 为 PID 请求，不代表最终双路输出 |
+
+首次先请求 EKF/CTL/WRM（0x0D），再请求含 BAT 的0x1D；不支持 BAT 的旧固件仍可保留前三类。
+保留显式 `ekfoff/wormoff` 的含义，面板随后显示过期。面板5Hz刷新不改变板端采样/上报频率；
+实时主题接收超时500ms、电池3000ms，重复帧不续期；断连、缺失、无效数据不填假0。
+旧固件是否具备 roll/BAT 取决于实际烧录版本，本机源码包含这些功能不等于板上已经运行。
+
+后续恢复烧录后再考虑（本版未实现，也不会发送新查询）：
+
+- `pid_control_service.c/.h`：保存成功应用的参数表，增加一致快照读回；
+- `thruster_driver.c/.h`、`main.c:StartServoTask`：记录最终已写 PWM、来源和有效性；
+- `ethernet_uart_driver.c/.h`：新增只读参数查询/应答，并扩展 UGCTL 上报最终推进输出及当前阶段深度目标。
+
+验证使用本机模拟遥测，不连接真实设备：
+
+```powershell
+python -B -m unittest discover -s station/tools -p 'test_monitor*.py' -v
+```
+
 ## 启动
 
 在 station 目录执行：

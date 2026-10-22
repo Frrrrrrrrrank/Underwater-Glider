@@ -12,7 +12,8 @@ typedef enum {
     STEPPER_STOP_COMPLETED,
     STEPPER_STOP_LIMIT,
     STEPPER_STOP_START_FAILED,
-    STEPPER_STOP_RANGE
+    STEPPER_STOP_RANGE,
+    STEPPER_STOP_RELEASE
 } StepperStopReason;
 
 /* 脉冲速度和位置都是软件输出/累计值，不是编码器反馈或已标定行程。 */
@@ -27,6 +28,10 @@ typedef struct {
     uint8_t raw_limit_mask; /* 采用 ROLL_LIMIT_*_ACTIVE：1 表示触发。 */
     uint8_t blocked_mask;   /* 包含触发后的释放确认等待。 */
     uint8_t last_stop_reason;
+    uint8_t release_armed_mask; /* 本次等待释放的单个限位；捕获后自动解除。 */
+    uint8_t release_mask;       /* 最近一次释放捕获，Stop/Disarm 不清历史。 */
+    int32_t release_pos;
+    uint32_t release_seq;       /* 每次捕获加一，允许无符号回绕。 */
 } StepperState;
 
 /* 
@@ -45,6 +50,13 @@ void Stepper_ServiceLimits(uint32_t now_ms);
 
 /* 任务接口：复制一致快照；空指针返回 0，成功返回 1。 */
 uint8_t Stepper_CopyState(StepperState *out_state);
+
+/* 仅运动所属任务调用。停机且指定单端原始触发时武装，成功返回 1。
+ * 同端已武装时幂等；退出限位后的首个更新中断捕获并停止，随后任务确认稳定释放。
+ * 不把 20ms 后的 blocked_mask 清零位置当作释放位置；捕获是脉冲估算，不是编码器。
+ */
+uint8_t Stepper_ArmReleaseStop(uint8_t mask);
+void Stepper_DisarmReleaseStop(void);
 
 /* 
  * 相对运动

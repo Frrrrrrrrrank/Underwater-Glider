@@ -15,7 +15,7 @@ if str(STATION_DIR) not in sys.path:
 from groundstation.legacy_telemetry import (  # noqa: E402
     EKF_FIELDS,
     UGCTL_FIELDS,
-    UGWRM_FIELDS,
+    UGWRM_FIELDS_V2 as UGWRM_FIELDS,
     decode_telemetry_line,
 )
 from groundstation.models import DEFAULT_REQUIRED_TOPICS, LinkStatus  # noqa: E402

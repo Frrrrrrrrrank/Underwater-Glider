@@ -11,6 +11,11 @@ import math
 from datetime import datetime
 
 try:
+    from .monitor_bridge import MonitorBridge
+except ImportError:
+    from monitor_bridge import MonitorBridge
+
+try:
     from .battery_telemetry import (
         BatteryAlarmMonitor, UGBAT_CSV_HEADER, ugbat_csv_row, ugbat_parse,
     )
@@ -830,15 +835,15 @@ def send_stream_control(conn, mask, label='遥测流控制', *, keep_battery=Tru
 
 
 def send_worm_calib(conn, start):
-    """蜗杆回零：start=True 开始，False 取消。
+    """双轴校准：start=True 同时开始 pitch/roll，False 取消两轴。
 
-    开始前顺带打开 $UGWRM 流，否则回零过程完全看不见（板子会自己转电机）。
-    板端只置标志、由 ServoTask 推进；回零自带分段超时，这里不需要心跳。
+    开始前打开 $UGWRM 流以观察两轴阶段；板端只置请求、由 ServoTask 推进。
+    校准自带分段超时，没有链路租约；断开连接不能据此认为运动已停止。
     """
     if start:
         send_stream_control(conn, get_stream_control_mask() | STREAM_WRM)
     return send_ugcp_frame(
-        conn, MSG_WORM_CALIB, pack_worm_calib_payload(start), "蜗杆回零")
+        conn, MSG_WORM_CALIB, pack_worm_calib_payload(start), "双轴校准")
 
 
 def get_stream_control_mask():
@@ -1042,9 +1047,19 @@ def _check_auto_sti_ready(ctl_status, wrm_status, after_ctl, after_wrm,
         if not math.isfinite(age) or age < 0 or age > timeout_s:
             return False, '板端遥测已过期'
     ctl, wrm = ctl_status[1], wrm_status[1]
-    if wrm.get('home_state') in (1, 2):
+    if wrm.get('schema') == 3:
+        if wrm.get('calib_state') == 1:
+            return False, '双轴正在校准；请先执行 calibstop，观察结束后重新进入'
+        if wrm.get('calib_state') not in (0, 2, 3, 4):
+            return False, '双轴校准状态未知'
+        if wrm.get('calib_hold') not in (0, 1):
+            return False, '校准后接管状态未知'
+        # 终态保持期间继续发送准备中立，等板端解除保持后再允许非零目标。
+        if wrm['calib_hold'] == 1:
+            return False, ''
+    elif wrm.get('home_state') in (1, 2):
         return False, '蜗杆正在回零；请先执行 calibstop，观察结束后重新进入'
-    if wrm.get('home_state') not in (0, 3, 4):
+    elif wrm.get('home_state') not in (0, 3, 4):
         return False, '蜗杆回零状态未知'
     return ctl.get('mode') == 0 and ctl.get('armed') == 0, ''
 
@@ -1126,7 +1141,7 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                 state = 'PREPARING'
                 deadline = now + config.prepare_timeout_s
                 next_send = now
-                print('[AUTO_STI] 准备接管：发送中立，等待新 PID OFF 和回零非运行状态。')
+                print('[AUTO_STI] 准备接管：发送中立，等待新 PID OFF、校准非运行及保持解除状态。')
             if state in ('PREPARING', 'ACTIVE'):
                 ctl_status = ctl_store.snapshot_with_time()
                 wrm_status = wrm_store.snapshot_with_time()
@@ -1528,7 +1543,7 @@ UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
 
 #  蜗杆位置遥测($UGWRM)解析 + CSV 记录
 # 字段顺序必须与板端 EthernetUartDriver_SendWormTelemetry() 完全一致。
-UGWRM_FIELDS = [
+UGWRM_FIELDS_V2 = [
     "schema", "seq", "t_ms",
     # 位置量：stroke_percent 是主输出（0=前限位，100=后限位），pulse 是原始真值
     "pulse", "stroke_percent", "mm_from_front",
@@ -1542,8 +1557,14 @@ UGWRM_FIELDS = [
     # 总线健康：与位置同一时刻，用于判断上面那些数可不可信
     "poll_ok", "poll_fail", "overrun", "enable_resync", "last_error",
 ]
-# 除两个百分比/毫米外全部按整数解析。
-UGWRM_INT_FIELDS = set(UGWRM_FIELDS) - {"stroke_percent", "mm_from_front"}
+UGWRM_FIELDS_V3 = UGWRM_FIELDS_V2 + [
+    "roll_pulse", "roll_pulse_min", "roll_pulse_max", "roll_span_pulses",
+    "roll_percent", "roll_valid", "roll_home_state", "roll_home_fail",
+    "calib_state", "calib_fail", "calib_hold",
+]
+# CSV 固定使用最新列超集，旧版本新增列为空，不能伪造为零位置或已完成。
+UGWRM_FIELDS = UGWRM_FIELDS_V3
+UGWRM_INT_FIELDS = set(UGWRM_FIELDS) - {"stroke_percent", "mm_from_front", "roll_percent"}
 UGWRM_CSV_HEADER = ["host_iso"] + UGWRM_FIELDS
 WORM_REF_KIND_NAMES = {0: "NONE", 1: "POWER_ON", 2: "HOMED"}
 WORM_HOME_STATE_NAMES = {
@@ -1554,11 +1575,22 @@ WORM_HOME_FAIL_NAMES = {
     0: "-", 1: "SEEK_TIMEOUT 一直没撞到前限位", 2: "BACKOFF_TIMEOUT 退不出前限位",
     3: "DATA_STALE 回零途中位置数据失效", 4: "CANCELLED 被取消或被 PID 接管",
     5: "POSITION_RANGE 回零端点超出脉冲范围",
+    6: "LIMIT_CONFLICT 两端限位同时触发", 7: "OTHER_AXIS roll 失败，联合停止",
+}
+ROLL_HOME_STATE_NAMES = {
+    0: "未校准", 1: "趋近 PB3", 2: "退出 PB3", 3: "趋近 PB5",
+    4: "退出 PB5", 5: "返回 50%", 6: "完成", 7: "失败",
+}
+CALIB_STATE_NAMES = {0: "未校准", 1: "校准中", 2: "双轴校准完成", 3: "失败", 4: "已取消"}
+CALIB_FAIL_NAMES = {0: "无", 1: "pitch 失败", 2: "roll 失败", 3: "已取消", 4: "PID 接管"}
+ROLL_HOME_FAIL_NAMES = {
+    0: "无", 1: "寻端超时", 2: "退出超时", 3: "回中超时", 4: "两端限位冲突",
+    5: "驱动停止或启动失败", 6: "跨度无效", 7: "已取消", 8: "另一轴失败",
 }
 
 
 def ugwrm_parse(line):
-    """严格解析 schema 2 的 $UGWRM；校验或字段数不符一律返回 None。"""
+    """按版本严格解析 UGWRM 2/3；旧版缺失的新字段保留为 None。"""
     if not ekf_checksum_ok(line):
         return None
     star = line.rfind("*")
@@ -1566,22 +1598,58 @@ def ugwrm_parse(line):
     if not parts or parts[0] != "UGWRM":
         return None
     values = parts[1:]
-    if len(values) != len(UGWRM_FIELDS):
-        return None
-    row = {}
     try:
-        for name, raw in zip(UGWRM_FIELDS, values):
+        schema = int(values[0])
+        fields = {2: UGWRM_FIELDS_V2, 3: UGWRM_FIELDS_V3}.get(schema)
+        if fields is None or len(values) != len(fields):
+            return None
+        row = dict.fromkeys(UGWRM_FIELDS)
+        for name, raw in zip(fields, values):
             row[name] = int(raw) if name in UGWRM_INT_FIELDS else float(raw)
-    except ValueError:
-        return None
-    if row["schema"] != 2:
+    except (ValueError, IndexError):
         return None
     return row
 
 
 def ugwrm_csv_row(row):
     return [datetime.now().isoformat(timespec="milliseconds")] + [
-        row[name] for name in UGWRM_FIELDS]
+        row.get(name) if row.get(name) is not None else "" for name in UGWRM_FIELDS]
+
+
+def ugwrm_calibration_notice(row):
+    """返回状态变化键和提示；pitch 单轴结束不能冒充整次校准完成。"""
+    def percent(name, valid):
+        value = row.get(name)
+        return '%.2f%%' % value if valid and isinstance(value, (int, float)) and math.isfinite(value) else '不可用'
+
+    pitch_percent = percent('stroke_percent', row.get('span_valid') == 1 and row.get('data_fresh') == 1)
+    if row['schema'] == 3:
+        state, fail = row['calib_state'], row['calib_fail']
+        pitch, roll = row['home_state'], row['roll_home_state']
+        key = (3, state, fail, pitch, row['home_fail'], roll, row['roll_home_fail'], row['calib_hold'])
+        message = '[校准] %s；pitch=%s；roll=%s' % (
+            CALIB_STATE_NAMES.get(state, state), WORM_HOME_STATE_NAMES.get(pitch, pitch),
+            ROLL_HOME_STATE_NAMES.get(roll, roll))
+        if state in (3, 4):
+            message += '；总原因=%s，pitch原因=%s，roll原因=%s' % (
+                CALIB_FAIL_NAMES.get(fail, fail),
+                WORM_HOME_FAIL_NAMES.get(row['home_fail'], row['home_fail']),
+                ROLL_HOME_FAIL_NAMES.get(row['roll_home_fail'], row['roll_home_fail']))
+        if state == 2:
+            message += '；pitch=%s，roll=%s（脉冲估算）' % (
+                pitch_percent, percent('roll_percent', row.get('roll_valid') == 1))
+        if state in (2, 3, 4) and row['calib_hold']:
+            message += '；等待中立重新接管'
+        return key, message
+    state = row['home_state']
+    key = (2, state, row['home_fail'])
+    message = '[pitch 回零 / 旧协议] %s' % WORM_HOME_STATE_NAMES.get(state, state)
+    if state == 4:
+        message += '：%s' % WORM_HOME_FAIL_NAMES.get(row['home_fail'], row['home_fail'])
+    elif state == 3:
+        message += '；零点脉冲=%d，位置=%s；未报告 roll 状态' % (
+            row['pulse_home'], pitch_percent)
+    return key, message
 
 PID_MODE_NAMES = {0: "OFF", 1: "PITCH_HOLD", 2: "DEPTH_CASCADE"}
 PID_PHASE_NAMES = {0: "DIVE", 1: "CLIMB"}
@@ -2302,21 +2370,28 @@ CONTROL_LOG_DIR = os.path.join(STATION_DIR, "logs", "control")
 BATTERY_LOG_DIR = os.path.join(STATION_DIR, "logs", "battery")
 
 
-def receive_thread(conn, ctl_store=None, wrm_store=None, link_closed=None):
+def receive_thread(conn, ctl_store=None, wrm_store=None, link_closed=None,
+                   monitor_bridge=None):
     """唯一接收入口，初始化失败及任何退出路径均通知控制循环连接已结束。"""
     battery_monitor = BatteryAlarmMonitor()
     try:
-        _receive_thread_body(conn, ctl_store, wrm_store, battery_monitor)
+        _receive_thread_body(conn, ctl_store, wrm_store, battery_monitor, monitor_bridge)
     except Exception as exc:
         print(f'[接收线程异常] {exc}')
     finally:
         if link_closed is not None:
             link_closed.set()
+        if monitor_bridge is not None:
+            try:
+                monitor_bridge.set_link('disconnected')
+            except Exception as exc:
+                print(f'[监控] 断连状态发布失败：{exc}')
         battery_monitor.disconnect()
         conn.close()
 
 
-def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=None):
+def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=None,
+                         monitor_bridge=None):
     """负责不断接收并打印来自客户端的数据"""
     global running
     if ctl_store is None:
@@ -2345,6 +2420,21 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     wrm_stat = {"ok": 0, "bad": 0, "last_home": None}
     battery_csv = None
     battery_csv_failed = False
+
+    def publish_monitor(topic, row):
+        """仅复制已解析的最新值；面板故障不能中断唯一接收线程。"""
+        nonlocal monitor_bridge
+        if monitor_bridge is None:
+            return
+        try:
+            monitor_bridge.publish(topic, row)
+        except Exception as exc:
+            print(f'[监控] 数据发布失败，本次会话停用监控发布：{exc}')
+            try:
+                monitor_bridge.set_link('error', last_error=str(exc))
+            except Exception:
+                pass
+            monitor_bridge = None
 
     def record_battery(row):
         """告警先处理，电池日志失败只提示一次，不终止接收和控制会话。"""
@@ -2384,10 +2474,11 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             row = ugbat_parse(raw_line)
             if row is not None:
                 battery_monitor.ingest(row)
+                publish_monitor('ugbat', row)
                 record_battery(row)
             return
 
-        # 蜗杆位置遥测：落 CSV，不打印（10Hz，打印会把控制台刷爆）。
+        # 双轴位置遥测落 CSV，只在校准阶段变化时提示，避免持续刷屏。
         # 坏帧计入 wrm_stat["bad"]，与 EKF 的 bad 一样用于观察链路误码。
         if line.startswith("$UGWRM"):
             row = ugwrm_parse(line)
@@ -2395,6 +2486,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                 wrm_stat["bad"] += 1
                 return
             wrm_store.publish(row)
+            publish_monitor('ugwrm', row)
             if wrm_csv is None:
                 wrm_csv_path = os.path.join(
                     CONTROL_LOG_DIR,
@@ -2404,26 +2496,15 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                     wrm_csv_path, "w", encoding="utf-8", newline="")
                 wrm_csv.write(",".join(UGWRM_CSV_HEADER) + "\n")
                 wrm_csv.flush()
-                print(f"\n[WORM] 蜗杆位置遥测记录 -> {wrm_csv_path}")
+                print(f"\n[WORM] 双轴位置遥测记录 -> {wrm_csv_path}")
             wrm_csv.write(
                 ",".join(str(value) for value in ugwrm_csv_row(row)) + "\n")
             wrm_csv.flush()
             wrm_stat["ok"] += 1
-            # 回零会让电机自己跑，状态每次变化都要让人看见；不变则静默。
-            home_state = row["home_state"]
-            if home_state != wrm_stat["last_home"]:
-                wrm_stat["last_home"] = home_state
-                print()
-                name = WORM_HOME_STATE_NAMES.get(home_state, home_state)
-                if home_state == 4:
-                    reason = WORM_HOME_FAIL_NAMES.get(
-                        row["home_fail"], row["home_fail"])
-                    print("[回零] %s：%s" % (name, reason))
-                elif home_state == 3:
-                    print("[回零] %s  零点脉冲=%d  当前 stroke_percent=%.2f%%"
-                          % (name, row["pulse_home"], row["stroke_percent"]))
-                else:
-                    print("[回零] %s" % name)
+            key, notice = ugwrm_calibration_notice(row)
+            if key != wrm_stat["last_home"]:
+                wrm_stat["last_home"] = key
+                print('\n' + notice)
             return
 
         # PID 遥测由本线程独占解析，再发布给 UgctlStore；PID 界面禁止 recv。
@@ -2432,6 +2513,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             if row is None:
                 ctl_stat["bad"] += 1
                 return
+            publish_monitor('ugctl', row)
             if ctl_csv is None:
                 ctl_csv_path = os.path.join(
                     CONTROL_LOG_DIR,
@@ -2459,6 +2541,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             if row is None:
                 ekf_stat["bad"] += 1
                 return
+            publish_monitor('ugekf', row)
             ekf_csv.write(",".join(str(x) for x in ekf_csv_row(row)) + "\n")
             ekf_csv.flush()
             ekf_stat["ok"] += 1
@@ -2557,13 +2640,14 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
     print("输入 'pack' 发送锁存控制包（保持到下一条命令，没有看门狗保护）")
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
     print("输入 'auto_sti [槽位0..3] [上限%]' 进入 Xbox 模式，默认上限100%；X/ESC退出")
-    print("  例：auto_sti 0 20 使用槽位0、推进限制20%；Y/A按住移动pitch，十字键左/右控制roll +50/-50RPM")
+    print("  例：auto_sti 0 20 使用槽位0、推进限制20%；Y/A按住移动pitch，"
+          f"十字键左/右控制roll +{GamepadConfig().roll_rpm}/-{GamepadConfig().roll_rpm}RPM")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
-    print("输入 'wormon' / 'wormoff' 开 / 停蜗杆位置遥测 $UGWRM（落 CSV，不打印）")
+    print("输入 'wormon' / 'wormoff' 开 / 停双轴位置遥测 $UGWRM（落 CSV，阶段变化提示）")
     print("电池监测默认常开：低压主动报警；预警每30秒、严重低压每10秒提醒，数据失效会另行提示")
-    print("输入 'calib' 开始蜗杆回零（电机会自己走到前限位）")
-    print("输入 'calibstop' 中止回零")
+    print("输入 'calib' 同时校准 pitch 和 roll（pitch 到前端0%，roll 测两端后回50%）")
+    print("输入 'calibstop' 取消两轴校准；完成/失败/取消后须中立重新接管")
     print("输入 'snapshot' 请求一次系统状态快照")
     print("输入 'quit' 或 'exit' 退出程序")
     print("==================================\n")
@@ -2614,14 +2698,14 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
                     conn, get_stream_control_mask() & ~STREAM_WRM)
                 print("[WORM] 已请求板子停发 $UGWRM")
             elif user_input.lower() == 'calib':
-                print("[回零] 电机即将自行走到前限位")
+                print("[校准] 两轴即将自行运动：pitch 到前端，roll 测两端跨度后回50%")
                 if input("确认开始？输入 yes 继续：").strip().lower() == 'yes':
                     send_worm_calib(conn, True)
                 else:
-                    print("[回零] 已取消，未发送。")
+                    print("[校准] 已取消，未发送。")
             elif user_input.lower() == 'calibstop':
                 send_worm_calib(conn, False)
-                print("[回零] 已请求中止")
+                print("[校准] 已请求取消两轴，等待板端状态确认")
             elif user_input.lower() == 'snapshot':
                 send_snapshot_request(conn)
             else:
@@ -2630,12 +2714,37 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
         print("\n检测到 Ctrl+C，退出。")
 
 
+def _start_monitor_bridge():
+    """本机只读接口为可选旁路；端口占用或配置错误不阻止原控制台。"""
+    bridge = None
+    try:
+        port = int(os.environ.get('UG_MONITOR_PORT', '8801'))
+        if not 1 <= port <= 65535:
+            raise ValueError('UG_MONITOR_PORT 必须在 1～65535 之间')
+        bridge = MonitorBridge(port=port)
+        host, port = bridge.start()
+        bridge.set_link('waiting')
+        print(f'[监控] 本机只读快照 http://{host}:{port}/snapshot；'
+              f'另一终端运行 python -B station/monitor.py --port {port}')
+        return bridge
+    except Exception as exc:
+        if bridge is not None:
+            try:
+                bridge.stop()
+            except Exception:
+                pass
+        print(f'[监控] 本机接口不可用：{exc}；控制台继续运行。')
+        return None
+
+
 def main():
     global running
     running = True
     server_socket = conn = recv_thread = gamepad_service = None
+    monitor_bridge = None
     link_closed = threading.Event()
     try:
+        monitor_bridge = _start_monitor_bridge()
         # 手柄模块默认检测；未安装 XInput 或不支持的平台仍保留原键盘控制台。
         try:
             gamepad_service = GamepadService()
@@ -2650,18 +2759,29 @@ def main():
         print('服务端已绑定 192.168.57.100:8800，等待客户端连接...')
         conn, addr = server_socket.accept()
         print(f'接收到客户端连接：{addr}')
+        if monitor_bridge is not None:
+            try:
+                monitor_bridge.set_link('connected', peer=f'{addr[0]}:{addr[1]}')
+            except Exception as exc:
+                print(f'[监控] 连接状态发布失败：{exc}；控制台继续运行。')
+                try:
+                    monitor_bridge.stop()
+                except Exception:
+                    pass
+                monitor_bridge = None
         # 发送与接收共用有限 socket 超时；不把它视作硬实时停止保证。
         conn.settimeout(1.0)
-        # 先给旧固件可识别的声明；旧固件若拒绝 BAT 位仍能保留 EKF，并明确报监测不可用。
-        send_stream_control(conn, STREAM_EKF, '兼容 EKF 遥测声明', keep_battery=False)
-        if send_stream_control(conn, STREAM_EKF | STREAM_BAT):
-            print('[遥测] 已请求 EKF + BAT；收到有效 UGBAT 后才确认电池监测就绪')
+        # 先订阅原有三主题；不支持 BAT 的旧固件仍能保留姿态、PID 和 pitch 数据。
+        base_streams = STREAM_EKF | STREAM_CTL | STREAM_WRM
+        send_stream_control(conn, base_streams, '兼容 EKF/CTL/WRM 遥测声明', keep_battery=False)
+        if send_stream_control(conn, base_streams | STREAM_BAT):
+            print('[遥测] 已请求 EKF + CTL + WRM + BAT；未上报的字段显示不可用')
         else:
-            print('[遥测警告] EKF + BAT 声明发送失败，请检查连接后重试 ekfon')
+            print('[遥测警告] 遥测声明发送失败，请检查连接后重试 ekfon')
         ctl_store, wrm_store = UgctlStore(), UgwrmStore()
         recv_thread = threading.Thread(
             target=receive_thread,
-            args=(conn, ctl_store, wrm_store, link_closed), daemon=True)
+            args=(conn, ctl_store, wrm_store, link_closed, monitor_bridge), daemon=True)
         recv_thread.start()
         _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed)
     except (KeyboardInterrupt, EOFError):
@@ -2693,6 +2813,11 @@ def main():
                 recv_thread.join(timeout=2)
             if server_socket is not None:
                 server_socket.close()
+            if monitor_bridge is not None:
+                try:
+                    monitor_bridge.stop()
+                except (OSError, RuntimeError) as exc:
+                    print(f'[退出] 监控接口清理失败：{exc}')
             print('服务端已关闭。')
 
 if __name__ == "__main__":

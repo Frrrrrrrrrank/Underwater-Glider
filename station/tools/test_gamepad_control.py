@@ -95,8 +95,7 @@ class GamepadMappingTests(unittest.TestCase):
                 self.assertEqual((target.pitch_enable, target.pitch_rpm), expected)
 
     def test_direction_pad_requires_hold_and_conflicting_buttons_stop_roll(self):
-        config = gamepad.GamepadConfig()
-        self.assertEqual(config.roll_rpm, 50)
+        config = gamepad.GamepadConfig(roll_rpm=50)
         for left, right, expected in ((True, False, (1, 50)),
                                      (False, True, (1, -50)),
                                      (False, False, (0, 0)),
@@ -310,7 +309,7 @@ class GamepadPacketTests(unittest.TestCase):
         self.assertEqual(len(payload), 21)
 
     def test_direction_pad_encodes_signed_roll_rpm_in_existing_frame(self):
-        config = gamepad.GamepadConfig()
+        config = gamepad.GamepadConfig(roll_rpm=50)
         for left, right, expected in ((True, False, 50), (False, True, -50),
                                      (False, False, 0), (True, True, 0)):
             with self.subTest(left=left, right=right):
@@ -524,7 +523,7 @@ class AutoStiLoopTests(unittest.TestCase):
                 harness.run()
                 self.assertTrue(harness.motions())
                 self.assertTrue(all(at >= 0.199 for at, _ in harness.controls()))
-                self.assertTrue(all(struct.unpack_from('<i', payload, 6)[0] == -50
+                self.assertTrue(all(struct.unpack_from('<i', payload, 6)[0] == -gamepad.GamepadConfig().roll_rpm
                                     for _, payload in harness.motions()))
                 self.assert_cleanup(harness)
 
@@ -617,7 +616,7 @@ class AutoStiLoopTests(unittest.TestCase):
                 self.assertEqual(len(attempts), int(fail_motion))
                 if fail_motion:
                     self.assertEqual(attempts[0][1][5], 1)
-                    self.assertEqual(struct.unpack_from('<i', attempts[0][1], 6)[0], 50)
+                    self.assertEqual(struct.unpack_from('<i', attempts[0][1], 6)[0], gamepad.GamepadConfig().roll_rpm)
                 self.assert_cleanup(harness)
 
     def test_multiple_controllers_require_explicit_selection(self):
@@ -686,9 +685,9 @@ class TelemetryStoreCompatibilityTests(unittest.TestCase):
         self.assertEqual(store.snapshot()[1]['mode'], 0)
 
     def test_unique_receiver_publishes_fragmented_worm_telemetry_and_marks_eof(self):
-        row = {name: 0 for name in contcp_t.UGWRM_FIELDS}
+        row = {name: 0 for name in contcp_t.UGWRM_FIELDS_V2}
         row.update(schema=2, seq=7, home_state=3, pulse=123)
-        body = 'UGWRM,' + ','.join(str(row[name]) for name in contcp_t.UGWRM_FIELDS)
+        body = 'UGWRM,' + ','.join(str(row[name]) for name in contcp_t.UGWRM_FIELDS_V2)
         checksum = 0
         for character in body:
             checksum ^= ord(character)
@@ -724,6 +723,13 @@ class TelemetryStoreCompatibilityTests(unittest.TestCase):
 
 
 class MainResourceCleanupTests(unittest.TestCase):
+    def setUp(self):
+        # 控制台生命周期测试不创建本机 HTTP 监听；端到端监控另有真实 socket 测试。
+        self.monitor_bridge = mock.Mock()
+        patcher = mock.patch.object(contcp_t, '_start_monitor_bridge', return_value=self.monitor_bridge)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_waiting_for_connection_interruption_stops_sampler_and_closes_listener(self):
         service, listener = mock.Mock(), mock.Mock()
         listener.accept.side_effect = KeyboardInterrupt()
@@ -736,6 +742,7 @@ class MainResourceCleanupTests(unittest.TestCase):
         service.start.assert_called_once()
         service.stop.assert_called_once()
         listener.close.assert_called_once()
+        self.monitor_bridge.stop.assert_called_once()
 
     def test_listener_bind_error_releases_already_started_sampler(self):
         service, listener = mock.Mock(), mock.Mock()
@@ -785,6 +792,8 @@ class MainResourceCleanupTests(unittest.TestCase):
         conn.shutdown.assert_called_once()
         conn.close.assert_called_once()
         listener.close.assert_called_once()
+        self.monitor_bridge.set_link.assert_called_once_with('connected', peer='127.0.0.1:12345')
+        self.monitor_bridge.stop.assert_called_once()
 
     def test_receiver_start_failure_still_closes_connection_listener_and_sampler(self):
         service, listener, conn = (mock.Mock() for _ in range(3))

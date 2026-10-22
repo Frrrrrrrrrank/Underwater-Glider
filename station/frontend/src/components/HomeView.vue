@@ -15,7 +15,7 @@ const actions = [
   { key: 'overview', title: '操控概览', subtitle: '对象与控制状态' },
   { key: 'direct', title: '直接遥控', subtitle: '推进 / 蜗杆 / 泵' },
   { key: 'pid', title: '闭环控制', subtitle: '俯仰 / 深度目标' },
-  { key: 'homing', title: '蜗杆回零', subtitle: '参考建立与进度' },
+  { key: 'homing', title: '双轴校准', subtitle: 'pitch / roll 参考与进度' },
   { key: 'maintenance', title: '参数与标定', subtitle: '调参与维护方案' },
 ]
 const roll = computed(() => numeric(props.telemetry.ugekf, 'ugekf', 'roll_deg'))
@@ -24,8 +24,12 @@ const yaw = computed(() => numeric(props.telemetry.ugekf, 'ugekf', 'yaw_deg'))
 const poseValid = computed(() => props.coreLive && props.deviceStatus === 'connected' && roll.value !== null && pitch.value !== null)
 const headingValid = computed(() => poseValid.value && yaw.value !== null)
 const heading = computed(() => yaw.value === null ? null : ((yaw.value % 360) + 360) % 360)
-const homingState = computed(() => numeric(props.telemetry.ugwrm, 'ugwrm', 'home_state'))
-const homingActive = computed(() => homingState.value === 1 || homingState.value === 2)
+const homingActive = computed(() => {
+  const sample = props.telemetry.ugwrm
+  if (sample?.data.schema === 3) return numeric(sample, 'ugwrm', 'calib_state') === 1
+  const pitchState = numeric(sample, 'ugwrm', 'home_state')
+  return pitchState === 1 || pitchState === 2
+})
 const horizonTransform = computed(() => 'rotate(' + -(roll.value ?? 0) + ' 300 170) translate(0 ' + (pitch.value ?? 0) * 4 + ')')
 const attitudeTicks = [-30, -20, -10, 0, 10, 20, 30]
 const metrics = [
@@ -34,6 +38,7 @@ const metrics = [
   { topic: 'ugekf' as const, key: 'roll_deg', label: '横滚', unit: '°' },
   { topic: 'ugekf' as const, key: 'vD', label: '下向速度', unit: 'm/s' },
   { topic: 'ugwrm' as const, key: 'stroke_percent', label: '蜗杆行程', unit: '%' },
+  { topic: 'ugwrm' as const, key: 'roll_percent', label: 'roll 位置估算', unit: '%' },
   { topic: 'ugctl' as const, key: 'displacement_mm', label: '油囊位移', unit: 'mm' },
 ]
 // 本页只消费 App 的共享遥测；操作入口只切换说明面板，不创建任何写请求。
@@ -100,7 +105,7 @@ const metrics = [
               <div><dt>控制器使能</dt><dd><DataValue :sample="telemetry.ugctl" topic="ugctl" field="armed" /></dd></div>
               <div><dt>控制输出有效</dt><dd><DataValue :sample="telemetry.ugctl" topic="ugctl" field="output_valid" /></dd></div>
               <div><dt>服务状态</dt><dd><DataValue :sample="telemetry.ugctl" topic="ugctl" field="fault" /></dd></div>
-              <div><dt>蜗杆回零</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="home_state" /></dd></div>
+              <div><dt>双轴校准</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="calib_state" /></dd></div>
             </dl>
             <p class="operation-note">实际控制来源尚待系统快照接入，不能由网页选中的模式推断。</p>
             <p class="access-note">控制服务未接入<br /><span>当前入口用于确认操作布局；不接管、不解锁、不驱动执行器。</span></p>
@@ -127,17 +132,20 @@ const metrics = [
             <p class="access-note">启动闭环不等于选择模式<br /><span>先确认参数身份和估计有效，再允许 ARM；网页失联需停止核心续发。</span></p>
           </template>
           <template v-else-if="selected === 'homing'">
-            <p class="section-eyebrow" :class="{ 'tone-warn': homingActive }">{{ homingActive ? '板端报告回零进行中' : '执行器准备 · 建立蜗杆参考' }}</p>
+            <p class="section-eyebrow" :class="{ 'tone-warn': homingActive }">{{ homingActive ? '板端报告校准进行中' : '执行器准备 · 建立双轴参考' }}</p>
             <dl class="home-details">
-              <div><dt>当前阶段</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="home_state" /></dd></div>
-              <div><dt>失败原因</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="home_fail" /></dd></div>
-              <div><dt>位置参考</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="ref_kind" /></dd></div>
-              <div><dt>行程参考有效</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="span_valid" /></dd></div>
-              <div><dt>驱动器报警</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="alarm" /></dd></div>
+              <div><dt>总状态</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="calib_state" /></dd></div>
+              <div><dt>总失败码</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="calib_fail" /></dd></div>
+              <div><dt>pitch 阶段</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="home_state" /></dd></div>
+              <div><dt>pitch 原因</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="home_fail" /></dd></div>
+              <div><dt>roll 阶段</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="roll_home_state" /></dd></div>
+              <div><dt>roll 原因</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="roll_home_fail" /></dd></div>
+              <div><dt>roll 位置估算</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="roll_percent" /> %</dd></div>
+              <div><dt>校准控制保持</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="calib_hold" /></dd></div>
             </dl>
-            <p class="homing-flow">趋近前限位 → 慢速退出 → 建立零点</p>
-            <p class="access-note">开始需确认，进行中禁止重复开始<br /><span>取消回零不是全局停机；断开网页也不能认为电机已停止。退出后的控制来源必须明确。</span></p>
-            <p class="operation-note">开始 / 取消服务尚未迁移，当前只展示板端进度。</p>
+            <p class="homing-flow">pitch：前端释放点 → 0%<br />roll：PB3 0% → PB5 100% → 50%</p>
+            <p class="access-note">两轴全部到达目标才报告完成<br /><span>roll 是脉冲估算，50% 不代表艇体水平。旧协议未提供 roll 和总状态时显示未知。</span></p>
+            <p class="operation-note">网页只读；终端 calib 同时开始两轴，calibstop 取消两轴。结束后须中立重新接管；断开网页不代表校准停止。</p>
           </template>
           <template v-else>
             <p class="section-eyebrow">建议独立调参 / 维护视图</p>
@@ -218,7 +226,7 @@ const metrics = [
 .access-note span { color: #a49684; font-size: 10px; }
 .homing-flow { color: #b3a5c0; font-size: 10px; margin-top: 17px; line-height: 1.8; }
 .details-link { margin-top: 20px; }
-.home-telemetry { min-width: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid #302737; align-items: center; }
+.home-telemetry { min-width: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid #302737; align-items: center; }
 .home-metric { min-width: 0; padding: 0 16px; border-right: 1px solid #302737; }
 .home-metric:last-child { border-right: 0; }
 .home-metric > span { font-size: 10px; color: #a097ab; }
