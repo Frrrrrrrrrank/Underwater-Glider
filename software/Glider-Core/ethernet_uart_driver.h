@@ -36,8 +36,10 @@
 #define ETHERNET_UART_MSG_SNAPSHOT_REQ      0x03U
 #define ETHERNET_UART_MSG_CONTROL19_LATCHED 0x04U
 #define ETHERNET_UART_MSG_CASCADE_COMMAND   0x05U
-/* 蜗杆回零：payload 1 字节，1=开始，0=取消。 */
+/* 双轴校准：沿用 0x06/1 字节，1=同时校准 pitch+roll，0=取消两轴。 */
 #define ETHERNET_UART_MSG_WORM_CALIB        0x06U
+/* AUTO 尾舵扩展：原 19 字节追加 int16 小端角度，单位 0.01 度；仅支持租约控制。 */
+#define ETHERNET_UART_MSG_CONTROL21_STREAM  0x07U
 #define ETHERNET_UART_MSG_PARAM_BLOCK     0x10U
 #define ETHERNET_UART_MSG_PARAM_COMMIT    0x11U
 
@@ -50,10 +52,12 @@
 #define ETHERNET_UART_STREAM_EKF 0x01U
 #define ETHERNET_UART_STREAM_MAG 0x02U
 #define ETHERNET_UART_STREAM_CTL 0x04U
-/* bit3：蜗杆位置遥测 $UGWRM。装机后 Ozone 不可用，位置量只能靠这条流看。 */
+/* bit3：双轴位置与校准遥测 $UGWRM，schema3 追加 roll 字段。 */
 #define ETHERNET_UART_STREAM_WRM 0x08U
+/* bit4：电池总压与采样质量 $UGBAT，不影响板端独立采样。 */
+#define ETHERNET_UART_STREAM_BAT 0x10U
 #define ETHERNET_UART_STREAM_ALL \
-  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM)
+  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM | ETHERNET_UART_STREAM_BAT)
 
 /* EKF 遥测定义，单行 ASCII 帧上限（NMEA 风格 $UGEKF,...*HH），以及周期(ms)。
  * 行内全部字段定点格式化，正常约 200B，留足余量到 512；100ms=10Hz。 */
@@ -61,7 +65,8 @@
 #define ETHERNET_UART_EKF_PERIOD_MS 100U//遥测频率定义
 #define ETHERNET_UART_MAG_PERIOD_MS 100U
 #define ETHERNET_UART_CTL_PERIOD_MS 100U
-#define ETHERNET_UART_WRM_PERIOD_MS 100U
+#define ETHERNET_UART_WRM_PERIOD_MS 200U /* 双轴合并帧先用 5Hz，保留 BAT 优先调度。 */
+#define ETHERNET_UART_BAT_PERIOD_MS 1000U
 
 typedef struct
 {
@@ -152,6 +157,9 @@ typedef struct
   uint8_t pump_on_off;
   uint8_t ask_for_status;
   uint8_t eth_control_flag;
+  /* 内部邮箱扩展，不改变旧 CONTROL19 线上布局；旧包明确清零新增字段。 */
+  int16_t rudder_angle_cdeg;
+  uint8_t rudder_valid;
 
 } EthernetUartReadoutPack;
 
@@ -174,12 +182,12 @@ typedef struct
   int16_t pump_feedback_rpm;
   int16_t umotor0_feedback_rpm;
   int16_t umotor1_feedback_rpm;
-  uint16_t servo_pulse_us;
+  uint16_t servo_pulse_us; /* 尾舵已下发脉宽，非实测位置。 */
   uint8_t limit_switch_bits;
   uint8_t displacement_valid;
   uint8_t gnrmc_valid;
   uint8_t pressure_valid;
-  uint8_t servo_mode;
+  uint8_t servo_mode; /* 0=未启动，1=中位保护，2=网线尾舵命令。 */
   uint8_t pump_speed_triggered;
   uint8_t pump_direction_reversed;
   /*EKF 状态估计（供以太网快照直接观察；x=pN, y=pE 为 NED 水平位置）*/
@@ -231,6 +239,8 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void);
 
 /* 蜗杆位置遥测 $UGWRM：位置量与总线诊断量同行，便于对照判断数据可信度。 */
 HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void);
+/* 电池状态独立低频上报，使用整数毫伏，保留现有快照布局。 */
+HAL_StatusTypeDef EthernetUartDriver_SendBatteryTelemetry(void);
 /* 控制/泵任务每周期先整体复制一次，避免逐字段散读时跨越一次新包发布。 */
 bool EthernetUartDriver_CopyControlPack(
     EthernetUartReadoutPack *out_pack,

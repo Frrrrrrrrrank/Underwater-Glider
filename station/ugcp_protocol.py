@@ -23,6 +23,8 @@ MSG_CONTROL19_LATCHED = 0x04
 MSG_CASCADE_COMMAND = 0x05
 # 蜗杆回零：payload 1 字节，1=开始，0=取消
 MSG_WORM_CALIB = 0x06
+# 尾舵连续控制：旧 CONTROL19 末尾追加有符号百分之一度。
+MSG_CONTROL21_STREAM = 0x07
 MSG_PARAM_BLOCK = 0x10
 MSG_PARAM_COMMIT = 0x11
 
@@ -31,7 +33,9 @@ STREAM_MAG = 0x02
 STREAM_CTL = 0x04
 # bit3：蜗杆位置遥测 $UGWRM（装机后 Ozone 不可用，位置量只能靠这条流看）
 STREAM_WRM = 0x08
-STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL | STREAM_WRM
+# bit4：电池电压及低压状态遥测 $UGBAT。
+STREAM_BAT = 0x10
+STREAM_ALL = STREAM_EKF | STREAM_MAG | STREAM_CTL | STREAM_WRM | STREAM_BAT
 
 PARAM_GROUP_MAG_CAL = 1
 PARAM_GROUP_PID = 2
@@ -74,6 +78,7 @@ PID_PARAM_FIELDS = (
 _CORE_HEADER = struct.Struct("<BBHH")
 _CRC32 = struct.Struct("<I")
 _CONTROL19 = struct.Struct("<BiBiBBBBBBBBB")
+_RUDDER_CDEG = struct.Struct("<h")
 _CASCADE_COMMAND = struct.Struct("<BBBBHHfffI")
 _PARAM_BLOCK = struct.Struct("<BBB16s")
 _PARAM_COMMIT = struct.Struct("<BBBI")
@@ -217,6 +222,30 @@ def pack_control_payload(pitchmotor_enable, pitchmotor_speed_rpm,
         _require_bit(ask_for_status, "ask_for_status"),
         _require_bit(eth_control_flag, "eth_control_flag"),
     )
+
+
+def pack_control21_payload(pitchmotor_enable, pitchmotor_speed_rpm,
+                           rollmotor_enable, rollmotor_speed_rpm,
+                           thrustmotor_direction, thrustmotor_direction2,
+                           thrustmotor1se_speed_rpm, thrustmotor2se_speed_rpm,
+                           backup_for_thrust, pump_direction, pump_on_off,
+                           ask_for_status, eth_control_flag, rudder_angle_cdeg):
+    """编码尾舵绝对目标；前 19 字节保留旧布局，末尾为 int16 小端百分之一度。"""
+    try:
+        angle = int(rudder_angle_cdeg)
+    except (TypeError, ValueError, OverflowError):
+        raise UgcpProtocolError("rudder_angle_cdeg 必须为有限整数") from None
+    if angle != rudder_angle_cdeg or not -4500 <= angle <= 4500:
+        raise UgcpProtocolError("rudder_angle_cdeg 必须为 -4500..4500 的整数")
+    control = pack_control_payload(
+        pitchmotor_enable, pitchmotor_speed_rpm,
+        rollmotor_enable, rollmotor_speed_rpm,
+        thrustmotor_direction, thrustmotor_direction2,
+        thrustmotor1se_speed_rpm, thrustmotor2se_speed_rpm,
+        backup_for_thrust, pump_direction, pump_on_off,
+        ask_for_status, eth_control_flag,
+    )
+    return control + _RUDDER_CDEG.pack(angle)
 
 
 def pack_cascade_command_payload(
@@ -455,10 +484,10 @@ def pack_param_commit_payload(group, transaction, block_count, table_crc):
 
 
 def pack_stream_control_payload(mask):
-    """编码完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL，bit3=$UGWRM。"""
+    """编码完整遥测状态：bit0..4 依次为 EKF、MAG、CTL、WRM、BAT。"""
     mask = _require_u8(mask, "stream_mask")
     if mask & ~STREAM_ALL:
-        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL/WRM 四个 bit（0..15）")
+        raise UgcpProtocolError("stream_mask 只能使用 EKF/MAG/CTL/WRM/BAT 五个 bit（0..31）")
     return bytes((mask,))
 
 
@@ -478,6 +507,7 @@ def pack_snapshot_request_payload():
 
 
 assert _CONTROL19.size == 19
+assert _CONTROL19.size + _RUDDER_CDEG.size == 21
 assert _CASCADE_COMMAND.size == 24
 assert _PARAM_BLOCK.size == 19
 assert _PARAM_COMMIT.size == 7

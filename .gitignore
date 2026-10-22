@@ -19,6 +19,11 @@ Thumbs.db
 # Python bytecode/cache (generated locally; source tests remain versioned)
 __pycache__/
 *.py[cod]
+/station/.venv/
+
+# URGC frontend generated dependencies and build output
+/station/frontend/node_modules/
+/station/frontend/dist/
 
 # Generated station telemetry logs and analysis outputs
 /station/logs/ekf/*
@@ -27,13 +32,14 @@ __pycache__/
 !/station/logs/mag/.gitkeep
 /station/logs/control/*
 !/station/logs/control/.gitkeep
+/station/logs/battery/*
+/station/logs/sessions/
 /station/plots/*
 !/station/plots/.gitkeep
 
 # Agent 知识库(本地, 不上 GitHub)
 /AGENTS.md
 /CLAUDE.md
-/docs/AGENT_STATUS.md
+/project_status.md
 /EKF_context_for_new_codex.txt
-/docs/PID_TUNING_GUIDE.md
 /docs/

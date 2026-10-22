@@ -1,0 +1,17 @@
+{
+  "name": "UnderwaterRobotGroundControl",
+  "short_name": "URGC",
+  "description": "水下机器人地面控制站",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050608",
+  "theme_color": "#050608",
+  "icons": [
+    {
+      "src": "/Redbird.png?v=2",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

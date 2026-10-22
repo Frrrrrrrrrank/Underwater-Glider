@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EKF 三维轨迹切段和默认目录的回归测试
+r"""EKF 三维轨迹切段和默认目录的回归测试
 
 cd D:\ForSTM32\xinjian\Underwater-Glider
 

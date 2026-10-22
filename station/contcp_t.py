@@ -7,7 +7,31 @@ import ctypes
 import json
 import os
 import shlex
+import math
 from datetime import datetime
+
+try:
+    from .monitor_bridge import MonitorBridge
+except ImportError:
+    from monitor_bridge import MonitorBridge
+
+try:
+    from .battery_telemetry import (
+        BatteryAlarmMonitor, UGBAT_CSV_HEADER, ugbat_csv_row, ugbat_parse,
+    )
+except ImportError:
+    from battery_telemetry import (
+        BatteryAlarmMonitor, UGBAT_CSV_HEADER, ugbat_csv_row, ugbat_parse,
+    )
+
+try:
+    from .gamepad_control import (
+        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+    )
+except ImportError:
+    from gamepad_control import (
+        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+    )
 
 try:
     from .ugcp_protocol import (
@@ -16,6 +40,7 @@ try:
         CASCADE_MODE_PITCH_HOLD,
         MSG_CONTROL19_LATCHED,
         MSG_CONTROL19_STREAM,
+        MSG_CONTROL21_STREAM,
         MSG_CASCADE_COMMAND,
         MSG_PARAM_BLOCK,
         MSG_PARAM_COMMIT,
@@ -27,11 +52,13 @@ try:
         STREAM_EKF,
         STREAM_CTL,
         STREAM_WRM,
+        STREAM_BAT,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
         pack_cascade_command_payload,
         pack_control_payload,
+        pack_control21_payload,
         pack_param_block_payload,
         pack_param_commit_payload,
         pack_pid_param_table,
@@ -39,7 +66,6 @@ try:
         pack_stream_control_payload,
         pack_worm_calib_payload,
         MSG_WORM_CALIB,
-        pack_telem_control_payload,
         split_param_table,
     )
 except ImportError:
@@ -49,6 +75,7 @@ except ImportError:
         CASCADE_MODE_PITCH_HOLD,
         MSG_CONTROL19_LATCHED,
         MSG_CONTROL19_STREAM,
+        MSG_CONTROL21_STREAM,
         MSG_CASCADE_COMMAND,
         MSG_PARAM_BLOCK,
         MSG_PARAM_COMMIT,
@@ -60,11 +87,13 @@ except ImportError:
         STREAM_EKF,
         STREAM_CTL,
         STREAM_WRM,
+        STREAM_BAT,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
         pack_cascade_command_payload,
         pack_control_payload,
+        pack_control21_payload,
         pack_param_block_payload,
         pack_param_commit_payload,
         pack_pid_param_table,
@@ -72,7 +101,6 @@ except ImportError:
         pack_stream_control_payload,
         pack_worm_calib_payload,
         MSG_WORM_CALIB,
-        pack_telem_control_payload,
         split_param_table,
     )
 
@@ -85,10 +113,15 @@ TELEMETRY_STREAM_MASK = 0
 # 主线程标记当前是否处于 PID 命令界面，接收线程据此选择快照显示方式。
 PID_MODE_ACTIVE = threading.Event()
 
-AUTO_SEND_PERIOD_S = 1.0 #Auto模式的下发频率
+AUTO_SEND_PERIOD_S = 0.10  # 每 100ms 连续刷新一次，板端直控租约为 2.5s。
 AUTO_KEY_POLL_S = 0.02
+AUTO_RUDDER_LIMIT_DEG = 10.0  # 首次联调仅开放中位两侧各 10 度。
+AUTO_RUDDER_RATE_DEG_S = 10.0
+AUTO_RUDDER_MAX_DT_S = 0.10  # PC 卡顿后不补算长时间位移，单步最多 1 度。
+AUTO_VK_MAP = {key: ord(key) for key in 'WSXEDCIKJLUNZHQRFVT'}
+AUTO_VK_MAP['ESC'] = 0x1B
 THRUST_SPEED_MIN = 0.0
-THRUST_SPEED_MAX = 30.0
+THRUST_SPEED_MAX = 100.0
 THRUST_SPEED_INIT = 10.0
 THRUST_SPEED_REARM_AFTER_RESET = 10.0
 THRUST_DIFF_RATE_PER_S = 20.0
@@ -683,8 +716,17 @@ def format_worm_status(snap):
         return ("[蜗杆] stroke_percent 不可用 span_valid=0"
                 "（本次上电尚未跑过两端限位，无法确定行程端点）")
     return ("[蜗杆] stroke_percent=%.2f%% span_valid=1"
-            "（0=前限位 PD7，100=后限位 PB4）"
+            "（0=机头前限位 PB4，100=机尾后限位 PD7）"
             % (float(snap.worm_stroke_percent_x100) / 100.0))
+
+
+def format_rudder_status(snap):
+    """快照是板端已施加的 PWM 命令，三线舵机没有角度反馈。"""
+    mode = int(snap.servo_mode)
+    mode_text = {0: 'PWM 初始化失败/未启动', 1: '中位保护', 2: '网线命令'}.get(
+        mode, '未知模式')
+    return ("[尾舵] applied_pulse_us=%d servo_mode=%d(%s)；命令值，非实测角度"
+            % (int(snap.servo_pulse_us), mode, mode_text))
 
 
 def print_snapshot_struct(snap):
@@ -692,6 +734,7 @@ def print_snapshot_struct(snap):
     snap_dict = _ctypes_to_py(snap)
     _print_snapshot_alarms(snap)
     print(format_worm_status(snap))
+    print(format_rudder_status(snap))
     print(json.dumps(snap_dict, ensure_ascii=False, indent=2))
 
 
@@ -763,9 +806,22 @@ def send_control_packet(conn, pitchmotor_enable, pitchmotor_speed_rpm,
     return send_ugcp_frame(conn, msg_type, payload, label)
 
 
-def send_stream_control(conn, mask, label='遥测流控制'):
-    """设置完整遥测状态：bit0=$UGEKF，bit1=$UGMAG，bit2=$UGCTL。"""
+def send_auto_control_packet(conn, packet, label='AUTO'):
+    """键盘和手柄共用 21 字节连续命令；退出包保持 CONTROL19 兼容。"""
+    try:
+        payload = pack_control21_payload(**packet)
+    except Exception as e:
+        print(f'[{label} 控制字段错误] {e}')
+        return False
+    return send_ugcp_frame(
+        conn, MSG_CONTROL21_STREAM, payload, f'{label} 连续控制包', verbose=False)
+
+
+def send_stream_control(conn, mask, label='遥测流控制', *, keep_battery=True):
+    """设置完整遥测状态；控制会话始终保留电池流，退出时才显式全关。"""
     global TELEMETRY_STREAM_MASK
+    if keep_battery:
+        mask = int(mask) | STREAM_BAT
     ok = send_ugcp_frame(
         conn,
         MSG_STREAM_CONTROL,
@@ -779,15 +835,15 @@ def send_stream_control(conn, mask, label='遥测流控制'):
 
 
 def send_worm_calib(conn, start):
-    """蜗杆回零：start=True 开始，False 取消。
+    """双轴校准：start=True 同时开始 pitch/roll，False 取消两轴。
 
-    开始前顺带打开 $UGWRM 流，否则回零过程完全看不见（板子会自己转电机）。
-    板端只置标志、由 ServoTask 推进；回零自带分段超时，这里不需要心跳。
+    开始前打开 $UGWRM 流以观察两轴阶段；板端只置请求、由 ServoTask 推进。
+    校准自带分段超时，没有链路租约；断开连接不能据此认为运动已停止。
     """
     if start:
         send_stream_control(conn, get_stream_control_mask() | STREAM_WRM)
     return send_ugcp_frame(
-        conn, MSG_WORM_CALIB, pack_worm_calib_payload(start), "蜗杆回零")
+        conn, MSG_WORM_CALIB, pack_worm_calib_payload(start), "双轴校准")
 
 
 def get_stream_control_mask():
@@ -796,10 +852,10 @@ def get_stream_control_mask():
 
 
 def send_telem_control(conn, enabled):
-    """兼容交互命令：off=全关，on=只开 EKF。"""
-    # 保留旧布尔语义，同时让 PID 子界面能正确记住并恢复流掩码。
-    payload = pack_telem_control_payload(enabled)
-    return send_stream_control(conn, payload[0], 'EKF 遥测控制')
+    """兼容交互命令仅切换 EKF，保留电池以及其他主题订阅。"""
+    mask = get_stream_control_mask()
+    mask = mask | STREAM_EKF if enabled else mask & ~STREAM_EKF
+    return send_stream_control(conn, mask, 'EKF 遥测控制')
 
 
 def send_neutral_and_release(conn):
@@ -941,7 +997,240 @@ def _build_default_auto_packet():
         "pump_on_off": 0,
         "ask_for_status": 0,
         "eth_control_flag": 1,
+        "rudder_angle_cdeg": 0,
     }
+
+
+def _build_auto_sti_packet(target, config):
+    """把推进百分比和 pitch/roll 转速目标填入现有直控协议。"""
+    packet = _build_default_auto_packet()
+    speeds = (target.left_percent, target.right_percent)
+    if not config.motor1_is_left:
+        speeds = speeds[::-1]
+    for speed, direction, speed_key, direction_key in zip(
+            speeds, (config.motor1_forward_dir, config.motor2_forward_dir),
+            ('thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm'),
+            ('thrustmotor_direction', 'thrustmotor_direction2')):
+        if not math.isfinite(speed) or abs(speed) > config.max_percent:
+            raise ValueError('推进目标必须为限幅内的有限百分比')
+        magnitude = min(int(round(abs(speed))), int(config.max_percent))
+        packet[speed_key] = magnitude
+        packet[direction_key] = (direction if speed >= 0 else 1 - direction) if magnitude else 0
+    if (target.pitch_enable not in (0, 1) or
+            target.pitch_rpm not in (-config.pitch_rpm, 0, config.pitch_rpm) or
+            bool(target.pitch_enable) != bool(target.pitch_rpm)):
+        raise ValueError('pitch 目标使能与转速不一致')
+    packet['pitchmotor_enable'] = target.pitch_enable
+    packet['pitchmotor_speed_rpm'] = target.pitch_rpm
+    if (target.roll_enable not in (0, 1) or
+            target.roll_rpm not in (-config.roll_rpm, 0, config.roll_rpm) or
+            bool(target.roll_enable) != bool(target.roll_rpm)):
+        raise ValueError('roll 目标使能与转速不一致')
+    packet['rollmotor_enable'] = target.roll_enable
+    packet['rollmotor_speed_rpm'] = target.roll_rpm
+    return packet
+
+
+def _auto_sti_escape_pressed():
+    """保留控制台 ESC 退出入口；纯计算和离线测试可以在其他系统运行。"""
+    return os.name == 'nt' and bool(ctypes.windll.user32.GetAsyncKeyState(0x1B) & 0x8000)
+
+
+def _check_auto_sti_ready(ctl_status, wrm_status, after_ctl, after_wrm,
+                          now, timeout_s):
+    """返回观察条件是否满足及拒绝原因；状态观察不是逐命令执行 ACK。"""
+    for status, generation in ((ctl_status, after_ctl), (wrm_status, after_wrm)):
+        current, row, received_at = status
+        if current <= generation or row is None or received_at is None:
+            return False, ''
+        age = now - received_at
+        if not math.isfinite(age) or age < 0 or age > timeout_s:
+            return False, '板端遥测已过期'
+    ctl, wrm = ctl_status[1], wrm_status[1]
+    if wrm.get('schema') == 3:
+        if wrm.get('calib_state') == 1:
+            return False, '双轴正在校准；请先执行 calibstop，观察结束后重新进入'
+        if wrm.get('calib_state') not in (0, 2, 3, 4):
+            return False, '双轴校准状态未知'
+        if wrm.get('calib_hold') not in (0, 1):
+            return False, '校准后接管状态未知'
+        # 终态保持期间继续发送准备中立，等板端解除保持后再允许非零目标。
+        if wrm['calib_hold'] == 1:
+            return False, ''
+    elif wrm.get('home_state') in (1, 2):
+        return False, '蜗杆正在回零；请先执行 calibstop，观察结束后重新进入'
+    elif wrm.get('home_state') not in (0, 3, 4):
+        return False, '蜗杆回零状态未知'
+    return ctl.get('mode') == 0 and ctl.get('armed') == 0, ''
+
+
+def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
+                      config=None, controller_index=None):
+    """手柄接管：等待回中、观察板端状态、连续直控，所有已接管出口归中释放。"""
+    config = config or GamepadConfig()
+    if PID_MODE_ACTIVE.is_set():
+        print('[AUTO_STI] 请先退出 PID 模式。')
+        return
+    if gamepad_service is None or not gamepad_service.is_alive():
+        print('[AUTO_STI] 手柄采集服务不可用。')
+        return
+    indices = gamepad_service.connected_indices()
+    if controller_index is None:
+        if len(indices) != 1:
+            print(f'[AUTO_STI] 已连接槽位 {indices}；请连接一只手柄或输入 auto_sti <槽位>。')
+            return
+        controller_index = indices[0]
+    if controller_index not in (0, 1, 2, 3) or controller_index not in indices:
+        print('[AUTO_STI] 指定手柄未连接。')
+        return
+    initial = gamepad_service.snapshot(controller_index)
+    exit_seq, loss_seq = initial.exit_seq, initial.loss_seq
+    previous_stream_mask = get_stream_control_mask()
+    streams_changed = False
+    control_attempted = False
+    state = 'WAIT_CENTER'
+    after_ctl = after_wrm = 0
+    deadline = next_send = next_report = 0.0
+    last_loop = time.monotonic()
+    last_packet = None
+    reason = '控制循环结束'
+    print(f'[AUTO_STI] 绑定槽位 {controller_index}，上限 {config.max_percent:g}%；'
+          '请回中并松开 Y/A 和十字键左/右，X 或 ESC 退出。')
+    print('[AUTO_STI] 左右拨杆控制艇首转向，倒退时同向；纯横拨为零。'
+          'Y/A 按住向前/后；'
+          f'十字键左/右控制 roll +{config.roll_rpm}/-{config.roll_rpm}RPM，'
+          '松开或左右同按停；退出会交还控制权。')
+    try:
+        while running and not link_closed.is_set():
+            sample = gamepad_service.snapshot(controller_index)
+            # 先复制快照再取时刻，避免后台刚发布的数据比旧 now 晚而被误判。
+            now = time.monotonic()
+            if _auto_sti_escape_pressed() or sample.button_x or sample.exit_seq != exit_seq:
+                reason = 'X/ESC 退出'
+                break
+            if (not gamepad_service.is_alive() or not sample.connected or
+                    sample.index != controller_index or sample.loss_seq != loss_seq):
+                reason = '手柄断开、采集失败或连接曾中断；重新进入才能接管'
+                break
+            age = now - sample.sample_time
+            if not math.isfinite(age) or age < 0 or age > config.input_timeout_s:
+                reason = '手柄输入样本过期'
+                break
+            if state != 'WAIT_CENTER' and now - last_loop > config.input_timeout_s:
+                reason = '控制循环发生长时间停顿'
+                break
+            last_loop = now
+            # 每拍重新计算绝对目标，按键松开不会继承上一拍的运动命令。
+            target = map_gamepad_to_target(sample, config)
+            centered = (abs(sample.left_x) <= config.deadzone and
+                        abs(sample.forward) <= config.deadzone and
+                        not sample.button_y and not sample.button_a and
+                        not sample.dpad_left and not sample.dpad_right)
+            if state == 'WAIT_CENTER':
+                if not centered:
+                    time.sleep(config.poll_period_s)
+                    continue
+                after_ctl = ctl_store.snapshot()[0]
+                after_wrm = wrm_store.snapshot()[0]
+                streams_changed = True
+                if not send_stream_control(
+                        conn, previous_stream_mask | STREAM_CTL | STREAM_WRM,
+                        'AUTO_STI 状态订阅'):
+                    reason = '无法订阅板端状态'
+                    break
+                state = 'PREPARING'
+                deadline = now + config.prepare_timeout_s
+                next_send = now
+                print('[AUTO_STI] 准备接管：发送中立，等待新 PID OFF、校准非运行及保持解除状态。')
+            if state in ('PREPARING', 'ACTIVE'):
+                ctl_status = ctl_store.snapshot_with_time()
+                wrm_status = wrm_store.snapshot_with_time()
+                now = time.monotonic()
+                ready, rejection = _check_auto_sti_ready(
+                    ctl_status, wrm_status,
+                    after_ctl, after_wrm, now, config.telemetry_timeout_s)
+                if rejection:
+                    reason = rejection
+                    break
+                if state == 'ACTIVE' and not ready:
+                    reason = '板端 PID 状态不再满足直控条件'
+                    break
+                if state == 'PREPARING':
+                    if ready and centered and control_attempted:
+                        state = 'ACTIVE'
+                        next_send = now
+                        print('[AUTO_STI] 已观察到进入条件满足，开始发送手柄目标（非执行 ACK）。')
+                    elif now >= deadline:
+                        reason = '准备超时；未观察到所需状态或手柄未回中'
+                        break
+            packet = _build_auto_sti_packet(
+                target if state == 'ACTIVE' else ControlTarget(), config)
+            # 回中和松键的停止不等待下一次常规心跳；普通运动最多按10Hz发送。
+            force_stop = last_packet is not None and any(
+                last_packet[key] != 0 and packet[key] == 0 for key in (
+                    'thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm',
+                    'pitchmotor_enable', 'rollmotor_enable'))
+            if force_stop or now >= next_send:
+                if (link_closed.is_set() or
+                        time.monotonic() - sample.sample_time > config.input_timeout_s):
+                    reason = '发送前连接失效或本轮输入已过期'
+                    break
+                # sendall 报错也可能已经发送部分字节，因此发送前就标记需要清理。
+                control_attempted = True
+                if not send_auto_control_packet(conn, packet, label='AUTO_STI'):
+                    reason = '发送失败'
+                    break
+                last_packet = packet
+                next_send = now + config.send_period_s
+                if now >= next_report:
+                    print(f'[AUTO_STI {state}] 输入前后={sample.forward:+.2f} '
+                          f'左右={sample.left_x:+.2f}；目标左={target.left_percent:+.0f}% '
+                          f'右={target.right_percent:+.0f}% pitch={packet["pitchmotor_speed_rpm"]:+d}RPM '
+                          f'roll={packet["rollmotor_speed_rpm"]:+d}RPM'
+                          + ('（准备阶段实际发送中立）' if state != 'ACTIVE' else ''))
+                    next_report = now + 1.0
+            time.sleep(config.poll_period_s)
+        if link_closed.is_set():
+            reason = '控制板连接已断开'
+    except KeyboardInterrupt:
+        reason = 'Ctrl+C 退出手柄模式'
+    except (OSError, ValueError, RuntimeError) as exc:
+        reason = f'输入或控制异常：{exc}'
+    finally:
+        print(f'[AUTO_STI] {reason}')
+        if control_attempted:
+            if send_neutral_and_release(conn):
+                print('[AUTO_STI] 已发送中立和释放，后续可能由 SBUS 接管；非全局急停。')
+            else:
+                print('[AUTO_STI] 中立/释放未完整发出，依赖板端现有约2.5秒 STREAM 租约。')
+        if streams_changed:
+            send_stream_control(conn, previous_stream_mask, '恢复遥测流')
+
+
+def _update_auto_rudder(packet, state, pressed, rising, dt):
+    """只在 PC 积分目标位置；板端接收绝对角度，不锁存无限旋转命令。"""
+    old_direction = state['direction']
+    force_send = any(rising.get(key, False) for key in ('R', 'F', 'V', 'T', 'Z'))
+    # 停止/回中按住期间优先；同时按 R/F 停止，松开后需重新按方向键。
+    if pressed.get('Z') or pressed.get('T'):
+        state['angle_deg'] = 0.0
+        state['direction'] = 0
+    elif pressed.get('V') or (pressed.get('R') and pressed.get('F')):
+        state['direction'] = 0
+    elif rising.get('R'):
+        state['direction'] = 1
+    elif rising.get('F'):
+        state['direction'] = -1
+
+    safe_dt = _clamp(dt, 0.0, AUTO_RUDDER_MAX_DT_S)
+    state['angle_deg'] = _clamp(
+        state['angle_deg'] + state['direction'] * AUTO_RUDDER_RATE_DEG_S * safe_dt,
+        -AUTO_RUDDER_LIMIT_DEG, AUTO_RUDDER_LIMIT_DEG)
+    if (state['angle_deg'] >= AUTO_RUDDER_LIMIT_DEG and state['direction'] > 0) or (
+            state['angle_deg'] <= -AUTO_RUDDER_LIMIT_DEG and state['direction'] < 0):
+        state['direction'] = 0
+    packet['rudder_angle_cdeg'] = int(round(state['angle_deg'] * 100.0))
+    return force_send or old_direction != state['direction']
 
 
 def _apply_thrust_direction(packet, direction_key, now_s, dir_state, init_speed=None):
@@ -980,8 +1269,8 @@ def _apply_thrust_direction_keep_speed(packet, direction_key, now_s, dir_state):
 
 def _print_auto_help(packet):
     print("[AUTO] 按键说明:")
-    print("  W: pitch_enable=1, pitch_speed=-200")
-    print("  S: pitch_enable=1, pitch_speed=200")
+    print("  W: pitch_enable=1, pitch_speed=-50")
+    print("  S: pitch_enable=1, pitch_speed=50")
     print("  X: pitch_enable=0, pitch_speed=0")
     print("  E: pump_direction=0, pump_on_off=1")
     print("  D: pump_direction=1, pump_on_off=1")
@@ -992,10 +1281,13 @@ def _print_auto_help(packet):
     print("  L: thrust1上升 thrust2下降（1秒变化20）")
     print("  U: 双推进按比例衰减，长按1秒变为按下瞬间的0.5")
     print("  N: thrustmotor1se_speed_rpm 和 thrustmotor2se_speed_rpm 同时置0")
-    print("  Z: 除 eth_control_flag 外全部清零，eth_control_flag=1")
+    print("  R/F: 尾舵顺/逆向，按一次持续改变目标；首测核对实际转向")
+    print(f"       速度 {AUTO_RUDDER_RATE_DEG_S:g}°/s，限位 ±{AUTO_RUDDER_LIMIT_DEG:g}°；到端点自动停")
+    print("  V: 尾舵停止改变目标并保持；T: 尾舵回中；R+F: 停止")
+    print("  Z: 全部清零并使尾舵回中，eth_control_flag=1")
     print("  N/Z 后首次 I/K: 双推进速度置10")
     print("  H: 显示帮助与当前包状态")
-    print("  Q/ESC: 退出 auto")
+    print("  Q/ESC: 全中立、尾舵回中并退出 auto")
     print(
         "[AUTO] 当前包状态: "
         f"pitch=({packet['pitchmotor_enable']},{packet['pitchmotor_speed_rpm']}) "
@@ -1003,37 +1295,22 @@ def _print_auto_help(packet):
         f"thrust_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
         f"thrust_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']}) "
         f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
+        f"rudder_target={packet['rudder_angle_cdeg'] / 100.0:+.2f}°(目标，非实测) "
         f"backup={packet['backup_for_thrust']} ask={packet['ask_for_status']} eth_flag={packet['eth_control_flag']}"
     )
 
 
 def run_auto_mode(conn):
-    """自动模式：1 秒发送一次控制包，按键仅修改对应字段。"""
+    """网线 AUTO 手动控制：10Hz 刷新绝对目标，所有退出路径都尝试回中并释放。"""
     if os.name != 'nt':
         print("[AUTO] 仅支持 Windows 控制台键盘读取。")
         return
 
     user32 = ctypes.windll.user32
-    vk_map = {
-        'W': ord('W'),
-        'S': ord('S'),
-        'X': ord('X'),
-        'E': ord('E'),
-        'D': ord('D'),
-        'C': ord('C'),
-        'I': ord('I'),
-        'K': ord('K'),
-        'J': ord('J'),
-        'L': ord('L'),
-        'U': ord('U'),
-        'N': ord('N'),
-        'Z': ord('Z'),
-        'H': ord('H'),
-        'Q': ord('Q'),
-        'ESC': 0x1B,
-    }
+    vk_map = AUTO_VK_MAP
 
     packet = _build_default_auto_packet()
+    rudder_state = {'angle_deg': 0.0, 'direction': 0}
     prev_pressed = {k: False for k in vk_map}
     dir_state = {
         "mode": None,
@@ -1048,172 +1325,171 @@ def run_auto_mode(conn):
 
     last_loop_s = time.monotonic()
     next_send_s = last_loop_s
+    next_report_s = last_loop_s
 
-    print("[AUTO] 已进入自动模式：每 1 秒发送一次控制包。")
-    print("[AUTO] 按键: W/S/X 俯仰, E/D/C 泵, I/K 推进方向, J/L 双推进差动, U 双推进衰减, N 双推进清零, Z 清零, H 帮助, Q 或 ESC 退出。")
+    print("[AUTO] 已进入网线手动模式：10Hz 发送控制包，尾舵初始回中。")
+    print("[AUTO] 按键: W/S/X 俯仰, E/D/C 泵, I/K/J/L/U/N 推进, R/F 尾舵顺逆转, V 尾舵停, T 尾舵回中, Z 全清零, H 帮助/快照, Q/ESC 退出。")
     _print_auto_help(packet)
 
-    while running:
-        now_s = time.monotonic()
-        dt = now_s - last_loop_s
-        last_loop_s = now_s
+    try:
+        while running:
+            now_s = time.monotonic()
+            dt = now_s - last_loop_s
+            last_loop_s = now_s
 
-        pressed = {
-            k: (user32.GetAsyncKeyState(vk) & 0x8000) != 0
-            for k, vk in vk_map.items()
-        }
-        rising = {k: pressed[k] and (not prev_pressed[k]) for k in vk_map}
-        prev_pressed = pressed
+            pressed = {
+                k: (user32.GetAsyncKeyState(vk) & 0x8000) != 0
+                for k, vk in vk_map.items()
+            }
+            rising = {k: pressed[k] and (not prev_pressed[k]) for k in vk_map}
+            prev_pressed = pressed
 
 
-        if rising['Q'] or rising['ESC']:
-            packet = _build_default_auto_packet()
-            dir_state["mode"] = None
-            dir_state["hold_start"] = now_s
-            dir_state["base_s1"] = 0.0
-            dir_state["base_s2"] = 0.0
-            dir_state["rearm_init_pending"] = True
-            send_neutral_and_release(conn)
-            print("[AUTO] 已发送 Z 清零包 + 全零停控包，退出自动模式。")
-            break
+            if rising['Q'] or rising['ESC']:
+                break
 
-        if rising['H']:
-            _print_auto_help(packet)
-            packet["ask_for_status"] = 1
+            if rising['H']:
+                _print_auto_help(packet)
+                packet["ask_for_status"] = 1
 
-        if rising['U']:
-            dir_state["u_hold_start"] = now_s
-            dir_state["u_base_s1"] = float(packet["thrustmotor1se_speed_rpm"])
-            dir_state["u_base_s2"] = float(packet["thrustmotor2se_speed_rpm"])
+            if rising['U']:
+                dir_state["u_hold_start"] = now_s
+                dir_state["u_base_s1"] = float(packet["thrustmotor1se_speed_rpm"])
+                dir_state["u_base_s2"] = float(packet["thrustmotor2se_speed_rpm"])
 
-        if rising['N']:
-            packet["thrustmotor1se_speed_rpm"] = 0
-            packet["thrustmotor2se_speed_rpm"] = 0
-            dir_state["mode"] = None
-            dir_state["base_s1"] = 0.0
-            dir_state["base_s2"] = 0.0
-            dir_state["hold_start"] = now_s
-            dir_state["rearm_init_pending"] = True
-            print("[AUTO] 已执行 N: 双推进速度置 0，推进方向状态已重置。")
+            if rising['N']:
+                packet["thrustmotor1se_speed_rpm"] = 0
+                packet["thrustmotor2se_speed_rpm"] = 0
+                dir_state["mode"] = None
+                dir_state["base_s1"] = 0.0
+                dir_state["base_s2"] = 0.0
+                dir_state["hold_start"] = now_s
+                dir_state["rearm_init_pending"] = True
+                print("[AUTO] 已执行 N: 双推进速度置 0，推进方向状态已重置。")
 
-        if rising['Z']:
-            packet = _build_default_auto_packet()
-            dir_state["mode"] = None
-            dir_state["hold_start"] = now_s
-            dir_state["base_s1"] = 0.0
-            dir_state["base_s2"] = 0.0
-            dir_state["rearm_init_pending"] = True
-            print("[AUTO] 已执行清零: 除 eth_control_flag 外全部字段置 0。")
-            _print_auto_help(packet)
+            if rising['Z']:
+                packet = _build_default_auto_packet()
+                dir_state["mode"] = None
+                dir_state["hold_start"] = now_s
+                dir_state["base_s1"] = 0.0
+                dir_state["base_s2"] = 0.0
+                dir_state["rearm_init_pending"] = True
+                print("[AUTO] 已执行清零: 除 eth_control_flag 外全部字段置 0。")
+                _print_auto_help(packet)
 
-        if rising['W']:
-            packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = -50
-        if rising['S']:
-            packet["pitchmotor_enable"] = 1
-            packet["pitchmotor_speed_rpm"] = 50
-        if rising['X']:
-            packet["pitchmotor_enable"] = 0
-            packet["pitchmotor_speed_rpm"] = 0
+            if rising['W']:
+                packet["pitchmotor_enable"] = 1
+                packet["pitchmotor_speed_rpm"] = -50
+            if rising['S']:
+                packet["pitchmotor_enable"] = 1
+                packet["pitchmotor_speed_rpm"] = 50
+            if rising['X']:
+                packet["pitchmotor_enable"] = 0
+                packet["pitchmotor_speed_rpm"] = 0
 
-        if rising['E']:
-            packet["pump_direction"] = 0
-            packet["pump_on_off"] = 1
-        if rising['D']:
-            packet["pump_direction"] = 1
-            packet["pump_on_off"] = 1
-        if rising['C']:
-            packet["pump_direction"] = 0
-            packet["pump_on_off"] = 0
+            if rising['E']:
+                packet["pump_direction"] = 0
+                packet["pump_on_off"] = 1
+            if rising['D']:
+                packet["pump_direction"] = 1
+                packet["pump_on_off"] = 1
+            if rising['C']:
+                packet["pump_direction"] = 0
+                packet["pump_on_off"] = 0
 
-        if rising['I']:
-            if dir_state["mode"] != 'I':
-                init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
-                _apply_thrust_direction(packet, 'I', now_s, dir_state, init_speed=init_speed)
-                dir_state["rearm_init_pending"] = False
-            else:
-                _apply_thrust_direction_keep_speed(packet, 'I', now_s, dir_state)
-        if rising['K']:
-            if dir_state["mode"] != 'K':
-                init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
-                _apply_thrust_direction(packet, 'K', now_s, dir_state, init_speed=init_speed)
-                dir_state["rearm_init_pending"] = False
-            else:
-                _apply_thrust_direction_keep_speed(packet, 'K', now_s, dir_state)
+            if rising['I']:
+                if dir_state["mode"] != 'I':
+                    init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
+                    _apply_thrust_direction(packet, 'I', now_s, dir_state, init_speed=init_speed)
+                    dir_state["rearm_init_pending"] = False
+                else:
+                    _apply_thrust_direction_keep_speed(packet, 'I', now_s, dir_state)
+            if rising['K']:
+                if dir_state["mode"] != 'K':
+                    init_speed = THRUST_SPEED_REARM_AFTER_RESET if dir_state["rearm_init_pending"] else THRUST_SPEED_INIT
+                    _apply_thrust_direction(packet, 'K', now_s, dir_state, init_speed=init_speed)
+                    dir_state["rearm_init_pending"] = False
+                else:
+                    _apply_thrust_direction_keep_speed(packet, 'K', now_s, dir_state)
 
-        s1 = float(packet["thrustmotor1se_speed_rpm"])
-        s2 = float(packet["thrustmotor2se_speed_rpm"])
+            s1 = float(packet["thrustmotor1se_speed_rpm"])
+            s2 = float(packet["thrustmotor2se_speed_rpm"])
 
-        if pressed['J'] and (not pressed['L']):
-            if dir_state["mode"] == 'K':
-                s1 += THRUST_DIFF_RATE_PER_S * dt
-                s2 -= THRUST_DIFF_RATE_PER_S * dt
-            else:
-                s1 -= THRUST_DIFF_RATE_PER_S * dt
-                s2 += THRUST_DIFF_RATE_PER_S * dt
-        elif pressed['L'] and (not pressed['J']):
-            if dir_state["mode"] == 'K':
-                s1 -= THRUST_DIFF_RATE_PER_S * dt
-                s2 += THRUST_DIFF_RATE_PER_S * dt
-            else:
-                s1 += THRUST_DIFF_RATE_PER_S * dt
-                s2 -= THRUST_DIFF_RATE_PER_S * dt
+            if pressed['J'] and (not pressed['L']):
+                if dir_state["mode"] == 'K':
+                    s1 += THRUST_DIFF_RATE_PER_S * dt
+                    s2 -= THRUST_DIFF_RATE_PER_S * dt
+                else:
+                    s1 -= THRUST_DIFF_RATE_PER_S * dt
+                    s2 += THRUST_DIFF_RATE_PER_S * dt
+            elif pressed['L'] and (not pressed['J']):
+                if dir_state["mode"] == 'K':
+                    s1 -= THRUST_DIFF_RATE_PER_S * dt
+                    s2 += THRUST_DIFF_RATE_PER_S * dt
+                else:
+                    s1 += THRUST_DIFF_RATE_PER_S * dt
+                    s2 -= THRUST_DIFF_RATE_PER_S * dt
 
-        if pressed['U'] and (not pressed['I']) and (not pressed['K']) and (not pressed['J']) and (not pressed['L']):
-            u_hold_s = max(0.0, now_s - dir_state["u_hold_start"])
-            u_scale = 0.5 ** u_hold_s
-            s1 = dir_state["u_base_s1"] * u_scale
-            s2 = dir_state["u_base_s2"] * u_scale
+            if pressed['U'] and (not pressed['I']) and (not pressed['K']) and (not pressed['J']) and (not pressed['L']):
+                u_hold_s = max(0.0, now_s - dir_state["u_hold_start"])
+                u_scale = 0.5 ** u_hold_s
+                s1 = dir_state["u_base_s1"] * u_scale
+                s2 = dir_state["u_base_s2"] * u_scale
 
-        if pressed['I'] and (not pressed['K']) and dir_state["mode"] == 'I' and (not pressed['J']) and (not pressed['L']):
-            hold_s = max(0.0, now_s - dir_state["hold_start"])
-            scale = 2.0 ** hold_s
-            s1 = dir_state["base_s1"] * scale
-            s2 = dir_state["base_s2"] * scale
-        elif pressed['K'] and (not pressed['I']) and dir_state["mode"] == 'K' and (not pressed['J']) and (not pressed['L']):
-            hold_s = max(0.0, now_s - dir_state["hold_start"])
-            scale = 2.0 ** hold_s
-            s1 = dir_state["base_s1"] * scale
-            s2 = dir_state["base_s2"] * scale
+            if pressed['I'] and (not pressed['K']) and dir_state["mode"] == 'I' and (not pressed['J']) and (not pressed['L']):
+                hold_s = max(0.0, now_s - dir_state["hold_start"])
+                scale = 2.0 ** hold_s
+                s1 = dir_state["base_s1"] * scale
+                s2 = dir_state["base_s2"] * scale
+            elif pressed['K'] and (not pressed['I']) and dir_state["mode"] == 'K' and (not pressed['J']) and (not pressed['L']):
+                hold_s = max(0.0, now_s - dir_state["hold_start"])
+                scale = 2.0 ** hold_s
+                s1 = dir_state["base_s1"] * scale
+                s2 = dir_state["base_s2"] * scale
 
-        s1 = _clamp(s1, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
-        s2 = _clamp(s2, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
-        packet["thrustmotor1se_speed_rpm"] = int(round(s1))
-        packet["thrustmotor2se_speed_rpm"] = int(round(s2))
-        packet["eth_control_flag"] = 1
+            s1 = _clamp(s1, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
+            s2 = _clamp(s2, THRUST_SPEED_MIN, THRUST_SPEED_MAX)
+            packet["thrustmotor1se_speed_rpm"] = int(round(s1))
+            packet["thrustmotor2se_speed_rpm"] = int(round(s2))
+            packet["eth_control_flag"] = 1
+            # Z 持续按下时覆盖同轮其他按键，避免清零后又被方向键重新启动。
+            if pressed['Z']:
+                packet = _build_default_auto_packet()
+                dir_state['mode'] = None
+                dir_state['base_s1'] = 0.0
+                dir_state['base_s2'] = 0.0
+                dir_state['hold_start'] = now_s
+                dir_state['rearm_init_pending'] = True
+            force_send = _update_auto_rudder(packet, rudder_state, pressed, rising, dt)
 
-        if now_s >= next_send_s:
-            send_control_packet(
-                conn,
-                packet["pitchmotor_enable"],
-                packet["pitchmotor_speed_rpm"],
-                packet["rollmotor_enable"],
-                packet["rollmotor_speed_rpm"],
-                packet["thrustmotor_direction"],
-                packet["thrustmotor_direction2"],
-                packet["thrustmotor1se_speed_rpm"],
-                packet["thrustmotor2se_speed_rpm"],
-                packet["backup_for_thrust"],
-                packet["pump_direction"],
-                packet["pump_on_off"],
-                packet["ask_for_status"],
-                packet["eth_control_flag"],
-                latched=False,
-            )
-            print(
-                "[AUTO] send "
-                f"pitch_en={packet['pitchmotor_enable']} pitch_spd={packet['pitchmotor_speed_rpm']} "
-                f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
-                f"thr_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
-                f"thr_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']})"
-            )
-            next_send_s += AUTO_SEND_PERIOD_S
-            if packet["ask_for_status"] == 1:
+            if force_send or now_s >= next_send_s:
+                if not send_auto_control_packet(conn, packet):
+                    print("[AUTO] 发送失败，停止本地目标更新并退出；板端由通信超时保护回中。")
+                    break
+                if force_send or now_s >= next_report_s:
+                    print(
+                        "[AUTO] send "
+                        f"pitch_en={packet['pitchmotor_enable']} pitch_spd={packet['pitchmotor_speed_rpm']} "
+                        f"pump=({packet['pump_direction']},{packet['pump_on_off']}) "
+                        f"thr_dir=({packet['thrustmotor_direction']},{packet['thrustmotor_direction2']}) "
+                        f"thr_spd=({packet['thrustmotor1se_speed_rpm']},{packet['thrustmotor2se_speed_rpm']}) "
+                        f"rudder_target={packet['rudder_angle_cdeg'] / 100.0:+.2f}° "
+                        f"rudder_motion={rudder_state['direction']}"
+                    )
+                    next_report_s = now_s + 1.0
+                while next_send_s <= now_s:
+                    next_send_s += AUTO_SEND_PERIOD_S
                 packet["ask_for_status"] = 0
-            while next_send_s <= now_s:
-                next_send_s += AUTO_SEND_PERIOD_S
 
-        time.sleep(AUTO_KEY_POLL_S)
+            time.sleep(AUTO_KEY_POLL_S)
+    finally:
+        rudder_state['direction'] = 0
+        rudder_state['angle_deg'] = 0.0
+        if send_neutral_and_release(conn):
+            print("[AUTO] 已发送全中立及释放命令，尾舵回中；命令发送成功不等于机械动作已验证。")
+        else:
+            print("[AUTO] 回中/释放命令未完整发出；等待板端通信超时保护。")
+
 
 #  EKF 遥测($UGEKF)解析 + CSV 记录 
 # 字段顺序必须与板端 EthernetUartDriver_SendEkfTelemetry() 完全一致。
@@ -1267,7 +1543,7 @@ UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
 
 #  蜗杆位置遥测($UGWRM)解析 + CSV 记录
 # 字段顺序必须与板端 EthernetUartDriver_SendWormTelemetry() 完全一致。
-UGWRM_FIELDS = [
+UGWRM_FIELDS_V2 = [
     "schema", "seq", "t_ms",
     # 位置量：stroke_percent 是主输出（0=前限位，100=后限位），pulse 是原始真值
     "pulse", "stroke_percent", "mm_from_front",
@@ -1275,14 +1551,20 @@ UGWRM_FIELDS = [
     "pulse_min", "pulse_max", "span_pulses", "moving", "alarm",
     # 回零进度（schema 2 新增）
     "home_state", "home_fail", "pulse_home",
-    # 电机状态：命令 vs 反馈，用于看"发了没执行"
+    # 电机状态：安装转换后的驱动请求 vs 原始反馈，用于看"发了没执行"
     "cmd_rpm", "fb_rpm", "status_word", "err", "err_sub",
     "input_ports", "limit_bits",
     # 总线健康：与位置同一时刻，用于判断上面那些数可不可信
     "poll_ok", "poll_fail", "overrun", "enable_resync", "last_error",
 ]
-# 除两个百分比/毫米外全部按整数解析。
-UGWRM_INT_FIELDS = set(UGWRM_FIELDS) - {"stroke_percent", "mm_from_front"}
+UGWRM_FIELDS_V3 = UGWRM_FIELDS_V2 + [
+    "roll_pulse", "roll_pulse_min", "roll_pulse_max", "roll_span_pulses",
+    "roll_percent", "roll_valid", "roll_home_state", "roll_home_fail",
+    "calib_state", "calib_fail", "calib_hold",
+]
+# CSV 固定使用最新列超集，旧版本新增列为空，不能伪造为零位置或已完成。
+UGWRM_FIELDS = UGWRM_FIELDS_V3
+UGWRM_INT_FIELDS = set(UGWRM_FIELDS) - {"stroke_percent", "mm_from_front", "roll_percent"}
 UGWRM_CSV_HEADER = ["host_iso"] + UGWRM_FIELDS
 WORM_REF_KIND_NAMES = {0: "NONE", 1: "POWER_ON", 2: "HOMED"}
 WORM_HOME_STATE_NAMES = {
@@ -1292,11 +1574,23 @@ WORM_HOME_STATE_NAMES = {
 WORM_HOME_FAIL_NAMES = {
     0: "-", 1: "SEEK_TIMEOUT 一直没撞到前限位", 2: "BACKOFF_TIMEOUT 退不出前限位",
     3: "DATA_STALE 回零途中位置数据失效", 4: "CANCELLED 被取消或被 PID 接管",
+    5: "POSITION_RANGE 回零端点超出脉冲范围",
+    6: "LIMIT_CONFLICT 两端限位同时触发", 7: "OTHER_AXIS roll 失败，联合停止",
+}
+ROLL_HOME_STATE_NAMES = {
+    0: "未校准", 1: "趋近 PB3", 2: "退出 PB3", 3: "趋近 PB5",
+    4: "退出 PB5", 5: "返回 50%", 6: "完成", 7: "失败",
+}
+CALIB_STATE_NAMES = {0: "未校准", 1: "校准中", 2: "双轴校准完成", 3: "失败", 4: "已取消"}
+CALIB_FAIL_NAMES = {0: "无", 1: "pitch 失败", 2: "roll 失败", 3: "已取消", 4: "PID 接管"}
+ROLL_HOME_FAIL_NAMES = {
+    0: "无", 1: "寻端超时", 2: "退出超时", 3: "回中超时", 4: "两端限位冲突",
+    5: "驱动停止或启动失败", 6: "跨度无效", 7: "已取消", 8: "另一轴失败",
 }
 
 
 def ugwrm_parse(line):
-    """严格解析 schema 2 的 $UGWRM；校验或字段数不符一律返回 None。"""
+    """按版本严格解析 UGWRM 2/3；旧版缺失的新字段保留为 None。"""
     if not ekf_checksum_ok(line):
         return None
     star = line.rfind("*")
@@ -1304,22 +1598,58 @@ def ugwrm_parse(line):
     if not parts or parts[0] != "UGWRM":
         return None
     values = parts[1:]
-    if len(values) != len(UGWRM_FIELDS):
-        return None
-    row = {}
     try:
-        for name, raw in zip(UGWRM_FIELDS, values):
+        schema = int(values[0])
+        fields = {2: UGWRM_FIELDS_V2, 3: UGWRM_FIELDS_V3}.get(schema)
+        if fields is None or len(values) != len(fields):
+            return None
+        row = dict.fromkeys(UGWRM_FIELDS)
+        for name, raw in zip(fields, values):
             row[name] = int(raw) if name in UGWRM_INT_FIELDS else float(raw)
-    except ValueError:
-        return None
-    if row["schema"] != 2:
+    except (ValueError, IndexError):
         return None
     return row
 
 
 def ugwrm_csv_row(row):
     return [datetime.now().isoformat(timespec="milliseconds")] + [
-        row[name] for name in UGWRM_FIELDS]
+        row.get(name) if row.get(name) is not None else "" for name in UGWRM_FIELDS]
+
+
+def ugwrm_calibration_notice(row):
+    """返回状态变化键和提示；pitch 单轴结束不能冒充整次校准完成。"""
+    def percent(name, valid):
+        value = row.get(name)
+        return '%.2f%%' % value if valid and isinstance(value, (int, float)) and math.isfinite(value) else '不可用'
+
+    pitch_percent = percent('stroke_percent', row.get('span_valid') == 1 and row.get('data_fresh') == 1)
+    if row['schema'] == 3:
+        state, fail = row['calib_state'], row['calib_fail']
+        pitch, roll = row['home_state'], row['roll_home_state']
+        key = (3, state, fail, pitch, row['home_fail'], roll, row['roll_home_fail'], row['calib_hold'])
+        message = '[校准] %s；pitch=%s；roll=%s' % (
+            CALIB_STATE_NAMES.get(state, state), WORM_HOME_STATE_NAMES.get(pitch, pitch),
+            ROLL_HOME_STATE_NAMES.get(roll, roll))
+        if state in (3, 4):
+            message += '；总原因=%s，pitch原因=%s，roll原因=%s' % (
+                CALIB_FAIL_NAMES.get(fail, fail),
+                WORM_HOME_FAIL_NAMES.get(row['home_fail'], row['home_fail']),
+                ROLL_HOME_FAIL_NAMES.get(row['roll_home_fail'], row['roll_home_fail']))
+        if state == 2:
+            message += '；pitch=%s，roll=%s（脉冲估算）' % (
+                pitch_percent, percent('roll_percent', row.get('roll_valid') == 1))
+        if state in (2, 3, 4) and row['calib_hold']:
+            message += '；等待中立重新接管'
+        return key, message
+    state = row['home_state']
+    key = (2, state, row['home_fail'])
+    message = '[pitch 回零 / 旧协议] %s' % WORM_HOME_STATE_NAMES.get(state, state)
+    if state == 4:
+        message += '：%s' % WORM_HOME_FAIL_NAMES.get(row['home_fail'], row['home_fail'])
+    elif state == 3:
+        message += '；零点脉冲=%d，位置=%s；未报告 roll 状态' % (
+            row['pulse_home'], pitch_percent)
+    return key, message
 
 PID_MODE_NAMES = {0: "OFF", 1: "PITCH_HOLD", 2: "DEPTH_CASCADE"}
 PID_PHASE_NAMES = {0: "DIVE", 1: "CLIMB"}
@@ -1426,10 +1756,12 @@ class UgctlStore:
         self._condition = threading.Condition()
         self._generation = 0
         self._latest = None
+        self._received_at = None
 
     def publish(self, row):
         with self._condition:
             self._latest = dict(row)
+            self._received_at = time.monotonic()
             self._generation += 1
             self._condition.notify_all()
 
@@ -1437,6 +1769,12 @@ class UgctlStore:
         with self._condition:
             latest = None if self._latest is None else dict(self._latest)
             return self._generation, latest
+
+    def snapshot_with_time(self):
+        """带本机接收时刻的快照；旧 PID 使用的二元 snapshot 接口不变。"""
+        with self._condition:
+            latest = None if self._latest is None else dict(self._latest)
+            return self._generation, latest, self._received_at
 
     def wait_for(self, predicate, after_generation, timeout_s):
         deadline = time.monotonic() + float(timeout_s)
@@ -1450,6 +1788,10 @@ class UgctlStore:
                 if remaining <= 0.0:
                     return None
                 self._condition.wait(remaining)
+
+
+class UgwrmStore(UgctlStore):
+    """蜗杆遥测独立缓存，复用同样的条件变量、代数和接收时间机制。"""
 
 
 def ekf_csv_row(row):
@@ -2025,13 +2367,39 @@ def run_pid_mode(conn, ctl_store):
 STATION_DIR = os.path.dirname(os.path.abspath(__file__))
 EKF_LOG_DIR = os.path.join(STATION_DIR, "logs", "ekf")
 CONTROL_LOG_DIR = os.path.join(STATION_DIR, "logs", "control")
+BATTERY_LOG_DIR = os.path.join(STATION_DIR, "logs", "battery")
 
 
-def receive_thread(conn, ctl_store=None):
+def receive_thread(conn, ctl_store=None, wrm_store=None, link_closed=None,
+                   monitor_bridge=None):
+    """唯一接收入口，初始化失败及任何退出路径均通知控制循环连接已结束。"""
+    battery_monitor = BatteryAlarmMonitor()
+    try:
+        _receive_thread_body(conn, ctl_store, wrm_store, battery_monitor, monitor_bridge)
+    except Exception as exc:
+        print(f'[接收线程异常] {exc}')
+    finally:
+        if link_closed is not None:
+            link_closed.set()
+        if monitor_bridge is not None:
+            try:
+                monitor_bridge.set_link('disconnected')
+            except Exception as exc:
+                print(f'[监控] 断连状态发布失败：{exc}')
+        battery_monitor.disconnect()
+        conn.close()
+
+
+def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=None,
+                         monitor_bridge=None):
     """负责不断接收并打印来自客户端的数据"""
     global running
     if ctl_store is None:
         ctl_store = UgctlStore()
+    if wrm_store is None:
+        wrm_store = UgwrmStore()
+    if battery_monitor is None:
+        battery_monitor = BatteryAlarmMonitor()
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
     line_buffer = ""
 
@@ -2050,6 +2418,50 @@ def receive_thread(conn, ctl_store=None):
     wrm_csv = None
     wrm_csv_path = None
     wrm_stat = {"ok": 0, "bad": 0, "last_home": None}
+    battery_csv = None
+    battery_csv_failed = False
+
+    def publish_monitor(topic, row):
+        """仅复制已解析的最新值；面板故障不能中断唯一接收线程。"""
+        nonlocal monitor_bridge
+        if monitor_bridge is None:
+            return
+        try:
+            monitor_bridge.publish(topic, row)
+        except Exception as exc:
+            print(f'[监控] 数据发布失败，本次会话停用监控发布：{exc}')
+            try:
+                monitor_bridge.set_link('error', last_error=str(exc))
+            except Exception:
+                pass
+            monitor_bridge = None
+
+    def record_battery(row):
+        """告警先处理，电池日志失败只提示一次，不终止接收和控制会话。"""
+        nonlocal battery_csv, battery_csv_failed
+        if battery_csv_failed:
+            return
+        try:
+            if battery_csv is None:
+                os.makedirs(BATTERY_LOG_DIR, exist_ok=True)
+                path = os.path.join(
+                    BATTERY_LOG_DIR,
+                    "battery_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
+                )
+                battery_csv = open(path, "w", encoding="utf-8", newline="")
+                battery_csv.write(",".join(UGBAT_CSV_HEADER) + "\n")
+                print(f"\n[电池] 电压记录 -> {path}")
+            battery_csv.write(",".join(str(value) for value in ugbat_csv_row(row)) + "\n")
+            battery_csv.flush()
+        except (OSError, UnicodeError) as exc:
+            battery_csv_failed = True
+            print(f"\n[电池记录失败] {exc}；本次会话停止写电池 CSV，主动告警继续。", flush=True)
+            if battery_csv is not None:
+                try:
+                    battery_csv.close()
+                except OSError:
+                    pass
+                battery_csv = None
 
     def handle_line(raw_line):
         nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
@@ -2057,13 +2469,24 @@ def receive_thread(conn, ctl_store=None):
         if not line:
             return
 
-        # 蜗杆位置遥测：落 CSV，不打印（10Hz，打印会把控制台刷爆）。
+        # 电池流只由本接收线程消费，状态变化和限频提醒主动打印，无须输入命令。
+        if line.startswith("$UGBAT"):
+            row = ugbat_parse(raw_line)
+            if row is not None:
+                battery_monitor.ingest(row)
+                publish_monitor('ugbat', row)
+                record_battery(row)
+            return
+
+        # 双轴位置遥测落 CSV，只在校准阶段变化时提示，避免持续刷屏。
         # 坏帧计入 wrm_stat["bad"]，与 EKF 的 bad 一样用于观察链路误码。
         if line.startswith("$UGWRM"):
             row = ugwrm_parse(line)
             if row is None:
                 wrm_stat["bad"] += 1
                 return
+            wrm_store.publish(row)
+            publish_monitor('ugwrm', row)
             if wrm_csv is None:
                 wrm_csv_path = os.path.join(
                     CONTROL_LOG_DIR,
@@ -2073,26 +2496,15 @@ def receive_thread(conn, ctl_store=None):
                     wrm_csv_path, "w", encoding="utf-8", newline="")
                 wrm_csv.write(",".join(UGWRM_CSV_HEADER) + "\n")
                 wrm_csv.flush()
-                print(f"\n[WORM] 蜗杆位置遥测记录 -> {wrm_csv_path}")
+                print(f"\n[WORM] 双轴位置遥测记录 -> {wrm_csv_path}")
             wrm_csv.write(
                 ",".join(str(value) for value in ugwrm_csv_row(row)) + "\n")
             wrm_csv.flush()
             wrm_stat["ok"] += 1
-            # 回零会让电机自己跑，状态每次变化都要让人看见；不变则静默。
-            home_state = row["home_state"]
-            if home_state != wrm_stat["last_home"]:
-                wrm_stat["last_home"] = home_state
-                print()
-                name = WORM_HOME_STATE_NAMES.get(home_state, home_state)
-                if home_state == 4:
-                    reason = WORM_HOME_FAIL_NAMES.get(
-                        row["home_fail"], row["home_fail"])
-                    print("[回零] %s：%s" % (name, reason))
-                elif home_state == 3:
-                    print("[回零] %s  零点脉冲=%d  当前 stroke_percent=%.2f%%"
-                          % (name, row["pulse_home"], row["stroke_percent"]))
-                else:
-                    print("[回零] %s" % name)
+            key, notice = ugwrm_calibration_notice(row)
+            if key != wrm_stat["last_home"]:
+                wrm_stat["last_home"] = key
+                print('\n' + notice)
             return
 
         # PID 遥测由本线程独占解析，再发布给 UgctlStore；PID 界面禁止 recv。
@@ -2101,6 +2513,7 @@ def receive_thread(conn, ctl_store=None):
             if row is None:
                 ctl_stat["bad"] += 1
                 return
+            publish_monitor('ugctl', row)
             if ctl_csv is None:
                 ctl_csv_path = os.path.join(
                     CONTROL_LOG_DIR,
@@ -2128,6 +2541,7 @@ def receive_thread(conn, ctl_store=None):
             if row is None:
                 ekf_stat["bad"] += 1
                 return
+            publish_monitor('ugekf', row)
             ekf_csv.write(",".join(str(x) for x in ekf_csv_row(row)) + "\n")
             ekf_csv.flush()
             ekf_stat["ok"] += 1
@@ -2164,6 +2578,8 @@ def receive_thread(conn, ctl_store=None):
         print(f"\n[客户端] {line}")
 
     while running:
+        # 即使 EKF 等主题持续有包，也必须发现电池流单独停止或损坏。
+        battery_monitor.poll()
         try:
             # 设置超时，以便能定期检查 running 标志
             conn.settimeout(1.0)
@@ -2173,7 +2589,8 @@ def receive_thread(conn, ctl_store=None):
                 break
 
             # STM32 发的是 ASCII 文本（AT 或快照十六进制行），这里做流式按行拼接。
-            text = data.decode('ascii', errors='ignore')
+            # 非 ASCII 字节必须留下替代标记，不能删除坏字节后误认成完整电池帧。
+            text = data.decode('ascii', errors='replace')
             if not text:
                 print(f"\n[客户端] (二进制) {data.hex()}")
                 continue
@@ -2196,6 +2613,11 @@ def receive_thread(conn, ctl_store=None):
             print(f"[接收错误] {e}")
             break
     # 线程结束前清理
+    if battery_csv is not None:
+        try:
+            battery_csv.close()
+        except OSError:
+            pass
     try:
         ekf_csv.close()
     except Exception:
@@ -2203,52 +2625,39 @@ def receive_thread(conn, ctl_store=None):
     try:
         if ctl_csv is not None:
             ctl_csv.close()
+        if wrm_csv is not None:
+            wrm_csv.close()
     except Exception:
         pass
     conn.close()
     print("[接收线程] 已退出。")
 
 # ==================== 主程序 ====================
-def main():
-    global running
-
-    # 创建服务端 socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(('192.168.57.100', 8800))
-    server_socket.listen(1)
-    print("服务端已绑定 192.168.57.100:8800，等待客户端连接...")
-
-    conn, addr = server_socket.accept()
-    print(f"接收到客户端连接：{addr}")
-    if send_stream_control(conn, STREAM_EKF):
-        print("[遥测] 已声明 EKF-only；磁标定采集请单独运行 station/tools/mag_logger.py")
-    else:
-        print("[遥测警告] EKF-only 声明发送失败，请检查连接后重试 ekfon")
-
-    # 全程序只有这个线程调用 recv；PID 界面通过 ctl_store 等待 $UGCTL。
-    ctl_store = UgctlStore()
-    recv_thread = threading.Thread(
-        target=receive_thread, args=(conn, ctl_store), daemon=True)
-    recv_thread.start()
-
-    # ========== 主线程负责输入和发送 ==========
+def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
+    """主线程串行运行控制模式，手柄采集线程始终只读取设备。"""
     print("\n========== 交互控制台 ==========")
     print("仅接受下列命令；未知文本不会发送到板端")
     print("输入 'pack' 发送锁存控制包（保持到下一条命令，没有看门狗保护）")
     print("输入 'auto' 进入连续控制模式（受2.5秒看门狗保护，按 Q/ESC 退出）")
+    print("输入 'auto_sti [槽位0..3] [上限%]' 进入 Xbox 模式，默认上限100%；X/ESC退出")
+    print("  例：auto_sti 0 20 使用槽位0、推进限制20%；Y/A按住移动pitch，"
+          f"十字键左/右控制roll +{GamepadConfig().roll_rpm}/-{GamepadConfig().roll_rpm}RPM")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
-    print("输入 'wormon' / 'wormoff' 开 / 停蜗杆位置遥测 $UGWRM（落 CSV，不打印）")
-    print("输入 'calib' 开始蜗杆回零（电机会自己走到前限位）")
-    print("输入 'calibstop' 中止回零")
+    print("输入 'wormon' / 'wormoff' 开 / 停双轴位置遥测 $UGWRM（落 CSV，阶段变化提示）")
+    print("电池监测默认常开：低压主动报警；预警每30秒、严重低压每10秒提醒，数据失效会另行提示")
+    print("输入 'calib' 同时校准 pitch 和 roll（pitch 到前端0%，roll 测两端后回50%）")
+    print("输入 'calibstop' 取消两轴校准；完成/失败/取消后须中立重新接管")
     print("输入 'snapshot' 请求一次系统状态快照")
     print("输入 'quit' 或 'exit' 退出程序")
     print("==================================\n")
 
     try:
-        while True:
+        while running and not link_closed.is_set():
             user_input = input(">>> ").strip()
+            if link_closed.is_set():
+                print('[命令] 控制板已断开，结束会话。')
+                break
             if not user_input:
                 continue
 
@@ -2259,6 +2668,19 @@ def main():
                 input_control_packet(conn)
             elif user_input.lower() == 'auto':
                 run_auto_mode(conn)
+            elif user_input.lower().split()[0] == 'auto_sti':
+                try:
+                    tokens = shlex.split(user_input)
+                    if len(tokens) > 3:
+                        raise ValueError('格式：auto_sti [槽位0..3] [上限%]')
+                    index = int(tokens[1]) if len(tokens) >= 2 else None
+                    config = GamepadConfig(
+                        max_percent=float(tokens[2]) if len(tokens) == 3 else 100)
+                    run_auto_sti_mode(
+                        conn, gamepad_service, ctl_store, wrm_store, link_closed,
+                        config=config, controller_index=index)
+                except ValueError as exc:
+                    print(f'[AUTO_STI 参数错误] {exc}')
             elif user_input.lower() == 'pid':
                 run_pid_mode(conn, ctl_store)
             elif user_input.lower() == 'ekfoff':
@@ -2276,32 +2698,127 @@ def main():
                     conn, get_stream_control_mask() & ~STREAM_WRM)
                 print("[WORM] 已请求板子停发 $UGWRM")
             elif user_input.lower() == 'calib':
-                print("[回零] 电机即将自行走到前限位")
+                print("[校准] 两轴即将自行运动：pitch 到前端，roll 测两端跨度后回50%")
                 if input("确认开始？输入 yes 继续：").strip().lower() == 'yes':
                     send_worm_calib(conn, True)
                 else:
-                    print("[回零] 已取消，未发送。")
+                    print("[校准] 已取消，未发送。")
             elif user_input.lower() == 'calibstop':
                 send_worm_calib(conn, False)
-                print("[回零] 已请求中止")
+                print("[校准] 已请求取消两轴，等待板端状态确认")
             elif user_input.lower() == 'snapshot':
                 send_snapshot_request(conn)
             else:
-                print("[命令] 未识别，未发送；可用 pack/auto/pid/ekfon/ekfoff/wormon/wormoff/calib/calibstop/snapshot/quit")
+                print("[命令] 未识别，未发送；可用 pack/auto/auto_sti/pid/ekfon/ekfoff/wormon/wormoff/calib/calibstop/snapshot/quit")
     except KeyboardInterrupt:
         print("\n检测到 Ctrl+C，退出。")
+
+
+def _start_monitor_bridge():
+    """本机只读接口为可选旁路；端口占用或配置错误不阻止原控制台。"""
+    bridge = None
+    try:
+        port = int(os.environ.get('UG_MONITOR_PORT', '8801'))
+        if not 1 <= port <= 65535:
+            raise ValueError('UG_MONITOR_PORT 必须在 1～65535 之间')
+        bridge = MonitorBridge(port=port)
+        host, port = bridge.start()
+        bridge.set_link('waiting')
+        print(f'[监控] 本机只读快照 http://{host}:{port}/snapshot；'
+              f'另一终端运行 python -B station/monitor.py --port {port}')
+        return bridge
+    except Exception as exc:
+        if bridge is not None:
+            try:
+                bridge.stop()
+            except Exception:
+                pass
+        print(f'[监控] 本机接口不可用：{exc}；控制台继续运行。')
+        return None
+
+
+def main():
+    global running
+    running = True
+    server_socket = conn = recv_thread = gamepad_service = None
+    monitor_bridge = None
+    link_closed = threading.Event()
+    try:
+        monitor_bridge = _start_monitor_bridge()
+        # 手柄模块默认检测；未安装 XInput 或不支持的平台仍保留原键盘控制台。
+        try:
+            gamepad_service = GamepadService()
+            gamepad_service.start()
+            print('[手柄] Xbox 检测已启动；输入 auto_sti 才接管，读数检查可运行 gamepad_monitor.py。')
+        except (OSError, RuntimeError) as exc:
+            print(f'[手柄] 检测服务不可用：{exc}')
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind(('192.168.57.100', 8800))
+        server_socket.listen(1)
+        print('服务端已绑定 192.168.57.100:8800，等待客户端连接...')
+        conn, addr = server_socket.accept()
+        print(f'接收到客户端连接：{addr}')
+        if monitor_bridge is not None:
+            try:
+                monitor_bridge.set_link('connected', peer=f'{addr[0]}:{addr[1]}')
+            except Exception as exc:
+                print(f'[监控] 连接状态发布失败：{exc}；控制台继续运行。')
+                try:
+                    monitor_bridge.stop()
+                except Exception:
+                    pass
+                monitor_bridge = None
+        # 发送与接收共用有限 socket 超时；不把它视作硬实时停止保证。
+        conn.settimeout(1.0)
+        # 先订阅原有三主题；不支持 BAT 的旧固件仍能保留姿态、PID 和 pitch 数据。
+        base_streams = STREAM_EKF | STREAM_CTL | STREAM_WRM
+        send_stream_control(conn, base_streams, '兼容 EKF/CTL/WRM 遥测声明', keep_battery=False)
+        if send_stream_control(conn, base_streams | STREAM_BAT):
+            print('[遥测] 已请求 EKF + CTL + WRM + BAT；未上报的字段显示不可用')
+        else:
+            print('[遥测警告] 遥测声明发送失败，请检查连接后重试 ekfon')
+        ctl_store, wrm_store = UgctlStore(), UgwrmStore()
+        recv_thread = threading.Thread(
+            target=receive_thread,
+            args=(conn, ctl_store, wrm_store, link_closed, monitor_bridge), daemon=True)
+        recv_thread.start()
+        _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed)
+    except (KeyboardInterrupt, EOFError):
+        print('\n[退出] 控制台关闭。')
     finally:
-        print("[退出] 正在锁存中立命令并释放 Ethernet 控制权...")
-        send_neutral_and_release(conn)
-        send_stream_control(conn, 0)
-        # 通知接收线程退出
-        running = False
-        # 等待线程结束（最多2秒）
-        recv_thread.join(timeout=2)
-        # 关闭连接
-        conn.close()
-        server_socket.close()
-        print("服务端已关闭。")
+        # 清理覆盖初始化、等待连接和交互阶段，避免 Ctrl+C 后留下采集线程。
+        try:
+            if conn is not None and not link_closed.is_set():
+                print('[退出] 正在发送中立命令并释放 Ethernet 控制权...')
+                send_neutral_and_release(conn)
+                send_stream_control(conn, 0, keep_battery=False)
+        finally:
+            running = False
+            if gamepad_service is not None:
+                try:
+                    gamepad_service.stop()
+                except (OSError, RuntimeError) as exc:
+                    print(f'[退出] 手柄线程清理失败：{exc}')
+            if conn is not None:
+                try:
+                    conn.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+            if recv_thread is not None and recv_thread.ident is not None:
+                recv_thread.join(timeout=2)
+            if server_socket is not None:
+                server_socket.close()
+            if monitor_bridge is not None:
+                try:
+                    monitor_bridge.stop()
+                except (OSError, RuntimeError) as exc:
+                    print(f'[退出] 监控接口清理失败：{exc}')
+            print('服务端已关闭。')
 
 if __name__ == "__main__":
     main()

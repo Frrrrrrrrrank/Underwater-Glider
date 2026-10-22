@@ -72,7 +72,8 @@ typedef struct
   float max_thrust_percent;
   float surface_depth_m;
   float depth_switch_threshold_m;
-  /* 实机蜗杆正负方向与俯仰修正方向的极性，只允许 +1 或 -1 */
+  /* 逻辑蜗杆命令与俯仰修正方向的极性，只允许 +1 或 -1。
+   * 安装翻转已由 StartServoTask 统一处理，不要为同次安装在此重复反号。 */
   float pitch_actuator_sign;
 } ZigzagControlConfig;
 
