@@ -348,7 +348,7 @@ class MonitorIntegrationTests(unittest.TestCase):
             ugcp.MSG_STREAM_CONTROL,
         ])
         self.assertEqual([payload for kind, _seq, payload in frames
-                          if kind == ugcp.MSG_STREAM_CONTROL], [b"\x0d", b"\x1d", b"\x00"])
+                          if kind == ugcp.MSG_STREAM_CONTROL], [b"\x2d", b"\x3d", b"\x00"])
         self.assertEqual(frames[2][2], bytes(18) + b"\x01")
         self.assertEqual(frames[3][2], bytes(19))
 

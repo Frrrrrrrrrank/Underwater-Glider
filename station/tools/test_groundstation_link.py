@@ -23,6 +23,8 @@ from groundstation.legacy_telemetry import (  # noqa: E402
     UGCTL_INT_FIELDS,
     UGWRM_FIELDS_V2 as UGWRM_FIELDS,
     UGWRM_INT_FIELDS,
+    UGRDS_FIELDS,
+    UGRDS_INT_FIELDS,
     decode_telemetry_line,
 )
 from groundstation.state_store import StateStore  # noqa: E402
@@ -61,6 +63,13 @@ class LegacyTelemetryAdapterTests(unittest.TestCase):
              {"schema": 2, "t_ms": 234, "armed": 0}, "ugctl"),
             ("UGWRM", UGWRM_FIELDS, UGWRM_INT_FIELDS,
              {"schema": 2, "t_ms": 345}, "ugwrm"),
+            ("UGRDS", UGRDS_FIELDS, UGRDS_INT_FIELDS,
+             {"schema": 2, "t_ms": 456, "last_result": 3,
+              "local_latitude_deg_e7": 220000000,
+              "local_longitude_deg_e7": 1145000000,
+              "target_valid": 1, "goto_received_count": 2,
+              "target_latitude_deg_e7": 220000000,
+              "target_longitude_deg_e7": 1145000000}, "ugrds"),
         )
 
         for prefix, fields, integer_fields, overrides, expected_topic in cases:

@@ -19,6 +19,7 @@ try:
         STREAM_CTL,
         STREAM_EKF,
         STREAM_WRM,
+        STREAM_RDSS,
         SequenceCounter,
         build_frame,
         pack_stream_control_payload,
@@ -29,6 +30,7 @@ except ImportError:
         STREAM_CTL,
         STREAM_EKF,
         STREAM_WRM,
+        STREAM_RDSS,
         SequenceCounter,
         build_frame,
         pack_stream_control_payload,
@@ -36,7 +38,7 @@ except ImportError:
 
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_STREAM_MASK = STREAM_EKF | STREAM_CTL | STREAM_WRM
+DEFAULT_STREAM_MASK = STREAM_EKF | STREAM_CTL | STREAM_WRM | STREAM_RDSS
 MAX_LINE_BUFFER = 64 * 1024
 
 

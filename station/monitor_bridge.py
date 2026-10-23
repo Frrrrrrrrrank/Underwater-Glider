@@ -19,7 +19,13 @@ except ImportError:
     from groundstation.state_store import StateStore
 
 
-TOPIC_STALE_MS = {"ugekf": 500, "ugctl": 500, "ugwrm": 500, "ugbat": 3000}
+TOPIC_STALE_MS = {
+    "ugekf": 500,
+    "ugctl": 500,
+    "ugwrm": 500,
+    "ugbat": 3000,
+    "ugrds": 2000,
+}
 CLIENT_TIMEOUT_S = 2.0
 MAX_HTTP_CLIENTS = 4
 
@@ -240,6 +246,13 @@ class MonitorBridge:
                 mark(("battery_mv", "filtered_mv"), "battery_sample_age_unknown")
             elif sample_age > 500:
                 mark(("battery_mv", "filtered_mv"), "battery_sample_stale")
+        elif topic == "ugrds":
+            if data.get("has_cached_fix") != 1:
+                mark(("local_latitude_deg_e7", "local_longitude_deg_e7"),
+                     "local_fix_unavailable")
+            if data.get("target_valid") != 1:
+                mark(("target_latitude_deg_e7", "target_longitude_deg_e7"),
+                     "target_coordinate_unavailable")
 
         reasons = list(dict.fromkeys(sample["quality"]["reasons"] + list(invalid.values())))
         sample["quality"] = {

@@ -51,6 +51,14 @@ static volatile uint32_t s_tx_fail_count = 0;
 static volatile uint32_t s_tx_last_hal_status = 0;
 static volatile uint32_t s_tx_last_uart_error = 0;
 static volatile uint32_t s_shortmsg_sent_count = 0;
+static volatile uint32_t s_shortmsg_attempt_count = 0;
+static volatile uint32_t s_shortmsg_reject_count = 0;
+static volatile uint32_t s_shortmsg_timeout_count = 0;
+static volatile uint32_t s_shortmsg_uart_fail_count = 0;
+static volatile uint32_t s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_IDLE;
+static volatile uint32_t s_shortmsg_send_ok_count = 0U;
+static volatile int32_t s_local_latitude_deg_e7 = 0;
+static volatile int32_t s_local_longitude_deg_e7 = 0;
 static volatile uint32_t s_bdpwi_signal_available = 0;
 static char s_last_tx_text[32] = {0};
 static char s_last_shortmsg_payload[96] = {0};
@@ -533,6 +541,8 @@ static bool cache_coordinate_shortmsg(const GliderRdssDecodedFrame *frame)
 
   strncpy(s_cached_shortmsg_payload, payload, sizeof(s_cached_shortmsg_payload) - 1U);
   s_cached_shortmsg_payload[sizeof(s_cached_shortmsg_payload) - 1U] = '\0';
+  s_local_latitude_deg_e7 = frame->gnrmc.latitude_deg_e7;
+  s_local_longitude_deg_e7 = frame->gnrmc.longitude_deg_e7;
   s_has_cached_fix = 1U;
   s_last_valid_fix_tick = HAL_GetTick();
   return true;
@@ -586,6 +596,7 @@ static void try_queue_cached_shortmsg(void)
   strncpy(s_pending_shortmsg_payload, s_cached_shortmsg_payload, sizeof(s_pending_shortmsg_payload) - 1U);
   s_pending_shortmsg_payload[sizeof(s_pending_shortmsg_payload) - 1U] = '\0';
   s_shortmsg_pending = 1U;
+  s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_PENDING;
 }
 
 static bool try_send_pending_shortmsg(void)
@@ -677,6 +688,8 @@ static bool try_send_pending_shortmsg(void)
     if ((now - s_last_shortmsg_try_tick) >= GLIDER_SHORTMSG_ACK_TIMEOUT_MS)
     {
       s_shortmsg_waiting_ack = 0U;
+      s_shortmsg_timeout_count++;
+      s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_TIMEOUT;
       s_transparent_mode_ready = 0U;
       s_tc_mode_active = 0U;
       s_tc_mode_requested = 0U;
@@ -687,11 +700,15 @@ static bool try_send_pending_shortmsg(void)
 
   if (GliderCore_SendText(s_pending_shortmsg_payload) != HAL_OK)
   {
+    s_shortmsg_uart_fail_count++;
+    s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_UART_ERROR;
     return false;
   }
 
   s_last_shortmsg_try_tick = HAL_GetTick();
   s_shortmsg_waiting_ack = 1U;
+  s_shortmsg_attempt_count++;
+  s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_WAITING_ACK;
   return true;
 }
 
@@ -806,6 +823,11 @@ static void process_line(const char *line)
 
   if (text_contains_token(s_decoded_frame.text, "ERROR"))
   {
+    if (s_shortmsg_waiting_ack != 0U)
+    {
+      s_shortmsg_reject_count++;
+      s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_REJECTED;
+    }
     s_tc_mode_active = 0U;
     s_tc_mode_requested = 0U;
     s_transparent_mode_ready = 0U;
@@ -826,6 +848,8 @@ static void process_line(const char *line)
       s_shortmsg_pending = 0U;
       s_shortmsg_waiting_ack = 0U;
       s_shortmsg_sent_count++;
+      s_shortmsg_send_ok_count++;
+      s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_SUCCESS;
       if (cached_fix_expired(HAL_GetTick()))
       {
         invalidate_cached_fix_and_request_relocate();
@@ -840,6 +864,7 @@ static void process_line(const char *line)
         s_last_shortmsg_payload[sizeof(s_last_shortmsg_payload) - 1U] = '\0';
         s_shortmsg_pending = 0U;
         s_shortmsg_sent_count++;
+        s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_SUCCESS;
         if (cached_fix_expired(HAL_GetTick()))
         {
           invalidate_cached_fix_and_request_relocate();
@@ -847,6 +872,8 @@ static void process_line(const char *line)
       }
       else
       {
+        s_shortmsg_reject_count++;
+        s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_REJECTED;
         s_transparent_mode_ready = 0U;
       }
     }
@@ -975,6 +1002,14 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_signal_good = 0U;
   s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
   s_shortmsg_sent_count = 0U;
+  s_shortmsg_attempt_count = 0U;
+  s_shortmsg_reject_count = 0U;
+  s_shortmsg_timeout_count = 0U;
+  s_shortmsg_uart_fail_count = 0U;
+  s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_IDLE;
+  s_shortmsg_send_ok_count = 0U;
+  s_local_latitude_deg_e7 = 0;
+  s_local_longitude_deg_e7 = 0;
   s_local_card_id_known = 0U;
   s_transparent_mode_ready = 0U;
   s_tc_mode_requested = 0U;
@@ -1232,6 +1267,38 @@ uint32_t GliderCore_GetShortMsgPending(void)
 uint32_t GliderCore_GetReadyToSend(void)
 {
   return (s_signal_good != 0U && s_local_card_id_known != 0U && s_local_card_mismatch == 0U && s_has_cached_fix != 0U) ? 1U : 0U;
+}
+
+void GliderCore_CopyShortMsgStatus(GliderShortMsgStatus *out_status)
+{
+  if (out_status == NULL)
+  {
+    return;
+  }
+
+  out_status->signal_good = s_signal_good;
+  out_status->ready_to_send = GliderCore_GetReadyToSend();
+  out_status->pending = s_shortmsg_pending;
+  out_status->waiting_ack = s_shortmsg_waiting_ack;
+  out_status->last_result = s_shortmsg_last_result;
+  out_status->attempt_count = s_shortmsg_attempt_count;
+  out_status->sent_count = s_shortmsg_sent_count;
+  out_status->reject_count = s_shortmsg_reject_count;
+  out_status->timeout_count = s_shortmsg_timeout_count;
+  out_status->uart_fail_count = s_shortmsg_uart_fail_count;
+  out_status->last_hal_status = s_tx_last_hal_status;
+  out_status->last_uart_error = s_tx_last_uart_error;
+  out_status->tx_mode = s_tx_mode;
+  out_status->card_id_known = s_local_card_id_known;
+  out_status->card_mismatch = s_local_card_mismatch;
+  out_status->has_cached_fix = s_has_cached_fix;
+  out_status->send_ok_count = s_shortmsg_send_ok_count;
+  out_status->local_latitude_deg_e7 = s_local_latitude_deg_e7;
+  out_status->local_longitude_deg_e7 = s_local_longitude_deg_e7;
+  out_status->target_latitude_deg_e7 = g_target_coordinate.latitude_deg_e7;
+  out_status->target_longitude_deg_e7 = g_target_coordinate.longitude_deg_e7;
+  out_status->goto_received_count = g_target_coordinate.update_count;
+  out_status->target_valid = g_target_coordinate.valid;
 }
 
 __weak void GliderCore_OnTextFrame(const char *line)

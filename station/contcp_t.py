@@ -53,6 +53,7 @@ try:
         STREAM_CTL,
         STREAM_WRM,
         STREAM_BAT,
+        STREAM_RDSS,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -88,6 +89,7 @@ except ImportError:
         STREAM_CTL,
         STREAM_WRM,
         STREAM_BAT,
+        STREAM_RDSS,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -1541,6 +1543,45 @@ UGCTL_INT_FIELDS = {
 }
 UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
 
+UGRDS_FIELDS = [
+    "schema", "seq", "t_ms", "signal_good", "ready_to_send", "pending",
+    "waiting_ack", "last_result", "attempt_count", "sent_count",
+    "reject_count", "timeout_count", "uart_fail_count", "last_hal_status",
+    "last_uart_error", "tx_mode", "card_id_known", "card_mismatch",
+    "has_cached_fix",
+    "send_ok_count", "local_latitude_deg_e7", "local_longitude_deg_e7",
+    "target_valid", "goto_received_count", "target_latitude_deg_e7",
+    "target_longitude_deg_e7",
+]
+UGRDS_INT_FIELDS = set(UGRDS_FIELDS)
+UGRDS_CSV_HEADER = ["host_iso"] + UGRDS_FIELDS
+UGRDS_RESULT_NAMES = {
+    0: "IDLE", 1: "PENDING", 2: "WAITING_ACK", 3: "SUCCESS",
+    4: "REJECTED", 5: "TIMEOUT", 6: "UART_ERROR",
+}
+
+
+def ugrds_parse(line):
+    if not ekf_checksum_ok(line):
+        return None
+    star = line.rfind("*")
+    parts = line[1:star].split(",")
+    if not parts or parts[0] != "UGRDS":
+        return None
+    values = parts[1:]
+    if len(values) != len(UGRDS_FIELDS):
+        return None
+    try:
+        row = {name: int(raw) for name, raw in zip(UGRDS_FIELDS, values)}
+    except ValueError:
+        return None
+    return row if row["schema"] == 2 else None
+
+
+def ugrds_csv_row(row):
+    return [datetime.now().isoformat(timespec="milliseconds")] + [
+        row[name] for name in UGRDS_FIELDS]
+
 #  蜗杆位置遥测($UGWRM)解析 + CSV 记录
 # 字段顺序必须与板端 EthernetUartDriver_SendWormTelemetry() 完全一致。
 UGWRM_FIELDS_V2 = [
@@ -2420,6 +2461,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     wrm_stat = {"ok": 0, "bad": 0, "last_home": None}
     battery_csv = None
     battery_csv_failed = False
+    rdss_csv = None
+    rdss_last_key = None
 
     def publish_monitor(topic, row):
         """仅复制已解析的最新值；面板故障不能中断唯一接收线程。"""
@@ -2465,8 +2508,60 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
 
     def handle_line(raw_line):
         nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
+        nonlocal rdss_csv, rdss_last_key
         line = raw_line.strip()
         if not line:
+            return
+
+        if line.startswith("$UGRDS"):
+            row = ugrds_parse(line)
+            if row is None:
+                return
+            publish_monitor('ugrds', row)
+            if rdss_csv is None:
+                path = os.path.join(
+                    CONTROL_LOG_DIR,
+                    "rdss_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
+                )
+                rdss_csv = open(path, "w", encoding="utf-8", newline="")
+                rdss_csv.write(",".join(UGRDS_CSV_HEADER) + "\n")
+                rdss_csv.flush()
+                print(f"\n[RDSS] short-message status log -> {path}")
+            rdss_csv.write(",".join(str(value) for value in ugrds_csv_row(row)) + "\n")
+            rdss_csv.flush()
+            key = (
+                row["last_result"], row["signal_good"], row["ready_to_send"],
+                row["pending"], row["waiting_ack"], row["sent_count"],
+                row["reject_count"], row["timeout_count"], row["uart_fail_count"],
+                row["send_ok_count"], row["goto_received_count"],
+                row["target_valid"], row["target_latitude_deg_e7"],
+                row["target_longitude_deg_e7"],
+            )
+            if key != rdss_last_key:
+                rdss_last_key = key
+                local_position = "N/A"
+                if row["has_cached_fix"]:
+                    local_position = "%.7f,%.7f" % (
+                        row["local_latitude_deg_e7"] / 1e7,
+                        row["local_longitude_deg_e7"] / 1e7,
+                    )
+                target_position = "N/A"
+                if row["target_valid"]:
+                    target_position = "%.7f,%.7f" % (
+                        row["target_latitude_deg_e7"] / 1e7,
+                        row["target_longitude_deg_e7"] / 1e7,
+                    )
+                print(
+                    "\n[RDSS] result=%s signal=%d ready=%d pending=%d ack=%d "
+                    "attempt=%d sent=%d send_ok=%d reject=%d timeout=%d uart_fail=%d "
+                    "local=%s goto_rx=%d target=%s"
+                    % (UGRDS_RESULT_NAMES.get(row["last_result"], row["last_result"]),
+                       row["signal_good"], row["ready_to_send"], row["pending"],
+                       row["waiting_ack"], row["attempt_count"], row["sent_count"],
+                       row["send_ok_count"], row["reject_count"],
+                       row["timeout_count"], row["uart_fail_count"],
+                       local_position, row["goto_received_count"], target_position)
+                )
             return
 
         # 电池流只由本接收线程消费，状态变化和限频提醒主动打印，无须输入命令。
@@ -2627,6 +2722,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             ctl_csv.close()
         if wrm_csv is not None:
             wrm_csv.close()
+        if rdss_csv is not None:
+            rdss_csv.close()
     except Exception:
         pass
     conn.close()
@@ -2772,7 +2869,7 @@ def main():
         # 发送与接收共用有限 socket 超时；不把它视作硬实时停止保证。
         conn.settimeout(1.0)
         # 先订阅原有三主题；不支持 BAT 的旧固件仍能保留姿态、PID 和 pitch 数据。
-        base_streams = STREAM_EKF | STREAM_CTL | STREAM_WRM
+        base_streams = STREAM_EKF | STREAM_CTL | STREAM_WRM | STREAM_RDSS
         send_stream_control(conn, base_streams, '兼容 EKF/CTL/WRM 遥测声明', keep_battery=False)
         if send_stream_control(conn, base_streams | STREAM_BAT):
             print('[遥测] 已请求 EKF + CTL + WRM + BAT；未上报的字段显示不可用')

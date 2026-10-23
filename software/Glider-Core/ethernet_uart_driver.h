@@ -56,8 +56,9 @@
 #define ETHERNET_UART_STREAM_WRM 0x08U
 /* bit4：电池总压与采样质量 $UGBAT，不影响板端独立采样。 */
 #define ETHERNET_UART_STREAM_BAT 0x10U
+#define ETHERNET_UART_STREAM_RDSS 0x20U
 #define ETHERNET_UART_STREAM_ALL \
-  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM | ETHERNET_UART_STREAM_BAT)
+  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM | ETHERNET_UART_STREAM_BAT | ETHERNET_UART_STREAM_RDSS)
 
 /* EKF 遥测定义，单行 ASCII 帧上限（NMEA 风格 $UGEKF,...*HH），以及周期(ms)。
  * 行内全部字段定点格式化，正常约 200B，留足余量到 512；100ms=10Hz。 */
@@ -67,6 +68,7 @@
 #define ETHERNET_UART_CTL_PERIOD_MS 100U
 #define ETHERNET_UART_WRM_PERIOD_MS 200U /* 双轴合并帧先用 5Hz，保留 BAT 优先调度。 */
 #define ETHERNET_UART_BAT_PERIOD_MS 1000U
+#define ETHERNET_UART_RDSS_PERIOD_MS 1000U
 
 typedef struct
 {
@@ -241,6 +243,7 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void);
 HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void);
 /* 电池状态独立低频上报，使用整数毫伏，保留现有快照布局。 */
 HAL_StatusTypeDef EthernetUartDriver_SendBatteryTelemetry(void);
+HAL_StatusTypeDef EthernetUartDriver_SendRdssTelemetry(void);
 /* 控制/泵任务每周期先整体复制一次，避免逐字段散读时跨越一次新包发布。 */
 bool EthernetUartDriver_CopyControlPack(
     EthernetUartReadoutPack *out_pack,

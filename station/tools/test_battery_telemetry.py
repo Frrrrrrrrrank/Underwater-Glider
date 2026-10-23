@@ -334,7 +334,8 @@ class BatterySubscriptionTests(unittest.TestCase):
         def console(*_args):
             masks = [ugcp.parse_frame(call.args[0])[2][0]
                      for call in conn.sendall.call_args_list]
-            base = ugcp.STREAM_EKF | ugcp.STREAM_CTL | ugcp.STREAM_WRM
+            base = (ugcp.STREAM_EKF | ugcp.STREAM_CTL | ugcp.STREAM_WRM |
+                    ugcp.STREAM_RDSS)
             self.assertEqual(masks, [base, base | ugcp.STREAM_BAT])
             self.assertEqual(contcp_t.get_stream_control_mask(), base | ugcp.STREAM_BAT)
 
