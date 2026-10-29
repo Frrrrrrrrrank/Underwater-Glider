@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import socket
 import sys
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -78,6 +79,65 @@ class MonitorBridgeStateTests(unittest.TestCase):
         snapshot = self.bridge.snapshot()
         self.assertNotEqual(snapshot["device_link"]["session_id"], previous)
         self.assertEqual(snapshot["telemetry"], {})
+
+    def test_rdss_coordinates_and_freshness_are_independent(self):
+        row = {"seq": 1, "t_ms": 100, "has_cached_fix": 0, "target_valid": 1,
+               "local_latitude_deg_e7": 2147483647, "local_longitude_deg_e7": 1140000000,
+               "target_latitude_deg_e7": 220000000, "target_longitude_deg_e7": -1140000000}
+        self.assertTrue(self.bridge.publish("ugrds", row))
+        sample = self.sample("ugrds")
+        self.assertEqual(sample["invalid_fields"]["local_latitude_deg_e7"], "local_fix_unavailable")
+        self.assertNotIn("target_latitude_deg_e7", sample["invalid_fields"])
+        self.clock.now += 1.9
+        self.assertTrue(self.sample("ugrds")["fresh"])
+        self.assertFalse(self.bridge.publish("ugrds", row))
+        self.clock.now += 0.2
+        self.assertFalse(self.sample("ugrds")["fresh"])
+        self.bridge.publish("ugrds", dict(row, seq=2, target_valid=0))
+        self.assertIn("target_latitude_deg_e7", self.sample("ugrds")["invalid_fields"])
+        self.bridge.set_link("disconnected")
+        self.assertFalse(self.sample("ugrds")["fresh"])
+        self.bridge.set_link("connected")
+        self.assertNotIn("ugrds", self.bridge.snapshot()["telemetry"])
+
+    def test_rdss_valid_flag_does_not_allow_out_of_range_coordinates(self):
+        self.bridge.publish("ugrds", {"seq": 1, "t_ms": 1, "has_cached_fix": 1,
+                            "local_latitude_deg_e7": 900000001,
+                            "local_longitude_deg_e7": 1140000000})
+        self.assertEqual(self.sample("ugrds")["invalid_fields"]["local_latitude_deg_e7"],
+                         "coordinate_out_of_range")
+
+    def test_experiment_provider_is_live_owned_and_failure_isolated(self):
+        status = {"status": "recording", "dropped_records": 0, "directory": "logs/session"}
+        self.bridge.set_experiment_provider(lambda: status)
+        snapshot = self.bridge.snapshot()
+        snapshot["experiment"]["directory"] = "changed"
+        self.assertEqual(status["directory"], "logs/session")
+        status.update(status="error", last_error="disk full")
+        self.assertEqual(self.bridge.snapshot()["experiment"]["last_error"], "disk full")
+        for provider in (lambda: float("nan"), lambda: {"bad": float("nan")},
+                         lambda: (_ for _ in ()).throw(OSError("write failure"))):
+            self.bridge.set_experiment_provider(provider)
+            result = self.bridge.snapshot()
+            self.assertEqual(result["experiment"]["status"], "error")
+            self.assertEqual(result["device_link"]["status"], "connected")
+            json.dumps(result, allow_nan=False)
+        self.bridge.set_experiment_provider(None)
+        self.assertNotIn("experiment", self.bridge.snapshot())
+
+    def test_experiment_provider_does_not_hold_telemetry_lock(self):
+        completed = threading.Event()
+
+        def provider():
+            worker = threading.Thread(target=lambda: (
+                self.bridge.publish("ugctl", {"seq": 1, "t_ms": 1}), completed.set()))
+            worker.start()
+            acquired = completed.wait(1.0)
+            worker.join(timeout=1.0)
+            return {"status": "recording", "lock_free": acquired}
+
+        self.bridge.set_experiment_provider(provider)
+        self.assertTrue(self.bridge.snapshot()["experiment"]["lock_free"])
 
     def test_latest_only_owned_data_and_unknown_capabilities(self):
         row = {"seq": 1, "t_ms": 0, "nested": {"value": 12}}

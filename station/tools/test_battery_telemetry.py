@@ -326,6 +326,11 @@ class BatteryReceiverTests(unittest.TestCase):
 
 
 class BatterySubscriptionTests(unittest.TestCase):
+    def setUp(self):
+        recorder = mock.patch.object(contcp_t, '_start_experiment_recorder', return_value=None)
+        recorder.start()
+        self.addCleanup(recorder.stop)
+
     def test_main_subscribes_battery_before_console_and_turns_all_streams_off_on_exit(self):
         conn, listener, service = mock.Mock(), mock.Mock(), mock.Mock()
         listener.accept.return_value = (conn, ("127.0.0.1", 8800))
@@ -335,8 +340,9 @@ class BatterySubscriptionTests(unittest.TestCase):
             masks = [ugcp.parse_frame(call.args[0])[2][0]
                      for call in conn.sendall.call_args_list]
             base = ugcp.STREAM_EKF | ugcp.STREAM_CTL | ugcp.STREAM_WRM
-            self.assertEqual(masks, [base, base | ugcp.STREAM_BAT])
-            self.assertEqual(contcp_t.get_stream_control_mask(), base | ugcp.STREAM_BAT)
+            self.assertEqual(masks, [base, base | ugcp.STREAM_BAT,
+                                    base | ugcp.STREAM_BAT | ugcp.STREAM_RDSS])
+            self.assertEqual(contcp_t.get_stream_control_mask(), base | ugcp.STREAM_BAT | ugcp.STREAM_RDSS)
 
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(contcp_t, "running", True))

@@ -724,6 +724,9 @@ class TelemetryStoreCompatibilityTests(unittest.TestCase):
 
 class MainResourceCleanupTests(unittest.TestCase):
     def setUp(self):
+        recorder = mock.patch.object(contcp_t, '_start_experiment_recorder', return_value=None)
+        recorder.start()
+        self.addCleanup(recorder.stop)
         # 控制台生命周期测试不创建本机 HTTP 监听；端到端监控另有真实 socket 测试。
         self.monitor_bridge = mock.Mock()
         patcher = mock.patch.object(contcp_t, '_start_monitor_bridge', return_value=self.monitor_bridge)

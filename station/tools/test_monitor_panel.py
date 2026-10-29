@@ -157,11 +157,60 @@ class PanelTests(unittest.TestCase):
         self.assertNotIn("-7.40°", self.render())
         self.assertIn("算法输出无效", self.render())
 
+    def add_rdss(self):
+        self.snapshot["telemetry"]["ugrds"] = {
+            "data": dict(has_cached_fix=1, target_valid=1, signal_good=1, ready_to_send=1,
+                         pending=0, waiting_ack=0, last_result=3, sent_count=15, send_ok_count=13,
+                         attempt_count=20, reject_count=2, timeout_count=3, uart_fail_count=0,
+                         card_id_known=1, card_mismatch=0, goto_received_count=8,
+                         local_latitude_deg_e7=221234567, local_longitude_deg_e7=1147654321,
+                         target_latitude_deg_e7=-224567890, target_longitude_deg_e7=-1141234567),
+            "age_ms": 900, "fresh": True, "invalid_fields": {},
+            "quality": {"status": "valid"}, "session_id": "test-session",
+        }
+
+    def test_rdss_reports_cached_coordinates_and_module_acknowledgement(self):
+        self.add_rdss()
+        panel = self.render()
+        for text in ("缓存定位（非实时）", "+22.1234567°", "+114.7654321°",
+                     "-22.4567890°", "-114.1234567°", "结果：模块确认",
+                     "模块确认：15", "SEND OK：13", "目标接收：8", "RDSS：900ms/有效",
+                     "北斗模块确认不代表对端送达"):
+            self.assertIn(text, panel)
+        self.data("ugrds")["has_cached_fix"] = 0
+        panel = self.render()
+        self.assertNotIn("+22.1234567°", panel)
+        self.assertIn("无缓存定位", panel)
+        self.assertIn("-22.4567890°", panel)
+        self.data("ugrds")["target_valid"] = 0
+        self.assertNotIn("-22.4567890°", self.render())
+
+    def test_rdss_unknown_stale_disconnected_and_previous_session_hide_coordinates(self):
+        self.assertIn("北斗  信号：--（未收到）", self.render())
+        for field, value in (("fresh", False), ("session_id", "old")):
+            self.add_rdss()
+            self.snapshot["telemetry"]["ugrds"][field] = value
+            self.assertNotIn("+22.1234567°", self.render())
+        self.add_rdss()
+        self.snapshot["device_link"]["status"] = "disconnected"
+        self.assertNotIn("+22.1234567°", self.render())
+
+    def test_experiment_status_is_optional_and_visible_near_top(self):
+        self.assertNotIn("实验记录：", self.render())
+        self.snapshot["experiment"] = dict(status="recording", directory="logs/session",
+                                            dropped_records=7)
+        panel = self.render()
+        self.assertEqual(panel.splitlines()[3], "实验记录：记录中  丢记录：7")
+        self.assertIn("记录目录：logs/session", panel)
+        self.snapshot["experiment"].update(status="error", last_error="disk full")
+        self.assertIn("记录错误：disk full", self.render())
+        self.assertIn("实验记录：接口不可用", monitor.render_panel(self.snapshot, error="断连"))
+
     def test_render_is_pure_width_bounded_and_sanitizes_control_characters(self):
         before = copy.deepcopy(self.snapshot)
         for width in (1, 20, 60, 100):
             panel = monitor.render_panel(self.snapshot, width=width, endpoint="\x1b[2J恶意\n地址")
-            self.assertEqual(len(panel.splitlines()), 22)
+            self.assertEqual(len(panel.splitlines()), 29)
             self.assertNotIn("\x1b", panel)
             self.assertTrue(all(monitor.display_width(line) <= width for line in panel.splitlines()))
         self.assertEqual(self.snapshot, before)

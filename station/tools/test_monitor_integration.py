@@ -35,6 +35,7 @@ def telemetry(topic, seq=1, **changes):
         "ugwrm": (contcp_t.UGWRM_FIELDS_V2 if changes.get("schema") == 2
                   else contcp_t.UGWRM_FIELDS_V3),
         "ugbat": battery.UGBAT_FIELDS,
+        "ugrds": contcp_t.UGRDS_FIELDS,
     }[topic]
     defaults = {
         "ugekf": dict(status=4, fl=3, roll_deg=3.5, pitch_deg=-2.25,
@@ -48,6 +49,8 @@ def telemetry(topic, seq=1, **changes):
                        roll_valid=1, roll_home_state=6, calib_state=2),
         "ugbat": dict(schema=1, adc_raw=21000, battery_mv=23500,
                        filtered_mv=23490, valid=1, state=1, sample_age_ms=10),
+        "ugrds": dict(schema=2, has_cached_fix=1, signal_good=1,
+                       local_latitude_deg_e7=220000001, local_longitude_deg_e7=1145000001),
     }[topic]
     row = dict.fromkeys(fields, 0)
     row.update(defaults, seq=seq, t_ms=seq * 1000)
@@ -72,7 +75,7 @@ class MonitorIntegrationTests(unittest.TestCase):
         self.stack = contextlib.ExitStack()
         self.addCleanup(self.stack.close)
         directory = self.stack.enter_context(tempfile.TemporaryDirectory())
-        for setting in ("EKF_LOG_DIR", "CONTROL_LOG_DIR", "BATTERY_LOG_DIR"):
+        for setting in ("EKF_LOG_DIR", "CONTROL_LOG_DIR", "BATTERY_LOG_DIR", "EXPERIMENT_LOG_DIR", "RDSS_LOG_DIR"):
             self.stack.enter_context(mock.patch.object(contcp_t, setting, directory))
         self.stack.enter_context(mock.patch.object(contcp_t, "running", True))
         self.output = self.stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
@@ -132,22 +135,23 @@ class MonitorIntegrationTests(unittest.TestCase):
         with self.assertRaises(socket.timeout):
             self.board_socket.recv(4096)
 
-    def test_fragmented_four_topics_reach_http_and_panel_without_board_writes(self):
+    def test_fragmented_five_topics_reach_http_and_panel_without_board_writes(self):
         self.start_receiver()
         wire = b"".join(telemetry(topic) for topic in
-                        ("ugekf", "ugctl", "ugwrm", "ugbat"))
+                        ("ugekf", "ugctl", "ugwrm", "ugbat", "ugrds"))
         for begin in range(0, len(wire), 13):
             self.board_socket.sendall(wire[begin:begin + 13])
-        self.wait_seq("ugbat", 1)
+        self.wait_seq("ugrds", 1)
         snapshot = monitor.fetch_snapshot(self.url)
-        self.assertEqual(set(snapshot["telemetry"]), {"ugekf", "ugctl", "ugwrm", "ugbat"})
+        self.assertEqual(set(snapshot["telemetry"]), {"ugekf", "ugctl", "ugwrm", "ugbat", "ugrds"})
         self.assertTrue(all(item["fresh"] for item in snapshot["telemetry"].values()))
         panel = monitor.render_panel(snapshot)
         for text in ("25.00%", "62.50%", "+3.50°", "-2.25°", "+42.00°",
                      "1.875 m", "23.490 V", "2.500 m", "-4.00°", "0x12345678",
                      "PB3 roll 0%：触发", "PB4 pitch头：释放",
                      "PB5 roll100%：触发", "PD7 pitch尾：释放",
-                     "PID 整套参数：当前固件未上报", "左右实际 PWM：当前固件未上报"):
+                     "PID 整套参数：当前固件未上报", "左右实际 PWM：当前固件未上报",
+                     "缓存定位（非实时）", "+22.0000001°", "+114.5000001°"):
             self.assertIn(text, panel)
         battery_lines = "\n".join(line for line in panel.splitlines()
                                   if "电池 " in line or "有效：" in line and "PID" not in line)
@@ -292,6 +296,7 @@ class MonitorIntegrationTests(unittest.TestCase):
             "AF_INET", "SOCK_STREAM", "SOL_SOCKET", "SO_REUSEADDR", "SHUT_RDWR", "timeout")})
         socket_proxy.socket = mock.Mock(return_value=listener)
         with contextlib.ExitStack() as local:
+            local.enter_context(mock.patch.object(contcp_t, '_start_experiment_recorder', return_value=None))
             local.enter_context(mock.patch.object(contcp_t, "socket", socket_proxy))
             local.enter_context(mock.patch.object(contcp_t, "GamepadService", return_value=mock.Mock()))
             entered = local.enter_context(mock.patch("builtins.input", return_value="quit"))
@@ -343,14 +348,15 @@ class MonitorIntegrationTests(unittest.TestCase):
             frames.append(ugcp.parse_frame(bytes(wire[:size])))
             del wire[:size]
         self.assertEqual([kind for kind, _seq, _payload in frames], [
+            ugcp.MSG_STREAM_CONTROL,
             ugcp.MSG_STREAM_CONTROL, ugcp.MSG_STREAM_CONTROL,
             ugcp.MSG_CONTROL19_LATCHED, ugcp.MSG_CONTROL19_LATCHED,
             ugcp.MSG_STREAM_CONTROL,
         ])
         self.assertEqual([payload for kind, _seq, payload in frames
-                          if kind == ugcp.MSG_STREAM_CONTROL], [b"\x0d", b"\x1d", b"\x00"])
-        self.assertEqual(frames[2][2], bytes(18) + b"\x01")
-        self.assertEqual(frames[3][2], bytes(19))
+                          if kind == ugcp.MSG_STREAM_CONTROL], [b"\x0d", b"\x1d", b"\x3d", b"\x00"])
+        self.assertEqual(frames[3][2], bytes(18) + b"\x01")
+        self.assertEqual(frames[4][2], bytes(19))
 
 
 if __name__ == "__main__":

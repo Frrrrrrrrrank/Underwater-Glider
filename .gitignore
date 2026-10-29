@@ -33,6 +33,7 @@ __pycache__/
 /station/logs/control/*
 !/station/logs/control/.gitkeep
 /station/logs/battery/*
+/station/logs/rsdd/
 /station/logs/sessions/
 /station/plots/*
 !/station/plots/.gitkeep

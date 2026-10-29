@@ -19,7 +19,8 @@ except ImportError:
     from groundstation.state_store import StateStore
 
 
-TOPIC_STALE_MS = {"ugekf": 500, "ugctl": 500, "ugwrm": 500, "ugbat": 3000}
+TOPIC_STALE_MS = {"ugekf": 500, "ugctl": 500, "ugwrm": 500,
+                  "ugbat": 3000, "ugrds": 2000}
 CLIENT_TIMEOUT_S = 2.0
 MAX_HTTP_CLIENTS = 4
 
@@ -141,6 +142,7 @@ class MonitorBridge:
         self._last_keys = {}
         self._server: Optional[_SnapshotServer] = None
         self._thread: Optional[threading.Thread] = None
+        self._experiment_provider: Optional[Callable[[], Mapping[str, Any]]] = None
 
     @property
     def address(self) -> Tuple[str, int]:
@@ -212,6 +214,15 @@ class MonitorBridge:
             self._last_keys[topic] = key
             return True
 
+    def set_experiment_provider(
+        self, provider: Optional[Callable[[], Mapping[str, Any]]]
+    ) -> None:
+        """挂接只读记录状态查询；HTTP 每次刷新主动查询，不依赖遥测继续到达。"""
+        if provider is not None and not callable(provider):
+            raise TypeError("实验记录状态提供者必须可调用或为 None")
+        with self._lock:
+            self._experiment_provider = provider
+
     @staticmethod
     def _apply_monitor_quality(topic: str, sample: dict) -> None:
         """补充面板需要的有效性，不修改网页共享规则或原始有限诊断值。"""
@@ -240,6 +251,20 @@ class MonitorBridge:
                 mark(("battery_mv", "filtered_mv"), "battery_sample_age_unknown")
             elif sample_age > 500:
                 mark(("battery_mv", "filtered_mv"), "battery_sample_stale")
+        elif topic == "ugrds":
+            for prefix, valid_field, reason in (
+                ("local", "has_cached_fix", "local_fix_unavailable"),
+                ("target", "target_valid", "target_coordinate_unavailable"),
+            ):
+                fields = (prefix + "_latitude_deg_e7", prefix + "_longitude_deg_e7")
+                if data.get(valid_field) != 1:
+                    mark(fields, reason)
+                else:
+                    # 桥也检查数值边界，避免未来其他发布者绕过解析器后误显示。
+                    for field, limit in zip(fields, (900_000_000, 1_800_000_000)):
+                        value = data.get(field)
+                        if type(value) is not int or not -limit <= value <= limit:
+                            mark((field,), "coordinate_out_of_range")
 
         reasons = list(dict.fromkeys(sample["quality"]["reasons"] + list(invalid.values())))
         sample["quality"] = {
@@ -251,6 +276,7 @@ class MonitorBridge:
         """取得独立的公开字典；断线后保留诊断值但禁止把它们显示为当前值。"""
         with self._lock:
             _generation, result = self._store.read()
+            experiment_provider = self._experiment_provider
         connected = result["device_link"]["status"] == LinkStatus.CONNECTED.value
         for topic, sample in result["telemetry"].items():
             self._apply_monitor_quality(topic, sample)
@@ -265,4 +291,13 @@ class MonitorBridge:
             "battery_soc": False,
         })
         result["monitor"] = {"schema": 1, "read_only": True, "transport": "loopback_http"}
+        if experiment_provider is not None:
+            try:
+                # 不能持有遥测锁调用写盘线程的状态查询；JSON 往返取得独立安全副本。
+                experiment = experiment_provider()
+                if not isinstance(experiment, Mapping):
+                    raise TypeError("实验记录状态必须为字典")
+                result["experiment"] = json.loads(json.dumps(dict(experiment), allow_nan=False))
+            except Exception as exc:
+                result["experiment"] = {"status": "error", "last_error": str(exc)}
         return result
