@@ -59,6 +59,9 @@ typedef struct
 } GliderShortMsgStatus;
 
 extern volatile GliderTargetCoordinate g_target_coordinate;
+/* Counts valid GNRMC fixes, including unchanged coordinates. */
+extern volatile uint32_t g_rdss_fix_update_count;
+extern volatile uint32_t g_rdss_rn_request_count;
 
 void GliderCore_Init(UART_HandleTypeDef *uart_handle);
 void GliderCore_RunRxTask(void);
