@@ -51,11 +51,18 @@ class GamepadConfig:
     motor1_forward_dir: int = 0
     motor2_forward_dir: int = 1
     roll_rpm: int = 300
+    trigger_deadzone: float = 0.10
+    rudder_rate_deg_s: float = 30.0
 
     def __post_init__(self):
         deadzone = _finite_number(self.deadzone, "deadzone")
         if not 0 <= deadzone < 1:
             raise ValueError("deadzone 必须在 [0, 1) 范围内")
+        trigger_deadzone = _finite_number(self.trigger_deadzone, "trigger_deadzone")
+        if not 0 <= trigger_deadzone < 1:
+            raise ValueError("trigger_deadzone 必须在 [0, 1) 范围内")
+        if _finite_number(self.rudder_rate_deg_s, "rudder_rate_deg_s") <= 0:
+            raise ValueError("rudder_rate_deg_s 必须大于 0")
         for name in ("poll_period_s", "send_period_s", "input_timeout_s",
                      "telemetry_timeout_s", "prepare_timeout_s"):
             if _finite_number(getattr(self, name), name) <= 0:
@@ -76,7 +83,7 @@ class GamepadConfig:
 
 @dataclass(frozen=True)
 class GamepadSnapshot:
-    """一次输入快照；时间戳记录成功读取，两个事件序号跨重连保留。"""
+    """一次输入快照；时间戳记录成功读取，事件序号跨重连保留。"""
 
     index: int
     connected: bool = False
@@ -91,11 +98,15 @@ class GamepadSnapshot:
     error: str = ""
     dpad_left: bool = False
     dpad_right: bool = False
+    left_trigger: float = 0.0
+    right_trigger: float = 0.0
+    button_b: bool = False
+    rudder_center_seq: int = 0
 
 
 @dataclass(frozen=True)
 class ControlTarget:
-    """与协议无关的意图：左右有符号百分率以及 pitch/roll 按住运动状态。"""
+    """与协议无关的意图；尾舵速度指目标角度变化率，不是实测转速。"""
 
     left_percent: float = 0
     right_percent: float = 0
@@ -103,6 +114,8 @@ class ControlTarget:
     pitch_rpm: int = 0
     roll_enable: int = 0
     roll_rpm: int = 0
+    rudder_rate_deg_s: float = 0.0
+    rudder_center: bool = False
 
 
 def apply_axis_deadzone(value, deadzone):
@@ -114,6 +127,12 @@ def apply_axis_deadzone(value, deadzone):
     if abs(value) <= deadzone:
         return 0.0
     return math.copysign((abs(value) - deadzone) / (1.0 - deadzone), value)
+
+
+def apply_trigger_deadzone(value, deadzone):
+    """扳机只能在 [0, 1] 范围，独立去死区后恢复剩余按压行程。"""
+    value = _bounded_number(value, "扳机值", 0, 1)
+    return apply_axis_deadzone(value, deadzone)
 
 
 def mix_thrusters(forward, turn, max_percent=100):
@@ -142,9 +161,29 @@ def _validate_connected_sample(sample, index):
         raise ValueError(sample.error or "手柄未连接")
     _bounded_number(sample.left_x, "left_x", -1, 1)
     _bounded_number(sample.forward, "forward", -1, 1)
-    for name in ("button_x", "button_y", "button_a", "dpad_left", "dpad_right"):
+    _bounded_number(sample.left_trigger, "left_trigger", 0, 1)
+    _bounded_number(sample.right_trigger, "right_trigger", 0, 1)
+    for name in ("button_x", "button_y", "button_a", "dpad_left", "dpad_right", "button_b"):
         if not isinstance(getattr(sample, name), bool):
             raise ValueError("{} 必须是布尔值".format(name))
+    if (isinstance(sample.rudder_center_seq, bool) or
+            not isinstance(sample.rudder_center_seq, Integral) or sample.rudder_center_seq < 0):
+        raise ValueError("rudder_center_seq 必须是非负整数")
+
+
+def is_gamepad_neutral(sample, config):
+    """接管前逐项检查松开状态，双扳机相互抵消不能冒充中立。"""
+    if not isinstance(config, GamepadConfig):
+        raise ValueError("config 必须是 GamepadConfig")
+    if not isinstance(sample, GamepadSnapshot):
+        raise ValueError("sample 必须是 GamepadSnapshot")
+    _validate_connected_sample(sample, _validate_index(sample.index))
+    return (abs(sample.left_x) <= config.deadzone and
+            abs(sample.forward) <= config.deadzone and
+            sample.left_trigger <= config.trigger_deadzone and
+            sample.right_trigger <= config.trigger_deadzone and
+            not any((sample.button_x, sample.button_y, sample.button_a,
+                     sample.dpad_left, sample.dpad_right, sample.button_b)))
 
 
 def map_gamepad_to_target(sample, config):
@@ -166,8 +205,18 @@ def map_gamepad_to_target(sample, config):
     roll_rpm = 0
     if sample.dpad_left != sample.dpad_right:
         roll_rpm = config.roll_rpm if sample.dpad_left else -config.roll_rpm
+    left_trigger = apply_trigger_deadzone(sample.left_trigger, config.trigger_deadzone)
+    right_trigger = apply_trigger_deadzone(sample.right_trigger, config.trigger_deadzone)
+    rudder_rate = 0.0
+    # B 只优先回中尾舵；双扳机有效时停止改变目标，不按差值决定方向。
+    if not sample.button_b:
+        if right_trigger > 0 and left_trigger == 0:
+            rudder_rate = right_trigger * config.rudder_rate_deg_s
+        elif left_trigger > 0 and right_trigger == 0:
+            rudder_rate = -left_trigger * config.rudder_rate_deg_s
     return ControlTarget(left, right, int(pitch_rpm != 0), pitch_rpm,
-                         int(roll_rpm != 0), roll_rpm)
+                         int(roll_rpm != 0), roll_rpm,
+                         rudder_rate_deg_s=rudder_rate, rudder_center=sample.button_b)
 
 
 class _XInputGamepad(ctypes.Structure):
@@ -232,6 +281,9 @@ class XInputBackend:
             button_a=bool(gamepad.wButtons & 0x1000),
             dpad_left=bool(gamepad.wButtons & 0x0004),
             dpad_right=bool(gamepad.wButtons & 0x0008),
+            left_trigger=gamepad.bLeftTrigger / 255.0,
+            right_trigger=gamepad.bRightTrigger / 255.0,
+            button_b=bool(gamepad.wButtons & 0x2000),
         )
 
 
@@ -303,13 +355,16 @@ class GamepadService:
                         updated = GamepadSnapshot(
                             index=index, sample_time=previous.sample_time,
                             exit_seq=previous.exit_seq, loss_seq=loss_seq, error=error,
+                            rudder_center_seq=previous.rudder_center_seq,
                         )
                     else:
                         rising_x = sample.button_x and (not previous.connected or not previous.button_x)
+                        rising_b = sample.button_b and (not previous.connected or not previous.button_b)
                         updated = replace(
                             sample, sample_time=sample_time,
                             exit_seq=previous.exit_seq + int(rising_x),
                             loss_seq=previous.loss_seq, error="",
+                            rudder_center_seq=previous.rudder_center_seq + int(rising_b),
                         )
                     self._samples[index] = updated
 

@@ -8,12 +8,28 @@ import json
 import os
 import shlex
 import math
+import struct
+import uuid
+from dataclasses import asdict
 from datetime import datetime
 
 try:
     from .monitor_bridge import MonitorBridge
 except ImportError:
     from monitor_bridge import MonitorBridge
+
+try:
+    from .experiment_recorder import ExperimentRecorder
+    from .rdss_telemetry import (
+        UGRDS_FIELDS, UGRDS_INT_FIELDS, UGRDS_CSV_HEADER, UGRDS_RESULT_NAMES,
+        ugrds_parse, ugrds_csv_row,
+    )
+except ImportError:
+    from experiment_recorder import ExperimentRecorder
+    from rdss_telemetry import (
+        UGRDS_FIELDS, UGRDS_INT_FIELDS, UGRDS_CSV_HEADER, UGRDS_RESULT_NAMES,
+        ugrds_parse, ugrds_csv_row,
+    )
 
 try:
     from .battery_telemetry import (
@@ -26,11 +42,11 @@ except ImportError:
 
 try:
     from .gamepad_control import (
-        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+        ControlTarget, GamepadConfig, GamepadService, is_gamepad_neutral, map_gamepad_to_target,
     )
 except ImportError:
     from gamepad_control import (
-        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+        ControlTarget, GamepadConfig, GamepadService, is_gamepad_neutral, map_gamepad_to_target,
     )
 
 try:
@@ -112,14 +128,21 @@ UGCP_TX_SEQUENCE = SequenceCounter()
 UGCP_TX_LOCK = threading.Lock()
 TELEMETRY_STREAM_LOCK = threading.Lock()
 TELEMETRY_STREAM_MASK = 0
+# 记录器只观察既有收发；上下文属于发送线程，不参与控制计算。
+EXPERIMENT_RECORDER = None
+EXPERIMENT_MANAGED = False
+EXPERIMENT_CONTEXT = threading.local()
+EXPERIMENT_LAST_ERROR = None
+# 只发布成功发送的本机指令；不由监控桥发送任何设备命令。
+CONTROL_MONITOR_BRIDGE = None
 # 主线程标记当前是否处于 PID 命令界面，接收线程据此选择快照显示方式。
 PID_MODE_ACTIVE = threading.Event()
 
 AUTO_SEND_PERIOD_S = 0.10  # 每 100ms 连续刷新一次，板端直控租约为 2.5s。
 AUTO_KEY_POLL_S = 0.02
-AUTO_RUDDER_LIMIT_DEG = 10.0  # 首次联调仅开放中位两侧各 10 度。
+AUTO_RUDDER_LIMIT_DEG = 45.0  # 标称总行程 90 度：中位两侧各 45 度。
 AUTO_RUDDER_RATE_DEG_S = 10.0
-AUTO_RUDDER_MAX_DT_S = 0.10  # PC 卡顿后不补算长时间位移，单步最多 1 度。
+AUTO_RUDDER_MAX_DT_S = 0.10  # PC 卡顿后不补算长时间位移；键盘单步最多1°，手柄默认3°。
 AUTO_VK_MAP = {key: ord(key) for key in 'WSXEDCIKJLUNZHQRFVT'}
 AUTO_VK_MAP['ESC'] = 0x1B
 THRUST_SPEED_MIN = 0.0
@@ -725,7 +748,7 @@ def format_worm_status(snap):
 def format_rudder_status(snap):
     """快照是板端已施加的 PWM 命令，三线舵机没有角度反馈。"""
     mode = int(snap.servo_mode)
-    mode_text = {0: 'PWM 初始化失败/未启动', 1: '中位保护', 2: '网线命令'}.get(
+    mode_text = {0: 'PWM 初始化失败/未启动', 1: '中位保护', 2: '网线命令', 3: 'Ozone 调试'}.get(
         mode, '未知模式')
     return ("[尾舵] applied_pulse_us=%d servo_mode=%d(%s)；命令值，非实测角度"
             % (int(snap.servo_pulse_us), mode, mode_text))
@@ -768,13 +791,108 @@ def print_snapshot_for_active_mode(snap):
         print_snapshot_struct(snap)
 
 # 控制包发送函数
+def _experiment_record(event):
+    """记录失败不改变原有控制返回值，错误由接收循环和面板报告。"""
+    global EXPERIMENT_LAST_ERROR
+    if EXPERIMENT_RECORDER is not None:
+        try:
+            return EXPERIMENT_RECORDER.record(event)
+        except Exception as exc:
+            EXPERIMENT_LAST_ERROR = str(exc)
+    return False
+
+
+def _experiment_incomplete(reason):
+    """收尾和发送旁路的异常标记也必须与控制返回值隔离。"""
+    global EXPERIMENT_LAST_ERROR
+    EXPERIMENT_LAST_ERROR = str(reason)
+    if EXPERIMENT_RECORDER is not None:
+        try:
+            EXPERIMENT_RECORDER.mark_incomplete(reason)
+        except Exception:
+            pass
+
+
+def _experiment_context(**values):
+    context = dict(getattr(EXPERIMENT_CONTEXT, 'value', {}))
+    context.update(values)
+    EXPERIMENT_CONTEXT.value = context
+    return context
+
+
+def _experiment_mode(phase, **values):
+    context = _experiment_context(phase=phase, **values)
+    _experiment_record(dict(context, kind='mode'))
+
+
+def _control_fields(msg_type, payload):
+    """从实际线路载荷解出字段；不能用准备阶段尚未发送的手柄目标代替。"""
+    if msg_type not in (MSG_CONTROL19_STREAM, MSG_CONTROL19_LATCHED, MSG_CONTROL21_STREAM):
+        return {}
+    names = (
+        'pitchmotor_enable', 'pitchmotor_speed_rpm', 'rollmotor_enable',
+        'rollmotor_speed_rpm', 'thrustmotor_direction', 'thrustmotor_direction2',
+        'thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm', 'backup_for_thrust',
+        'pump_direction', 'pump_on_off', 'ask_for_status', 'eth_control_flag',
+    )
+    fields = dict(zip(names, struct.unpack('<BiBi9B', payload[:19])))
+    fields['rudder_angle_cdeg'] = struct.unpack('<h', payload[19:21])[0] if len(payload) == 21 else 0
+    return fields
+
+
+def _publish_sent_rudder(msg_type, payload, seq, context, tx_end_ns):
+    """发送成功后旁路发布，监控错误不能改变控制发送结果。"""
+    bridge = CONTROL_MONITOR_BRIDGE
+    if bridge is None:
+        return
+    try:
+        fields = _control_fields(msg_type, payload)
+        if fields:
+            bridge.publish_rudder_command(
+                angle_cdeg=fields['rudder_angle_cdeg'],
+                source=context.get('source', 'unknown'), phase=context.get('phase', ''),
+                seq=seq, msg_type=msg_type, eth_control_flag=fields['eth_control_flag'],
+                sent_at=datetime.now().astimezone().isoformat(timespec='milliseconds'),
+                sent_monotonic_s=tx_end_ns / 1e9,
+            )
+    except Exception as exc:
+        print(f'[监控] 尾舵发送记录发布失败：{exc}；控制发送结果不受影响。')
+
+
 def send_ugcp_frame(conn, msg_type, payload, label='UGCP', verbose=True):
     """串行化一次完整 UGCP 发送，保证多线程下 seq 顺序与线上顺序一致。"""
     try:
         with UGCP_TX_LOCK:
             seq = UGCP_TX_SEQUENCE.next()
             frame = build_frame(msg_type, payload, seq)
-            conn.sendall(frame)
+            # 锁内取时间/序号保持与线上发送顺序一致，文件操作在记录器线程。
+            context = dict(getattr(EXPERIMENT_CONTEXT, 'value', {}))
+            host_iso = datetime.now().astimezone().isoformat(timespec='microseconds')
+            tx_start_ns = time.monotonic_ns()
+            error = None
+            sent_ok = False
+            try:
+                conn.sendall(frame)
+                sent_ok = True
+            except BaseException as exc:
+                error = '{}: {}'.format(type(exc).__name__, exc)
+                raise
+            finally:
+                tx_end_ns = time.monotonic_ns()
+                if sent_ok:
+                    _publish_sent_rudder(msg_type, payload, seq, context, tx_end_ns)
+                # 守护旁路解码，即使记录器自身出错也不能丢失成功发送的返回值。
+                try:
+                    _experiment_record(dict(
+                        context, kind='tx', t_ns=tx_start_ns, host_iso=host_iso,
+                        tx_start_ns=tx_start_ns, tx_end_ns=tx_end_ns,
+                        seq=seq, msg_type=msg_type, payload_hex=bytes(payload).hex(),
+                        fields=_control_fields(msg_type, payload), success=sent_ok,
+                        error=error, label=label,
+                    ))
+                except Exception as exc:
+                    _experiment_record({'kind': 'recording_error', 'error': str(exc)})
+                    _experiment_incomplete('发送事件记录失败: ' + str(exc))
         if verbose:
             print(f'[{label}] 已发送 seq={seq}，payload={len(payload)}B，总长={len(frame)}B')
         return True
@@ -824,6 +942,13 @@ def send_stream_control(conn, mask, label='遥测流控制', *, keep_battery=Tru
     global TELEMETRY_STREAM_MASK
     if keep_battery:
         mask = int(mask) | STREAM_BAT
+    if mask & STREAM_RDSS:
+        # 未知位会使旧固件拒绝整包。每次启停/恢复都先发兼容掩码，
+        # 不能仅在启动时兜底；sendall成功不表示板端支持BAT或RDSS。
+        for fallback in dict.fromkeys((mask & ~(STREAM_BAT | STREAM_RDSS), mask & ~STREAM_RDSS)):
+            if not send_ugcp_frame(conn, MSG_STREAM_CONTROL,
+                                   pack_stream_control_payload(fallback), label + '（兼容）', verbose=False):
+                return False
     ok = send_ugcp_frame(
         conn,
         MSG_STREAM_CONTROL,
@@ -862,6 +987,8 @@ def send_telem_control(conn, enabled):
 
 def send_neutral_and_release(conn):
     """正常退出：锁存全中立，再释放 Ethernet 控制权。"""
+    previous_phase = getattr(EXPERIMENT_CONTEXT, 'value', {}).get('phase', '')
+    _experiment_context(phase='NEUTRAL')
     neutral_ok = send_control_packet(
         conn,
         0, 0, 0, 0,
@@ -871,6 +998,7 @@ def send_neutral_and_release(conn):
     )
     if neutral_ok:
         time.sleep(0.05)
+    _experiment_context(phase='RELEASE')
     release_ok = send_control_packet(
         conn,
         0, 0, 0, 0,
@@ -878,6 +1006,7 @@ def send_neutral_and_release(conn):
         0, 0, 0, 0, 0,
         latched=True,
     )
+    _experiment_context(phase=previous_phase)
     return neutral_ok and release_ok
 
 
@@ -1003,8 +1132,8 @@ def _build_default_auto_packet():
     }
 
 
-def _build_auto_sti_packet(target, config):
-    """把推进百分比和 pitch/roll 转速目标填入现有直控协议。"""
+def _build_auto_sti_packet(target, config, rudder_angle_cdeg=0):
+    """把推进、pitch/roll 和 PC 积分后的尾舵绝对角填入现有直控协议。"""
     packet = _build_default_auto_packet()
     speeds = (target.left_percent, target.right_percent)
     if not config.motor1_is_left:
@@ -1030,7 +1159,42 @@ def _build_auto_sti_packet(target, config):
         raise ValueError('roll 目标使能与转速不一致')
     packet['rollmotor_enable'] = target.roll_enable
     packet['rollmotor_speed_rpm'] = target.roll_rpm
+    if (type(rudder_angle_cdeg) is not int or
+            abs(rudder_angle_cdeg) > round(AUTO_RUDDER_LIMIT_DEG * 100)):
+        raise ValueError('尾舵目标必须为 ±4500 内的整数百分之一度')
+    packet['rudder_angle_cdeg'] = rudder_angle_cdeg
     return packet
+
+
+def _update_auto_sti_rudder(state, target, sample, config, dt):
+    """仅在 ACTIVE 调用：速度意图积分为位置，回中后等待三项输入全松。"""
+    old_rate = state['rate_deg_s']
+    center_event = (sample.rudder_center_seq != state['center_seq'] or
+                    (target.rudder_center and not state['center_held']))
+    state['center_seq'] = sample.rudder_center_seq
+    state['center_held'] = target.rudder_center
+    rate = 0.0
+    if center_event or target.rudder_center:
+        # 序号捕获两次主循环之间的 B 短按；持续按住时不重复强制发送。
+        state['angle_deg'] = 0.0
+        state['wait_release'] = True
+    elif state['wait_release']:
+        if (sample.left_trigger <= config.trigger_deadzone and
+                sample.right_trigger <= config.trigger_deadzone):
+            state['wait_release'] = False
+    else:
+        rate = target.rudder_rate_deg_s
+        # 浮点状态避免小输入逐拍取整丢失；直接夹紧积分，端点没有积分积累。
+        state['angle_deg'] = _clamp(
+            state['angle_deg'] + rate * _clamp(dt, 0.0, AUTO_RUDDER_MAX_DT_S),
+            -AUTO_RUDDER_LIMIT_DEG, AUTO_RUDDER_LIMIT_DEG)
+        if ((rate > 0 and state['angle_deg'] >= AUTO_RUDDER_LIMIT_DEG) or
+                (rate < 0 and state['angle_deg'] <= -AUTO_RUDDER_LIMIT_DEG)):
+            rate = 0.0
+    state['rate_deg_s'] = rate
+    # 保持发生在非零舵角，不能用“角度变零”判定扳机松开。
+    force_send = center_event or (old_rate != 0.0 and rate == 0.0)
+    return int(round(state['angle_deg'] * 100)), force_send
 
 
 def _auto_sti_escape_pressed():
@@ -1087,6 +1251,10 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
         return
     initial = gamepad_service.snapshot(controller_index)
     exit_seq, loss_seq = initial.exit_seq, initial.loss_seq
+    # 每次进入重建，退出后不复用上次角度、速度或回中抑制状态。
+    rudder = {'angle_deg': 0.0, 'rate_deg_s': 0.0,
+              'center_seq': initial.rudder_center_seq,
+              'center_held': False, 'wait_release': False}
     previous_stream_mask = get_stream_control_mask()
     streams_changed = False
     control_attempted = False
@@ -1096,12 +1264,18 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
     last_loop = time.monotonic()
     last_packet = None
     reason = '控制循环结束'
+    previous_context = dict(getattr(EXPERIMENT_CONTEXT, 'value', {}))
+    EXPERIMENT_CONTEXT.value = {}
+    _experiment_mode('WAIT_CENTER', source='auto_sti', run_id=uuid.uuid4().hex,
+                     controller_index=controller_index, config=asdict(config))
     print(f'[AUTO_STI] 绑定槽位 {controller_index}，上限 {config.max_percent:g}%；'
-          '请回中并松开 Y/A 和十字键左/右，X 或 ESC 退出。')
+          '请回中并松开 Y/A、十字键左/右、LT/RT/B，X 或 ESC 退出。')
     print('[AUTO_STI] 左右拨杆控制艇首转向，倒退时同向；纯横拨为零。'
           'Y/A 按住向前/后；'
           f'十字键左/右控制 roll +{config.roll_rpm}/-{config.roll_rpm}RPM，'
           '松开或左右同按停；退出会交还控制权。')
+    print(f'[AUTO_STI] RT/LT 改变尾舵目标，满按 ±{config.rudder_rate_deg_s:g}°/s；'
+          '松开或双按保持，B直接回中，再次偏转前须松开B和两扳机。')
     try:
         while running and not link_closed.is_set():
             sample = gamepad_service.snapshot(controller_index)
@@ -1121,13 +1295,11 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
             if state != 'WAIT_CENTER' and now - last_loop > config.input_timeout_s:
                 reason = '控制循环发生长时间停顿'
                 break
+            dt = now - last_loop
             last_loop = now
-            # 每拍重新计算绝对目标，按键松开不会继承上一拍的运动命令。
+            # 每拍重算输入意图；尾舵位置由本次会话单独保存。
             target = map_gamepad_to_target(sample, config)
-            centered = (abs(sample.left_x) <= config.deadzone and
-                        abs(sample.forward) <= config.deadzone and
-                        not sample.button_y and not sample.button_a and
-                        not sample.dpad_left and not sample.dpad_right)
+            centered = is_gamepad_neutral(sample, config)
             if state == 'WAIT_CENTER':
                 if not centered:
                     time.sleep(config.poll_period_s)
@@ -1141,6 +1313,7 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                     reason = '无法订阅板端状态'
                     break
                 state = 'PREPARING'
+                _experiment_mode(state)
                 deadline = now + config.prepare_timeout_s
                 next_send = now
                 print('[AUTO_STI] 准备接管：发送中立，等待新 PID OFF、校准非运行及保持解除状态。')
@@ -1160,25 +1333,35 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                 if state == 'PREPARING':
                     if ready and centered and control_attempted:
                         state = 'ACTIVE'
+                        dt = 0.0
+                        rudder['center_seq'] = sample.rudder_center_seq
+                        _experiment_mode(state)
                         next_send = now
                         print('[AUTO_STI] 已观察到进入条件满足，开始发送手柄目标（非执行 ACK）。')
                     elif now >= deadline:
                         reason = '准备超时；未观察到所需状态或手柄未回中'
                         break
+            rudder_angle_cdeg, rudder_force_send = 0, False
+            if state == 'ACTIVE':
+                rudder_angle_cdeg, rudder_force_send = _update_auto_sti_rudder(
+                    rudder, target, sample, config, dt)
             packet = _build_auto_sti_packet(
-                target if state == 'ACTIVE' else ControlTarget(), config)
+                target if state == 'ACTIVE' else ControlTarget(), config, rudder_angle_cdeg)
             # 回中和松键的停止不等待下一次常规心跳；普通运动最多按10Hz发送。
             force_stop = last_packet is not None and any(
                 last_packet[key] != 0 and packet[key] == 0 for key in (
                     'thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm',
                     'pitchmotor_enable', 'rollmotor_enable'))
-            if force_stop or now >= next_send:
+            if force_stop or rudder_force_send or now >= next_send:
                 if (link_closed.is_set() or
                         time.monotonic() - sample.sample_time > config.input_timeout_s):
                     reason = '发送前连接失效或本轮输入已过期'
                     break
                 # sendall 报错也可能已经发送部分字节，因此发送前就标记需要清理。
                 control_attempted = True
+                _experiment_context(input=dict(
+                    asdict(sample), rudder_rate_deg_s=rudder['rate_deg_s'],
+                    rudder_wait_release=rudder['wait_release']))
                 if not send_auto_control_packet(conn, packet, label='AUTO_STI'):
                     reason = '发送失败'
                     break
@@ -1188,7 +1371,10 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                     print(f'[AUTO_STI {state}] 输入前后={sample.forward:+.2f} '
                           f'左右={sample.left_x:+.2f}；目标左={target.left_percent:+.0f}% '
                           f'右={target.right_percent:+.0f}% pitch={packet["pitchmotor_speed_rpm"]:+d}RPM '
-                          f'roll={packet["rollmotor_speed_rpm"]:+d}RPM'
+                          f'roll={packet["rollmotor_speed_rpm"]:+d}RPM；'
+                          f'LT/RT={sample.left_trigger:.2f}/{sample.right_trigger:.2f} '
+                          f'尾舵目标={rudder_angle_cdeg / 100:+.2f}° '
+                          f'变化速度={rudder["rate_deg_s"]:+.1f}°/s'
                           + ('（准备阶段实际发送中立）' if state != 'ACTIVE' else ''))
                     next_report = now + 1.0
             time.sleep(config.poll_period_s)
@@ -1200,6 +1386,7 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
         reason = f'输入或控制异常：{exc}'
     finally:
         print(f'[AUTO_STI] {reason}')
+        _experiment_mode('EXIT', reason=reason)
         if control_attempted:
             if send_neutral_and_release(conn):
                 print('[AUTO_STI] 已发送中立和释放，后续可能由 SBUS 接管；非全局急停。')
@@ -1207,6 +1394,8 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                 print('[AUTO_STI] 中立/释放未完整发出，依赖板端现有约2.5秒 STREAM 租约。')
         if streams_changed:
             send_stream_control(conn, previous_stream_mask, '恢复遥测流')
+        _experiment_mode('FINISHED', reason=reason)
+        EXPERIMENT_CONTEXT.value = previous_context
 
 
 def _update_auto_rudder(packet, state, pressed, rising, dt):
@@ -1543,44 +1732,6 @@ UGCTL_INT_FIELDS = {
 }
 UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
 
-UGRDS_FIELDS = [
-    "schema", "seq", "t_ms", "signal_good", "ready_to_send", "pending",
-    "waiting_ack", "last_result", "attempt_count", "sent_count",
-    "reject_count", "timeout_count", "uart_fail_count", "last_hal_status",
-    "last_uart_error", "tx_mode", "card_id_known", "card_mismatch",
-    "has_cached_fix",
-    "send_ok_count", "local_latitude_deg_e7", "local_longitude_deg_e7",
-    "target_valid", "goto_received_count", "target_latitude_deg_e7",
-    "target_longitude_deg_e7",
-]
-UGRDS_INT_FIELDS = set(UGRDS_FIELDS)
-UGRDS_CSV_HEADER = ["host_iso"] + UGRDS_FIELDS
-UGRDS_RESULT_NAMES = {
-    0: "IDLE", 1: "PENDING", 2: "WAITING_ACK", 3: "SUCCESS",
-    4: "REJECTED", 5: "TIMEOUT", 6: "UART_ERROR",
-}
-
-
-def ugrds_parse(line):
-    if not ekf_checksum_ok(line):
-        return None
-    star = line.rfind("*")
-    parts = line[1:star].split(",")
-    if not parts or parts[0] != "UGRDS":
-        return None
-    values = parts[1:]
-    if len(values) != len(UGRDS_FIELDS):
-        return None
-    try:
-        row = {name: int(raw) for name, raw in zip(UGRDS_FIELDS, values)}
-    except ValueError:
-        return None
-    return row if row["schema"] == 2 else None
-
-
-def ugrds_csv_row(row):
-    return [datetime.now().isoformat(timespec="milliseconds")] + [
-        row[name] for name in UGRDS_FIELDS]
 
 #  蜗杆位置遥测($UGWRM)解析 + CSV 记录
 # 字段顺序必须与板端 EthernetUartDriver_SendWormTelemetry() 完全一致。
@@ -2409,6 +2560,46 @@ STATION_DIR = os.path.dirname(os.path.abspath(__file__))
 EKF_LOG_DIR = os.path.join(STATION_DIR, "logs", "ekf")
 CONTROL_LOG_DIR = os.path.join(STATION_DIR, "logs", "control")
 BATTERY_LOG_DIR = os.path.join(STATION_DIR, "logs", "battery")
+EXPERIMENT_LOG_DIR = os.path.join(STATION_DIR, "logs", "control", "experiments")
+RDSS_LOG_DIR = os.path.join(STATION_DIR, "logs", "rsdd")
+
+
+def _experiment_snapshot():
+    if EXPERIMENT_RECORDER is not None:
+        try:
+            result = EXPERIMENT_RECORDER.snapshot()
+            if EXPERIMENT_LAST_ERROR:
+                result.update(status='error', last_error=EXPERIMENT_LAST_ERROR)
+            return result
+        except Exception as exc:
+            return {'status': 'error', 'last_error': str(exc)}
+    return {'status': 'error' if EXPERIMENT_LAST_ERROR else 'idle',
+            'last_error': EXPERIMENT_LAST_ERROR}
+
+
+def _start_experiment_recorder(peer):
+    """连接建立即开始记录，覆盖接管前基线；故障不能阻止原控制台。"""
+    global EXPERIMENT_LAST_ERROR
+    recorder = None
+    try:
+        recorder = ExperimentRecorder(EXPERIMENT_LOG_DIR, metadata={
+            'focus': ['pitch', 'roll'], 'time_basis': 'pc_monotonic_ns',
+            'feedback_note': 'pitch编码器；roll输出脉冲估算；PC观测延迟非机械本体延迟',
+            'gamepad_defaults': asdict(GamepadConfig()),
+        }, rdss_root=RDSS_LOG_DIR)
+        path = recorder.start(peer=peer)
+        print(f'[实验记录] 指令、回传与事件 -> {path}')
+        print(f'[北斗日志] UGRDS 原始回传 -> {recorder.snapshot().get("rdss_log_path")}')
+        return recorder
+    except Exception as exc:
+        EXPERIMENT_LAST_ERROR = str(exc)
+        print(f'[实验记录失败] {exc}；控制台继续，但本次实验记录不完整。')
+        try:
+            if recorder is not None:
+                recorder.stop()
+        except Exception:
+            pass
+        return None
 
 
 def receive_thread(conn, ctl_store=None, wrm_store=None, link_closed=None,
@@ -2420,6 +2611,7 @@ def receive_thread(conn, ctl_store=None, wrm_store=None, link_closed=None,
     except Exception as exc:
         print(f'[接收线程异常] {exc}')
     finally:
+        _experiment_record({'kind': 'link', 'status': 'disconnected'})
         if link_closed is not None:
             link_closed.set()
         if monitor_bridge is not None:
@@ -2443,15 +2635,24 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
         battery_monitor = BatteryAlarmMonitor()
     assembler = SnapshotAssembler(ETHERNET_SNAPSHOT_SIZE)
     line_buffer = ""
+    experiment_active = EXPERIMENT_MANAGED or EXPERIMENT_RECORDER is not None
+    batch_id = 0
+    received_ns = 0
+    received_iso = ''
+    last_recording_error = None
 
     # —— EKF 遥测 CSV：连接起把 $UGEKF 落盘，便于离线绘图 ——
-    os.makedirs(EKF_LOG_DIR, exist_ok=True)
-    os.makedirs(CONTROL_LOG_DIR, exist_ok=True)
-    ekf_csv_path = os.path.join(EKF_LOG_DIR, "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
-    ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
-    ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
-    ekf_csv.flush()
-    print(f"[EKF] 状态遥测记录（非磁标定） -> {ekf_csv_path}")
+    ekf_csv = None
+    # 默认实验会话由后台统一写CSV，避免原逐行flush阻塞唯一接收线程。
+    # 未启动记录器的旧调用者保留原路径与格式。
+    if not experiment_active:
+        os.makedirs(EKF_LOG_DIR, exist_ok=True)
+        os.makedirs(CONTROL_LOG_DIR, exist_ok=True)
+        ekf_csv_path = os.path.join(EKF_LOG_DIR, "ekf_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv")
+        ekf_csv = open(ekf_csv_path, "w", encoding="utf-8", newline="")
+        ekf_csv.write(",".join(EKF_CSV_HEADER) + "\n")
+        ekf_csv.flush()
+        print(f"[EKF] 状态遥测记录（非磁标定） -> {ekf_csv_path}")
     ekf_stat = {"ok": 0, "bad": 0, "last_print": 0.0, "last_key": None}
     ctl_csv = None
     ctl_csv_path = None
@@ -2462,6 +2663,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     battery_csv = None
     battery_csv_failed = False
     rdss_csv = None
+    rdss_raw = None
+    rdss_csv_failed = False
     rdss_last_key = None
 
     def publish_monitor(topic, row):
@@ -2482,7 +2685,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     def record_battery(row):
         """告警先处理，电池日志失败只提示一次，不终止接收和控制会话。"""
         nonlocal battery_csv, battery_csv_failed
-        if battery_csv_failed:
+        if battery_csv_failed or experiment_active:
             return
         try:
             if battery_csv is None:
@@ -2506,67 +2709,103 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                     pass
                 battery_csv = None
 
-    def handle_line(raw_line):
+    def record_rdss(row, raw_line, complete=True):
+        """旧调用者的北斗CSV也隔离写盘故障；默认会话已在后台统一记录。"""
+        nonlocal rdss_csv, rdss_raw, rdss_csv_failed
+        if experiment_active or rdss_csv_failed:
+            return
+        try:
+            if rdss_raw is None:
+                os.makedirs(RDSS_LOG_DIR, exist_ok=True)
+                stamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+                path = os.path.join(RDSS_LOG_DIR, 'rsdd_' + stamp + '.log')
+                rdss_raw = open(path, 'x', encoding='utf-8', newline='')
+                print(f'[北斗] 原始回传记录 -> {path}')
+            rdss_raw.write(json.dumps({'host_iso': received_iso, 't_ns': received_ns,
+                                      'raw': raw_line, 'complete': complete,
+                                      'parsed': row is not None}, ensure_ascii=False) + '\n')
+            rdss_raw.flush()
+            if row is None:
+                return
+            if rdss_csv is None:
+                path = os.path.join(RDSS_LOG_DIR, 'rsdd_' + datetime.now().strftime('%Y%m%d_%H%M%S_%f') + '.csv')
+                rdss_csv = open(path, 'w', encoding='utf-8', newline='')
+                rdss_csv.write(','.join(UGRDS_CSV_HEADER) + '\n')
+                print(f'[北斗] 状态记录 -> {path}')
+            rdss_csv.write(','.join(str(value) for value in ugrds_csv_row(row)) + '\n')
+            rdss_csv.flush()
+        except (OSError, UnicodeError) as exc:
+            rdss_csv_failed = True
+            print(f'[北斗记录失败] {exc}；遥测接收和控制继续。')
+
+    def report_rdss(row):
+        """仅在有效北斗状态变化时提示，记录仍走现有异步实验链路。"""
+        nonlocal rdss_last_key
+        key = (
+            row["last_result"], row["signal_good"], row["ready_to_send"],
+            row["pending"], row["waiting_ack"], row["sent_count"],
+            row["reject_count"], row["timeout_count"], row["uart_fail_count"],
+            row["send_ok_count"], row["goto_received_count"],
+            row["target_valid"], row["target_latitude_deg_e7"],
+            row["target_longitude_deg_e7"],
+        )
+        if key != rdss_last_key:
+            rdss_last_key = key
+            local_position = "N/A"
+            if row["has_cached_fix"]:
+                local_position = "%.7f,%.7f" % (
+                    row["local_latitude_deg_e7"] / 1e7,
+                    row["local_longitude_deg_e7"] / 1e7,
+                )
+            target_position = "N/A"
+            if row["target_valid"]:
+                target_position = "%.7f,%.7f" % (
+                    row["target_latitude_deg_e7"] / 1e7,
+                    row["target_longitude_deg_e7"] / 1e7,
+                )
+            print(
+                "\n[RDSS] result=%s signal=%d ready=%d pending=%d ack=%d "
+                "attempt=%d sent=%d send_ok=%d reject=%d timeout=%d uart_fail=%d "
+                "local=%s goto_rx=%d target=%s"
+                % (UGRDS_RESULT_NAMES.get(row["last_result"], row["last_result"]),
+                   row["signal_good"], row["ready_to_send"], row["pending"],
+                   row["waiting_ack"], row["attempt_count"], row["sent_count"],
+                   row["send_ok_count"], row["reject_count"],
+                   row["timeout_count"], row["uart_fail_count"],
+                   local_position, row["goto_received_count"], target_position)
+            )
+
+    def handle_line(raw_line, line_index):
         nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
-        nonlocal rdss_csv, rdss_last_key
         line = raw_line.strip()
+        topic, row = None, None
+        for prefix, name, parser in (
+            ('$UGRDS', 'ugrds', ugrds_parse), ('$UGBAT', 'ugbat', ugbat_parse),
+            ('$UGWRM', 'ugwrm', ugwrm_parse), ('$UGCTL', 'ugctl', ugctl_parse),
+            ('$UGEKF', 'ugekf', ekf_parse),
+        ):
+            if line.startswith(prefix):
+                topic = name
+                if name != 'ugekf' or ekf_checksum_ok(line):
+                    row = parser(raw_line if name in ('ugrds', 'ugbat') else line)
+                break
+        _experiment_record({
+            'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
+            'batch_id': batch_id, 'line_index': line_index,
+            'topic': topic, 'row': row, 'raw': raw_line, 'complete': True,
+        })
         if not line:
             return
 
-        if line.startswith("$UGRDS"):
-            row = ugrds_parse(line)
-            if row is None:
-                return
-            publish_monitor('ugrds', row)
-            if rdss_csv is None:
-                path = os.path.join(
-                    CONTROL_LOG_DIR,
-                    "rdss_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
-                )
-                rdss_csv = open(path, "w", encoding="utf-8", newline="")
-                rdss_csv.write(",".join(UGRDS_CSV_HEADER) + "\n")
-                rdss_csv.flush()
-                print(f"\n[RDSS] short-message status log -> {path}")
-            rdss_csv.write(",".join(str(value) for value in ugrds_csv_row(row)) + "\n")
-            rdss_csv.flush()
-            key = (
-                row["last_result"], row["signal_good"], row["ready_to_send"],
-                row["pending"], row["waiting_ack"], row["sent_count"],
-                row["reject_count"], row["timeout_count"], row["uart_fail_count"],
-                row["send_ok_count"], row["goto_received_count"],
-                row["target_valid"], row["target_latitude_deg_e7"],
-                row["target_longitude_deg_e7"],
-            )
-            if key != rdss_last_key:
-                rdss_last_key = key
-                local_position = "N/A"
-                if row["has_cached_fix"]:
-                    local_position = "%.7f,%.7f" % (
-                        row["local_latitude_deg_e7"] / 1e7,
-                        row["local_longitude_deg_e7"] / 1e7,
-                    )
-                target_position = "N/A"
-                if row["target_valid"]:
-                    target_position = "%.7f,%.7f" % (
-                        row["target_latitude_deg_e7"] / 1e7,
-                        row["target_longitude_deg_e7"] / 1e7,
-                    )
-                print(
-                    "\n[RDSS] result=%s signal=%d ready=%d pending=%d ack=%d "
-                    "attempt=%d sent=%d send_ok=%d reject=%d timeout=%d uart_fail=%d "
-                    "local=%s goto_rx=%d target=%s"
-                    % (UGRDS_RESULT_NAMES.get(row["last_result"], row["last_result"]),
-                       row["signal_good"], row["ready_to_send"], row["pending"],
-                       row["waiting_ack"], row["attempt_count"], row["sent_count"],
-                       row["send_ok_count"], row["reject_count"],
-                       row["timeout_count"], row["uart_fail_count"],
-                       local_position, row["goto_received_count"], target_position)
-                )
+        if topic == 'ugrds':
+            if row is not None:
+                publish_monitor('ugrds', row)
+                report_rdss(row)
+            record_rdss(row, raw_line)
             return
 
         # 电池流只由本接收线程消费，状态变化和限频提醒主动打印，无须输入命令。
         if line.startswith("$UGBAT"):
-            row = ugbat_parse(raw_line)
             if row is not None:
                 battery_monitor.ingest(row)
                 publish_monitor('ugbat', row)
@@ -2576,13 +2815,12 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
         # 双轴位置遥测落 CSV，只在校准阶段变化时提示，避免持续刷屏。
         # 坏帧计入 wrm_stat["bad"]，与 EKF 的 bad 一样用于观察链路误码。
         if line.startswith("$UGWRM"):
-            row = ugwrm_parse(line)
             if row is None:
                 wrm_stat["bad"] += 1
                 return
             wrm_store.publish(row)
             publish_monitor('ugwrm', row)
-            if wrm_csv is None:
+            if wrm_csv is None and not experiment_active:
                 wrm_csv_path = os.path.join(
                     CONTROL_LOG_DIR,
                     "worm_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
@@ -2592,9 +2830,10 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                 wrm_csv.write(",".join(UGWRM_CSV_HEADER) + "\n")
                 wrm_csv.flush()
                 print(f"\n[WORM] 双轴位置遥测记录 -> {wrm_csv_path}")
-            wrm_csv.write(
-                ",".join(str(value) for value in ugwrm_csv_row(row)) + "\n")
-            wrm_csv.flush()
+            if wrm_csv is not None:
+                wrm_csv.write(
+                    ",".join(str(value) for value in ugwrm_csv_row(row)) + "\n")
+                wrm_csv.flush()
             wrm_stat["ok"] += 1
             key, notice = ugwrm_calibration_notice(row)
             if key != wrm_stat["last_home"]:
@@ -2604,12 +2843,11 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
 
         # PID 遥测由本线程独占解析，再发布给 UgctlStore；PID 界面禁止 recv。
         if line.startswith("$UGCTL"):
-            row = ugctl_parse(line)
             if row is None:
                 ctl_stat["bad"] += 1
                 return
             publish_monitor('ugctl', row)
-            if ctl_csv is None:
+            if ctl_csv is None and not experiment_active:
                 ctl_csv_path = os.path.join(
                     CONTROL_LOG_DIR,
                     "ctl_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".csv",
@@ -2619,9 +2857,10 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                 ctl_csv.write(",".join(UGCTL_CSV_HEADER) + "\n")
                 ctl_csv.flush()
                 print(f"\n[PID] 控制遥测记录 -> {ctl_csv_path}")
-            ctl_csv.write(
-                ",".join(str(value) for value in ugctl_csv_row(row)) + "\n")
-            ctl_csv.flush()
+            if ctl_csv is not None:
+                ctl_csv.write(
+                    ",".join(str(value) for value in ugctl_csv_row(row)) + "\n")
+                ctl_csv.flush()
             ctl_stat["ok"] += 1
             ctl_store.publish(row)
             return
@@ -2632,13 +2871,13 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             if not ekf_checksum_ok(line):
                 ekf_stat["bad"] += 1
                 return
-            row = ekf_parse(line)
             if row is None:
                 ekf_stat["bad"] += 1
                 return
             publish_monitor('ugekf', row)
-            ekf_csv.write(",".join(str(x) for x in ekf_csv_row(row)) + "\n")
-            ekf_csv.flush()
+            if ekf_csv is not None:
+                ekf_csv.write(",".join(str(x) for x in ekf_csv_row(row)) + "\n")
+                ekf_csv.flush()
             ekf_stat["ok"] += 1
             fl = row["fl"]
             key = (row["status"], (fl >> 0) & 1, (fl >> 1) & 1)  # (status, healthy, valid)
@@ -2675,13 +2914,21 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     while running:
         # 即使 EKF 等主题持续有包，也必须发现电池流单独停止或损坏。
         battery_monitor.poll()
+        recording = _experiment_snapshot()
+        if recording.get('status') == 'error' and recording.get('last_error') != last_recording_error:
+            last_recording_error = recording.get('last_error')
+            print(f'[实验记录不完整] {last_recording_error}；控制继续，请保留现场记录。')
         try:
             # 设置超时，以便能定期检查 running 标志
             conn.settimeout(1.0)
             data = conn.recv(4096)
+            batch_ns = time.monotonic_ns()
+            batch_iso = datetime.now().astimezone().isoformat(timespec='microseconds')
             if not data:
                 print("[信息] 客户端已断开连接。")
                 break
+            received_ns, received_iso = batch_ns, batch_iso
+            batch_id += 1
 
             # STM32 发的是 ASCII 文本（AT 或快照十六进制行），这里做流式按行拼接。
             # 非 ASCII 字节必须留下替代标记，不能删除坏字节后误认成完整电池帧。
@@ -2691,13 +2938,23 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                 continue
 
             line_buffer += text
+            line_index = 0
             while True:
                 newline_idx = line_buffer.find('\n')
                 if newline_idx < 0:
                     break
-                one_line = line_buffer[:newline_idx].rstrip('\r')
+                # 保留原始行尾供严格校验和证据记录；不能删除多余CR后修复坏帧。
+                one_line = line_buffer[:newline_idx + 1]
                 line_buffer = line_buffer[newline_idx + 1:]
-                handle_line(one_line)
+                handle_line(one_line, line_index)
+                line_index += 1
+            if len(line_buffer) > 65536:
+                _experiment_record({'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
+                                    'batch_id': batch_id, 'topic': 'ugrds' if line_buffer.startswith('$UGRDS') else None, 'row': None,
+                                    'raw': line_buffer, 'complete': False, 'error': 'line_too_long'})
+                if line_buffer.startswith('$UGRDS'):
+                    record_rdss(None, line_buffer, complete=False)
+                line_buffer = ''
         except socket.timeout:
             # 超时后继续循环，以便检查 running 标志
             continue
@@ -2708,6 +2965,22 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             print(f"[接收错误] {e}")
             break
     # 线程结束前清理
+    if line_buffer:
+        _experiment_record({'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
+                            'batch_id': batch_id, 'topic': 'ugrds' if line_buffer.startswith('$UGRDS') else None, 'row': None,
+                            'raw': line_buffer, 'complete': False, 'error': 'truncated_on_disconnect'})
+        if line_buffer.startswith('$UGRDS'):
+            record_rdss(None, line_buffer, complete=False)
+    if rdss_raw is not None:
+        try:
+            rdss_raw.close()
+        except OSError:
+            pass
+    if rdss_csv is not None:
+        try:
+            rdss_csv.close()
+        except OSError:
+            pass
     if battery_csv is not None:
         try:
             battery_csv.close()
@@ -2722,8 +2995,6 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             ctl_csv.close()
         if wrm_csv is not None:
             wrm_csv.close()
-        if rdss_csv is not None:
-            rdss_csv.close()
     except Exception:
         pass
     conn.close()
@@ -2739,6 +3010,7 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
     print("输入 'auto_sti [槽位0..3] [上限%]' 进入 Xbox 模式，默认上限100%；X/ESC退出")
     print("  例：auto_sti 0 20 使用槽位0、推进限制20%；Y/A按住移动pitch，"
           f"十字键左/右控制roll +{GamepadConfig().roll_rpm}/-{GamepadConfig().roll_rpm}RPM")
+    print("  尾舵RT正/LT负，满按30°/s、松开或双按保持；B回中，B/LT/RT全松后再响应")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'wormon' / 'wormoff' 开 / 停双轴位置遥测 $UGWRM（落 CSV，阶段变化提示）")
@@ -2757,6 +3029,11 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
                 break
             if not user_input:
                 continue
+            EXPERIMENT_CONTEXT.value = {
+                'source': user_input.lower().split()[0], 'phase': 'CONSOLE',
+                'run_id': uuid.uuid4().hex,
+            }
+            _experiment_record(dict(EXPERIMENT_CONTEXT.value, kind='mode'))
 
             if user_input.lower() in ('quit', 'exit'):
                 print("退出程序。")
@@ -2835,8 +3112,14 @@ def _start_monitor_bridge():
 
 
 def main():
-    global running
+    global running, EXPERIMENT_RECORDER, EXPERIMENT_LAST_ERROR, EXPERIMENT_MANAGED
+    global CONTROL_MONITOR_BRIDGE
     running = True
+    EXPERIMENT_RECORDER = None
+    EXPERIMENT_LAST_ERROR = None
+    EXPERIMENT_MANAGED = False
+    CONTROL_MONITOR_BRIDGE = None
+    EXPERIMENT_CONTEXT.value = {'source': 'session', 'phase': 'CONNECT'}
     server_socket = conn = recv_thread = gamepad_service = None
     monitor_bridge = None
     link_closed = threading.Event()
@@ -2856,9 +3139,14 @@ def main():
         print('服务端已绑定 192.168.57.100:8800，等待客户端连接...')
         conn, addr = server_socket.accept()
         print(f'接收到客户端连接：{addr}')
+        EXPERIMENT_MANAGED = True
+        EXPERIMENT_RECORDER = _start_experiment_recorder(f'{addr[0]}:{addr[1]}')
+        _experiment_record({'kind': 'link', 'status': 'connected', 'peer': f'{addr[0]}:{addr[1]}'})
         if monitor_bridge is not None:
             try:
                 monitor_bridge.set_link('connected', peer=f'{addr[0]}:{addr[1]}')
+                monitor_bridge.set_experiment_provider(_experiment_snapshot)
+                CONTROL_MONITOR_BRIDGE = monitor_bridge
             except Exception as exc:
                 print(f'[监控] 连接状态发布失败：{exc}；控制台继续运行。')
                 try:
@@ -2869,10 +3157,9 @@ def main():
         # 发送与接收共用有限 socket 超时；不把它视作硬实时停止保证。
         conn.settimeout(1.0)
         # 先订阅原有三主题；不支持 BAT 的旧固件仍能保留姿态、PID 和 pitch 数据。
-        base_streams = STREAM_EKF | STREAM_CTL | STREAM_WRM | STREAM_RDSS
-        send_stream_control(conn, base_streams, '兼容 EKF/CTL/WRM 遥测声明', keep_battery=False)
-        if send_stream_control(conn, base_streams | STREAM_BAT):
-            print('[遥测] 已请求 EKF + CTL + WRM + BAT；未上报的字段显示不可用')
+        base_streams = STREAM_EKF | STREAM_CTL | STREAM_WRM
+        if send_stream_control(conn, base_streams | STREAM_BAT | STREAM_RDSS):
+            print('[遥测] 已尝试订阅 EKF + CTL + WRM + BAT + RDSS；以收到有效帧确认支持，未上报显示不可用')
         else:
             print('[遥测警告] 遥测声明发送失败，请检查连接后重试 ekfon')
         ctl_store, wrm_store = UgctlStore(), UgwrmStore()
@@ -2886,6 +3173,7 @@ def main():
     finally:
         # 清理覆盖初始化、等待连接和交互阶段，避免 Ctrl+C 后留下采集线程。
         try:
+            EXPERIMENT_CONTEXT.value = {'source': 'session', 'phase': 'CLOSE'}
             if conn is not None and not link_closed.is_set():
                 print('[退出] 正在发送中立命令并释放 Ethernet 控制权...')
                 send_neutral_and_release(conn)
@@ -2908,8 +3196,24 @@ def main():
                     pass
             if recv_thread is not None and recv_thread.ident is not None:
                 recv_thread.join(timeout=2)
+                if recv_thread.is_alive() is True and EXPERIMENT_RECORDER is not None:
+                    _experiment_incomplete('接收线程未在2秒内退出，尾部记录可能缺失')
+            if EXPERIMENT_RECORDER is not None:
+                _experiment_record({'kind': 'link', 'status': 'closed'})
+                try:
+                    EXPERIMENT_RECORDER.stop()
+                    final_recording = _experiment_snapshot()
+                    if final_recording.get('status') == 'error':
+                        print(f"[实验记录不完整] {final_recording.get('last_error')}")
+                    else:
+                        print(f"[实验记录已保存] {final_recording.get('directory')}")
+                except Exception as exc:
+                    print(f'[实验记录收尾失败] {exc}')
+                EXPERIMENT_RECORDER = None
+            EXPERIMENT_MANAGED = False
             if server_socket is not None:
                 server_socket.close()
+            CONTROL_MONITOR_BRIDGE = None
             if monitor_bridge is not None:
                 try:
                     monitor_bridge.stop()

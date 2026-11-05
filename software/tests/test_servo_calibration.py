@@ -45,6 +45,10 @@ static unsigned servo_iteration;
 static const char *scenario;
 static jmp_buf servo_exit;
 static unsigned center_start_count;
+volatile RudderDebugCommand g_rudder_debug;
+static int16_t rudder_applied;
+static uint32_t rudder_source;
+static unsigned rudder_apply_count;
 
 void UMotor_SetTargetSpeedById(uint8_t id, int32_t rpm)
 {
@@ -83,7 +87,25 @@ uint32_t SbusDriver_GetChannels(uint16_t *out, uint32_t count, uint32_t *lost,
     *last = sbus_last_tick;
     return sbus_available ? SBUS_CHANNEL_COUNT : 0U;
 }
-void RudderDriver_Apply(int16_t angle, uint8_t active) { (void)angle; (void)active; }
+bool RudderDriver_GetDebugCommand(uint8_t allow, int16_t *out)
+{
+    if (allow == 0U) { g_rudder_debug.enabled = 0U; return false; }
+    if (g_rudder_debug.enabled != 1U) return false;
+    *out = (int16_t)g_rudder_debug.target_angle_cdeg;
+    return true;
+}
+void RudderDriver_ApplyDebug(int16_t angle)
+{
+    rudder_applied = angle;
+    rudder_source = RUDDER_SOURCE_DEBUG;
+    ++rudder_apply_count;
+}
+void RudderDriver_Apply(int16_t angle, uint8_t active)
+{
+    rudder_applied = active ? angle : 0;
+    rudder_source = active ? RUDDER_SOURCE_ETHERNET : RUDDER_SOURCE_CENTER;
+    ++rudder_apply_count;
+}
 bool RudderDriver_CopyState(RudderState *out) { memset(out, 0, sizeof(*out)); return true; }
 HAL_StatusTypeDef ThrusterDriver_SetDualPulseUs(uint16_t a, uint16_t b)
 {
@@ -109,6 +131,7 @@ static void assert_stopped(void)
 {
     assert(state().running == 0U && pitch_applied == 0);
     assert(axis_state().calib_hold != 0U);
+    assert(rudder_source == RUDDER_SOURCE_CENTER && rudder_applied == 0);
 }
 static void set_sbus_neutral(void)
 {
@@ -315,11 +338,106 @@ static void cancel_or_pid_tick(void)
     longjmp(servo_exit, 1);
 }
 
+static void rudder_debug_tick(void)
+{
+    switch (servo_iteration)
+    {
+    case 1:
+        assert(rudder_source == RUDDER_SOURCE_DEBUG && rudder_applied == 4500);
+        assert(pitch_applied == 0 && state().running == 0U);
+        g_rudder_debug.target_angle_cdeg = -4500;
+        break;
+    case 2:
+        assert(rudder_source == RUDDER_SOURCE_DEBUG && rudder_applied == -4500);
+        direct_active = 1U;
+        direct_pack.rudder_valid = 1U;
+        direct_pack.rudder_angle_cdeg = 2500;
+        break;
+    case 3:
+        assert(rudder_source == RUDDER_SOURCE_ETHERNET && rudder_applied == 2500);
+        assert(g_rudder_debug.enabled == 0U);
+        direct_active = 0U;
+        break;
+    case 4:
+        assert(rudder_source == RUDDER_SOURCE_CENTER && rudder_applied == 0);
+        g_rudder_debug.target_angle_cdeg = 1000;
+        g_rudder_debug.enabled = 1U;
+        break;
+    case 5:
+        assert(rudder_source == RUDDER_SOURCE_DEBUG && rudder_applied == 1000);
+        pid_status_stub.arm_requested = 1U;
+        pid_status_stub.requested_mode = ZIGZAG_MODE_PITCH_HOLD;
+        /* PID 输出无效仍占有控制源，不得进入调试。 */
+        pid_output_stub.output_valid = 0U;
+        break;
+    case 6:
+        assert(g_rc_ctrl_mode == RC_CTRL_MODE_PID_ETH);
+        assert(rudder_source == RUDDER_SOURCE_CENTER && g_rudder_debug.enabled == 0U);
+        pid_status_stub.arm_requested = 0U;
+        WormAxis_RequestCalibration();
+        g_rudder_debug.enabled = 1U;
+        break;
+    case 7:
+        assert(g_rc_ctrl_mode == RC_CTRL_MODE_WORM_HOMING);
+        assert(rudder_source == RUDDER_SOURCE_CENTER && g_rudder_debug.enabled == 0U);
+        WormAxis_CancelCalibration();
+        g_rudder_debug.enabled = 1U;
+        break;
+    case 8:
+        assert_stopped();
+        assert(g_rudder_debug.enabled == 0U);
+        direct_active = 1U;
+        direct_pack.rudder_angle_cdeg = 0;
+        ++g_ethernet_uart_diag.control_packet_count;
+        break;
+    case 9:
+        assert(axis_state().calib_hold == 0U);
+        assert(g_rc_ctrl_mode == RC_CTRL_MODE_ETH);
+        direct_active = 0U;
+        sbus_available = 1U;
+        set_sbus_neutral();
+        sbus_channels[SBUS_CH_SWITCH_LEFT_MID_1] = 1024U;
+        sbus_channels[SBUS_CH_LEFT_STICK_X] = 1024U;
+        sbus_channels[SBUS_CH_LEFT_STICK_Y] = 1024U;
+        g_rudder_debug.enabled = 1U;
+        break;
+    case 10:
+        assert(g_rc_ctrl_mode == RC_CTRL_MODE_OPEN_LOOP_SPEED);
+        assert(rudder_source == RUDDER_SOURCE_CENTER && g_rudder_debug.enabled == 0U);
+        set_sbus_neutral();
+        /* SBUS 可以只开泵而 mode 仍为 OFF，也必须阻止尾舵调试。 */
+        sbus_channels[SBUS_CH_SWITCH_RIGHT_OUTER] = 1807U;
+        g_rudder_debug.enabled = 1U;
+        break;
+    case 11:
+        assert(g_rc_ctrl_mode == RC_CTRL_MODE_OFF);
+        assert(rudder_source == RUDDER_SOURCE_CENTER && g_rudder_debug.enabled == 0U);
+        set_sbus_neutral();
+        break;
+    case 12:
+        assert(rudder_source == RUDDER_SOURCE_CENTER && g_rudder_debug.enabled == 0U);
+        g_rudder_debug.target_angle_cdeg = 0;
+        g_rudder_debug.enabled = 1U;
+        break;
+    case 13:
+        assert(g_rc_ctrl_mode == RC_CTRL_MODE_OFF);
+        assert(rudder_source == RUDDER_SOURCE_DEBUG && rudder_applied == 0);
+        g_rudder_debug.enabled = 0U;
+        break;
+    case 14:
+        assert(rudder_source == RUDDER_SOURCE_CENTER && rudder_applied == 0);
+        longjmp(servo_exit, 1);
+    default: assert(0);
+    }
+}
+
 static void servo_tick(void)
 {
     assert(critical_depth == 0U);
     ++servo_iteration;
-    if (strcmp(scenario, "full") == 0 || strcmp(scenario, "center_failure") == 0)
+    assert(rudder_apply_count == servo_iteration); /* 每拍仅应用一次尾舵目标。 */
+    if (strcmp(scenario, "rudder_debug") == 0) rudder_debug_tick();
+    else if (strcmp(scenario, "full") == 0 || strcmp(scenario, "center_failure") == 0)
         full_calibration_tick();
     else if (strcmp(scenario, "retry") == 0) failure_retry_tick();
     else if (strcmp(scenario, "backoff_failure") == 0) backoff_failure_tick();
@@ -346,7 +464,14 @@ int main(int argc, char **argv)
         sbus_channels[SBUS_CH_LEFT_STICK_Y] = 1807U;
         sbus_last_tick = 1U;
     }
-    WormAxis_RequestCalibration();
+    if (strcmp(scenario, "rudder_debug") == 0)
+    {
+        memset(&direct_pack, 0, sizeof(direct_pack));
+        direct_active = 0U;
+        g_rudder_debug.target_angle_cdeg = 4500;
+        g_rudder_debug.enabled = 1U;
+    }
+    else WormAxis_RequestCalibration();
     if (setjmp(servo_exit) == 0) StartServoTask(NULL);
     assert(critical_depth == 0U);
     return 0;
@@ -434,6 +559,9 @@ class ServoCalibrationIntegrationTests(unittest.TestCase):
 
     def test_sbus_requires_new_all_switches_up_frame_to_release_hold(self):
         self.run_case("sbus_hold")
+
+    def test_rudder_debug_requires_idle_and_conflicts_disarm_without_resuming(self):
+        self.run_case("rudder_debug")
 
     def test_tim1_configuration_matches_pwm2_counting_contract(self):
         init = extract_function(self.source, "MX_TIM1_Init")

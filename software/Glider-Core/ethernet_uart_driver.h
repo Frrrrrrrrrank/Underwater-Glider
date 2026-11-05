@@ -189,7 +189,7 @@ typedef struct
   uint8_t displacement_valid;
   uint8_t gnrmc_valid;
   uint8_t pressure_valid;
-  uint8_t servo_mode; /* 0=未启动，1=中位保护，2=网线尾舵命令。 */
+  uint8_t servo_mode; /* 0=未启动，1=中位保护，2=网线尾舵命令，3=Ozone调试。 */
   uint8_t pump_speed_triggered;
   uint8_t pump_direction_reversed;
   /*EKF 状态估计（供以太网快照直接观察；x=pN, y=pE 为 NED 水平位置）*/

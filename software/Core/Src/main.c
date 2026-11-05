@@ -2854,6 +2854,7 @@ void StartServoTask(void *argument)
   ZigzagControlOutput pid_output;
   PidControlStatus pid_status;
   int16_t rudder_angle_cdeg = 0;
+  int16_t rudder_debug_angle_cdeg = 0;
   uint8_t rudder_active = 0U;
   RudderState rudder_state;
 
@@ -2936,7 +2937,7 @@ void StartServoTask(void *argument)
     pump_enable_cmd = 0U;
     pump_direction_cmd = 0U;
     pump_source = IO_PUMP_SOURCE_OFF;
-    /* 非网线尾舵命令统一回中；本轮不接 SBUS 或自动航向。 */
+    /* 常规尾舵仅接网线命令；Ozone 测试在最终应用点按 OFF 条件仲裁。 */
     rudder_angle_cdeg = 0;
     rudder_active = 0U;
     worm_cmd_rpm = 0;
@@ -3091,7 +3092,18 @@ void StartServoTask(void *argument)
       (void)Stepper_CopyState(&stepper_state);
       stepper_cmd_rpm = stepper_state.pulse_rpm;
     }
-    RudderDriver_Apply(rudder_angle_cdeg, rudder_active);
+    /* Ozone 仅在常规控制 OFF 且泵未启用时接管尾舵；其他来源会撤销调试使能，
+       不影响其他轴，也不在冲突消失后自动恢复旧调试目标。 */
+    if (RudderDriver_GetDebugCommand((uint8_t)(mode == RC_CTRL_MODE_OFF &&
+                                              pump_enable_cmd == 0U),
+                                     &rudder_debug_angle_cdeg))
+    {
+      RudderDriver_ApplyDebug(rudder_debug_angle_cdeg);
+    }
+    else
+    {
+      RudderDriver_Apply(rudder_angle_cdeg, rudder_active);
+    }
     (void)RudderDriver_CopyState(&rudder_state);
     /* 保留旧 Ozone 观察名称，内容改为真正已下发的尾舵命令。 */
     g_dbg_servo_start_ok = rudder_state.pwm_started;

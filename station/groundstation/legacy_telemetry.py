@@ -74,8 +74,9 @@ class DecodedTelemetry:
 
 
 def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
-    """解析 URGC 首批接入的三类遥测；坏帧和其他文本返回 None。"""
+    """解析 URGC 的姿态、控制、双轴及北斗遥测；坏帧和其他文本返回 None。"""
 
+    raw_line = line
     line = line.strip()
     if not line or not ekf_checksum_ok(line):
         return None
@@ -90,7 +91,8 @@ def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
         row = ugwrm_parse(line)
         topic = "ugwrm"
     elif line.startswith("$UGRDS"):
-        row = ugrds_parse(line)
+        # 北斗使用共享严格解析器，不将空格或损坏行尾修补成有效帧。
+        row = ugrds_parse(raw_line)
         topic = "ugrds"
     else:
         return None

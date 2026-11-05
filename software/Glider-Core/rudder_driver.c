@@ -18,6 +18,8 @@ volatile RudderState g_rudder_state = {
   .applied_pulse_us = RUDDER_CENTER_PULSE_US + RUDDER_CENTER_TRIM_US
 };
 
+volatile RudderDebugCommand g_rudder_debug = {0};
+
 static TIM_HandleTypeDef *s_rudder_tim = NULL;
 
 static uint32_t Rudder_TimerClockHz(void)
@@ -109,7 +111,7 @@ HAL_StatusTypeDef RudderDriver_Init(TIM_HandleTypeDef *htim)
   return HAL_OK;
 }
 
-void RudderDriver_Apply(int16_t angle_cdeg, uint8_t active)
+static void Rudder_ApplyCommand(int16_t angle_cdeg, RudderSource source)
 {
   RudderState next;
   int16_t applied;
@@ -120,8 +122,8 @@ void RudderDriver_Apply(int16_t angle_cdeg, uint8_t active)
   }
 
   next = g_rudder_state;
-  next.source = (active != 0U) ? RUDDER_SOURCE_ETHERNET : RUDDER_SOURCE_CENTER;
-  next.requested_angle_cdeg = (active != 0U) ? angle_cdeg : 0;
+  next.source = source;
+  next.requested_angle_cdeg = angle_cdeg;
   next.limit_active = 0U;
   applied = next.requested_angle_cdeg;
   if (applied > RUDDER_LIMIT_CDEG)
@@ -138,12 +140,52 @@ void RudderDriver_Apply(int16_t angle_cdeg, uint8_t active)
   next.applied_pulse_us = Rudder_AngleToPulse(applied, &next.limit_active);
   next.update_count++;
 
-  /* 网线包已经是绝对角度：停止键冻结 PC 目标，本层不再积分或追赶旧目标。
+  /* 网线与调试邮箱均提供绝对角度，本层不再积分或追赶旧目标。
      临界区同时发布 CCR 和状态，遥测不会读到一半新、一半旧的结构体。 */
   taskENTER_CRITICAL();
   __HAL_TIM_SET_COMPARE(s_rudder_tim, TIM_CHANNEL_4, next.applied_pulse_us);
   g_rudder_state = next;
   taskEXIT_CRITICAL();
+}
+
+void RudderDriver_Apply(int16_t angle_cdeg, uint8_t active)
+{
+  Rudder_ApplyCommand((active != 0U) ? angle_cdeg : 0,
+                     (active != 0U) ? RUDDER_SOURCE_ETHERNET : RUDDER_SOURCE_CENTER);
+}
+
+void RudderDriver_ApplyDebug(int16_t angle_cdeg)
+{
+  Rudder_ApplyCommand(angle_cdeg, RUDDER_SOURCE_DEBUG);
+}
+
+bool RudderDriver_GetDebugCommand(uint8_t allow, int16_t *out_angle_cdeg)
+{
+  int32_t requested;
+
+  if (allow == 0U)
+  {
+    g_rudder_debug.enabled = 0U;
+    return false;
+  }
+  if (out_angle_cdeg == NULL || g_rudder_debug.enabled != 1U)
+  {
+    return false;
+  }
+
+  /* 两个 32 位字段分别原子读取；Ozone 不受任务临界区约束，因此先写目标再使能。
+     只饱和到接口的整数范围，±45 度限幅仍统一由 Rudder_ApplyCommand 执行并报告。 */
+  requested = g_rudder_debug.target_angle_cdeg;
+  if (requested > INT16_MAX)
+  {
+    requested = INT16_MAX;
+  }
+  else if (requested < INT16_MIN)
+  {
+    requested = INT16_MIN;
+  }
+  *out_angle_cdeg = (int16_t)requested;
+  return true;
 }
 
 bool RudderDriver_CopyState(RudderState *out_state)

@@ -85,6 +85,82 @@ HAL_StatusTypeDef HAL_TIM_PWM_Start(TIM_HandleTypeDef *h, uint32_t channel)
     return start_result;
 }
 
+static void TestDebugMailbox(void)
+{
+    static const struct {
+        int32_t requested;
+        int16_t command;
+        int16_t applied;
+        uint16_t pulse;
+        uint8_t limited;
+    } cases[] = {
+        {0, 0, 0, 1500, 0},
+        {1000, 1000, 1000, 1611, 0},
+        {-1000, -1000, -1000, 1389, 0},
+        {4500, 4500, 4500, 2000, 0},
+        {-4500, -4500, -4500, 1000, 0},
+        {4501, 4501, 4500, 2000, 1},
+        {-4501, -4501, -4500, 1000, 1},
+        {INT32_MAX, INT16_MAX, 4500, 2000, 1},
+        {INT32_MIN, INT16_MIN, -4500, 1000, 1},
+    };
+    RudderState state;
+    int16_t command = 123;
+    unsigned i;
+    uint32_t before_count;
+    uint32_t before_pulse;
+
+    /* 默认关闭；只改邮箱不写输出，必须由最终仲裁显式采用。 */
+    assert(g_rudder_debug.enabled == 0U && g_rudder_debug.target_angle_cdeg == 0);
+    assert(!RudderDriver_GetDebugCommand(1U, &command) && command == 123);
+    assert(!RudderDriver_GetDebugCommand(1U, NULL));
+    for (i = 0U; i < sizeof(cases) / sizeof(cases[0]); ++i)
+    {
+        before_count = g_rudder_state.update_count;
+        before_pulse = test_tim4.CCR4;
+        g_rudder_debug.target_angle_cdeg = cases[i].requested;
+        g_rudder_debug.enabled = 1U;
+        assert(RudderDriver_GetDebugCommand(1U, &command));
+        assert(command == cases[i].command);
+        assert(test_tim4.CCR4 == before_pulse && g_rudder_state.update_count == before_count);
+        RudderDriver_ApplyDebug(command);
+        assert(RudderDriver_CopyState(&state));
+        assert(state.source == RUDDER_SOURCE_DEBUG && state.pwm_started == 1U);
+        assert(state.requested_angle_cdeg == cases[i].command);
+        assert(state.applied_angle_cdeg == cases[i].applied);
+        assert(state.applied_pulse_us == cases[i].pulse && test_tim4.CCR4 == cases[i].pulse);
+        assert(state.limit_active == cases[i].limited);
+    }
+
+    /* 非 1 的使能不接受；禁用不改目标，下一次是否回中由仲裁 Apply 决定。 */
+    g_rudder_debug.enabled = 2U;
+    assert(!RudderDriver_GetDebugCommand(1U, &command));
+    g_rudder_debug.enabled = UINT32_MAX;
+    assert(!RudderDriver_GetDebugCommand(1U, &command));
+    g_rudder_debug.enabled = 1U;
+    assert(!RudderDriver_GetDebugCommand(1U, NULL));
+    before_pulse = test_tim4.CCR4;
+    g_rudder_debug.enabled = 0U;
+    assert(!RudderDriver_GetDebugCommand(1U, &command));
+    assert(test_tim4.CCR4 == before_pulse);
+    RudderDriver_Apply(0, 0U);
+    assert(test_tim4.CCR4 == 1500U && g_rudder_state.source == RUDDER_SOURCE_CENTER);
+
+    /* 遇到其他控制源时撤销使能；冲突解除后不会自动恢复旧调试命令。 */
+    g_rudder_debug.target_angle_cdeg = 4500;
+    g_rudder_debug.enabled = 1U;
+    assert(!RudderDriver_GetDebugCommand(0U, &command));
+    assert(g_rudder_debug.enabled == 0U);
+    assert(!RudderDriver_GetDebugCommand(1U, &command));
+    assert(test_tim4.CCR4 == 1500U);
+    g_rudder_debug.enabled = 1U;
+    assert(!RudderDriver_GetDebugCommand(0U, NULL));
+    assert(g_rudder_debug.enabled == 0U);
+    RudderDriver_Apply(4500, 1U);
+    assert(test_tim4.CCR4 == 2000U && g_rudder_state.source == RUDDER_SOURCE_ETHERNET);
+    assert(critical_depth == 0U && starts == 1U);
+}
+
 int main(int argc, char **argv)
 {
     TIM_HandleTypeDef tim = { TIM4 };
@@ -101,6 +177,7 @@ int main(int argc, char **argv)
     test_tim4.ARR = 3002U;
     test_tim4.CNT = 99U;
     RudderDriver_Apply(1000, 1U);
+    RudderDriver_ApplyDebug(4500);
     assert(test_tim4.CCR4 == 0U && starts == 0U);
     assert(RudderDriver_Init(NULL) == HAL_ERROR);
     assert(RudderDriver_Init(&wrong_tim) == HAL_ERROR);
@@ -153,11 +230,11 @@ int main(int argc, char **argv)
         assert(RudderDriver_CopyState(&state));
         assert(state.source == RUDDER_SOURCE_ETHERNET);
         assert(state.requested_angle_cdeg == angle);
-        assert(state.applied_angle_cdeg >= -1000 && state.applied_angle_cdeg <= 1000);
-        assert(state.applied_pulse_us >= 1389U && state.applied_pulse_us <= 1611U);
+        assert(state.applied_angle_cdeg >= -4500 && state.applied_angle_cdeg <= 4500);
+        assert(state.applied_pulse_us >= 1000U && state.applied_pulse_us <= 2000U);
         assert(state.applied_pulse_us >= previous);
         assert(state.applied_pulse_us == test_tim4.CCR4);
-        assert(state.limit_active == (angle < -1000 || angle > 1000));
+        assert(state.limit_active == (angle < -4500 || angle > 4500));
         previous = state.applied_pulse_us;
     }
 
@@ -175,6 +252,7 @@ int main(int argc, char **argv)
     assert(state.applied_pulse_us == 1500U && state.limit_active == 0U);
     assert(state.update_count == 65639U);
     assert(critical_depth == 0U && starts == 1U);
+    TestDebugMailbox();
     return 0;
 }
 """
