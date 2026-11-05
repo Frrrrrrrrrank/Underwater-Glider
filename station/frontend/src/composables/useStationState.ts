@@ -1,5 +1,6 @@
 import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
-import type { CoreConnectionStatus, GroundStationSnapshot, TelemetrySample } from '../types'
+import type { CoreConnectionStatus, GamepadPreview, GroundStationSnapshot, TelemetrySample } from '../types'
+import { ageGamepadPreview, parseGamepadPreview } from '../domain/gamepad'
 
 const HEARTBEAT_TIMEOUT_MS = 3_500
 const REQUEST_TIMEOUT_MS = 3_000
@@ -38,6 +39,8 @@ export interface StationLogEvent { id: number; time: string; text: string; tone:
 // 只在 App 创建一次；所有面板接收同一份状态，不各自打开 WebSocket。
 export function useStationState() {
   const snapshot = shallowRef<GroundStationSnapshot | null>(null)
+  const gamepadSnapshot = shallowRef<GamepadPreview | null>(null)
+  const gamepadParseIssue = ref<string | null>(null)
   const coreConnection = ref<CoreConnectionStatus>('connecting')
   const lastEventAt = ref<string | null>(null)
   const errorMessage = ref<string | null>(null)
@@ -54,6 +57,8 @@ export function useStationState() {
   let socketStartedAt = performance.now()
 
   const coreLive = computed(() => coreConnection.value === 'live' && acceptedAt.value !== null && now.value - acceptedAt.value < HEARTBEAT_TIMEOUT_MS)
+  const gamepad = computed(() => ageGamepadPreview(gamepadSnapshot.value, acceptedAt.value === null ? 0 : Math.max(0, now.value - acceptedAt.value), coreLive.value))
+  const gamepadIssue = computed(() => !coreLive.value ? '核心未在线，无法确认手柄输入' : gamepadParseIssue.value ?? gamepad.value?.error ?? null)
   const deviceStatus = computed(() => coreLive.value ? snapshot.value?.device_link.status ?? 'unknown' : 'unknown')
   const telemetry = computed<Record<string, TelemetrySample>>(() => {
     const elapsed = acceptedAt.value === null ? 0 : Math.max(0, now.value - acceptedAt.value)
@@ -75,6 +80,9 @@ export function useStationState() {
 
   function acceptSnapshot(value: unknown): void {
     if (!isSnapshot(value)) throw new Error('收到不兼容的状态数据')
+    // 手柄不通过板端 fresh 门禁；旧核心或坏字段只清除此输入源。
+    gamepadSnapshot.value = parseGamepadPreview(value.gamepad)
+    gamepadParseIssue.value = gamepadSnapshot.value ? null : value.gamepad === undefined ? '当前核心未提供手柄预览，请更新核心' : '手柄预览格式无效，已清除输入意图'
     snapshot.value = value
     acceptedAt.value = performance.now()
     now.value = acceptedAt.value
@@ -116,10 +124,24 @@ export function useStationState() {
           reconnectAttempt = 0
           errorMessage.value = null
           coreConnection.value = 'live'
-        } else if (message.type === 'error' && typeof message.message === 'string') errorMessage.value = message.message
-      } catch (error) { errorMessage.value = error instanceof Error ? error.message : '无法解析状态消息' }
+        } else if (message.type === 'error' && typeof message.message === 'string') {
+          gamepadSnapshot.value = null
+          gamepadParseIssue.value = '核心报告异常，手柄输入不可确认'
+          errorMessage.value = message.message
+        }
+      } catch (error) {
+        gamepadSnapshot.value = null
+        gamepadParseIssue.value = '状态消息无效，已清除手柄输入意图'
+        errorMessage.value = error instanceof Error ? error.message : '无法解析状态消息'
+      }
     })
-    connection.addEventListener('error', () => { if (socket === connection && !disposed) errorMessage.value = '状态推送连接异常' })
+    connection.addEventListener('error', () => {
+      if (socket === connection && !disposed) {
+        gamepadSnapshot.value = null
+        gamepadParseIssue.value = '状态推送连接异常，手柄输入不可确认'
+        errorMessage.value = '状态推送连接异常'
+      }
+    })
     connection.addEventListener('close', () => { if (socket === connection) { socket = null; scheduleReconnect() } })
   }
   onMounted(() => {
@@ -136,7 +158,7 @@ export function useStationState() {
         expired.close()
         scheduleReconnect()
       }
-    }, 200)
+    }, 50)
   })
   onUnmounted(() => {
     disposed = true
@@ -145,5 +167,5 @@ export function useStationState() {
     if (clockTimer !== null) window.clearInterval(clockTimer)
     socket?.close()
   })
-  return { snapshot, coreConnection, coreLive, deviceStatus, lastEventAt, errorMessage, telemetry, allFresh, missingTopics, events, now }
+  return { snapshot, coreConnection, coreLive, deviceStatus, lastEventAt, errorMessage, telemetry, allFresh, missingTopics, events, now, gamepad, gamepadIssue }
 }

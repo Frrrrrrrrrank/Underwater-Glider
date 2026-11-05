@@ -8,11 +8,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .ethernet_link import EthernetRealtimeLink
+from .gamepad_preview import GamepadPreview
 from .models import SCHEMA_VERSION, utc_now_iso
 from .state_store import StateStore
 from .session_recorder import SessionRecorder, disabled_recording_snapshot
@@ -30,10 +31,14 @@ def create_app(
     *,
     link_manager: Optional[EthernetRealtimeLink] = None,
     device_link_enabled: Optional[bool] = None,
+    gamepad_preview: Optional[GamepadPreview] = None,
 ) -> FastAPI:
     """创建可注入 StateStore 的应用，便于后续测试与核心集成。"""
 
     station_store = store or StateStore()
+    input_preview = gamepad_preview if gamepad_preview is not None else GamepadPreview(
+        enabled=_environment_flag("URGC_GAMEPAD_ENABLED", True)
+    )
     if device_link_enabled is None:
         device_link_enabled = _environment_flag("URGC_DEVICE_LINK_ENABLED", True)
     if link_manager is None and device_link_enabled:
@@ -50,13 +55,17 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_application: FastAPI):
-        if link_manager is not None:
-            link_manager.start()
+        input_preview.start()
         try:
+            if link_manager is not None:
+                link_manager.start()
             yield
         finally:
-            if link_manager is not None:
-                link_manager.stop()
+            try:
+                if link_manager is not None:
+                    link_manager.stop()
+            finally:
+                input_preview.stop()
 
     app = FastAPI(
         title="UnderwaterRobotGroundControl",
@@ -66,6 +75,7 @@ def create_app(
     )
     app.state.station_store = station_store
     app.state.device_link = link_manager
+    app.state.gamepad_preview = input_preview
 
     # 仅允许本机 Vite 开发服务器跨域访问；正式构建由同一 FastAPI 进程托管。
     app.add_middleware(
@@ -91,9 +101,16 @@ def create_app(
         }
 
     @app.get("/api/v1/state")
-    async def state() -> dict:
+    async def state(response: Response) -> dict:
+        response.headers["Cache-Control"] = "no-store"
         _generation, snapshot = station_store.read()
+        snapshot["gamepad"] = input_preview.snapshot()
         return snapshot
+
+    @app.get("/api/v1/input/gamepad")
+    async def gamepad(response: Response) -> dict:
+        response.headers["Cache-Control"] = "no-store"
+        return input_preview.snapshot()
 
     @app.get("/api/v1/recording")
     async def recording() -> dict:
@@ -103,15 +120,22 @@ def create_app(
     async def websocket_state(websocket: WebSocket) -> None:
         await websocket.accept()
         generation, snapshot = station_store.read()
+        snapshot["gamepad"] = input_preview.snapshot()
         await websocket.send_json({"type": "state.snapshot", "data": snapshot})
 
         try:
             while True:
+                cycle_started = asyncio.get_running_loop().time()
                 next_generation, next_snapshot, changed = await asyncio.to_thread(
                     station_store.wait_for_change,
                     generation,
-                    1.0,
+                    0.1,
                 )
+                # 遥测高频唤醒时也最多 10 Hz 读取预览；不增加遥测 generation。
+                await asyncio.sleep(max(0.0, 0.1 - (asyncio.get_running_loop().time() - cycle_started)))
+                next_generation, next_snapshot = station_store.read()
+                changed = next_generation != generation
+                next_snapshot["gamepad"] = input_preview.snapshot()
                 if changed:
                     generation = next_generation
                     await websocket.send_json(

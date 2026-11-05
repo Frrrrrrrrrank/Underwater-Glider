@@ -7,12 +7,16 @@ import TrendPanel from './components/TrendPanel.vue'
 import DiagnosticView from './components/DiagnosticView.vue'
 import RecordingView from './components/RecordingView.vue'
 import HomeView from './components/HomeView.vue'
+import GamepadView from './components/GamepadView.vue'
 
-const { snapshot, coreConnection, coreLive, deviceStatus, lastEventAt, errorMessage, telemetry, allFresh, missingTopics, events, now } = useStationState()
-type Page = 'home' | 'monitor' | 'diagnostic' | 'recording'
+const { snapshot, coreConnection, coreLive, deviceStatus, lastEventAt, errorMessage, telemetry, allFresh, missingTopics, events, now, gamepad, gamepadIssue } = useStationState()
+type Page = 'home' | 'gamepad' | 'monitor' | 'diagnostic' | 'recording'
 const page = ref<Page>('home')
+// 仅保存本浏览器的预览选择，不请求接管，也不因插拔自动选其它槽位。
+const selectedGamepadSlot = ref(0)
 const pages: { key: Page; label: string; description: string }[] = [
   { key: 'home', label: '主页', description: '设备概览 · 工作台入口' },
+  { key: 'gamepad', label: '手柄输入', description: '核心 XInput · 采样与基础映射预览' },
   { key: 'monitor', label: '运行监控', description: '台架观测 · 姿态 / 深度 / 执行反馈' },
   { key: 'diagnostic', label: '遥测诊断', description: '按协议主题检查字段与有效性' },
   { key: 'recording', label: '会话记录', description: '按设备会话保存遥测与连接事件' },
@@ -68,7 +72,8 @@ function timeLabel(value: string | null | undefined) {
       <main class="main-workspace">
         <div class="workspace-heading"><div><h2>{{ pages.find(item => item.key === page)?.label }}</h2><span>{{ pages.find(item => item.key === page)?.description }}</span></div><span class="time-label">最近推送 {{ timeLabel(lastEventAt) }}</span></div>
         <div class="notice-bar" :class="{ 'notice-warning': !allFresh || !!errorMessage }" role="status"><span class="notice-dot"></span><span>{{ errorMessage ?? snapshot?.device_link.last_error ?? dataSummary }}</span><span class="notice-validity">{{ validity }}</span></div>
-        <HomeView v-if="page === 'home'" :telemetry="telemetry" :core-live="coreLive" :device-status="deviceStatus" @navigate="page = $event" />
+        <HomeView v-if="page === 'home'" :telemetry="telemetry" :core-live="coreLive" :device-status="deviceStatus" :gamepad="gamepad" :gamepad-issue="gamepadIssue" :gamepad-slot="selectedGamepadSlot" @navigate="page = $event" />
+        <GamepadView v-if="page === 'gamepad'" :gamepad="gamepad" :issue="gamepadIssue" :selected-slot="selectedGamepadSlot" @select-slot="selectedGamepadSlot = $event" />
         <div v-show="page === 'monitor'" class="monitor-grid">
           <section class="panel measurements-panel">
             <header class="panel-heading"><h2>姿态与深度</h2><span class="panel-meta">估计器 <DataValue :sample="telemetry.ugekf" topic="ugekf" field="status" /></span></header>

@@ -77,6 +77,28 @@ def _missing(reason):
     return f"--（{reason}）"
 
 
+def _rudder_lines(snapshot, error):
+    """显示最近成功发送的历史指令，时效与连接状态不等于执行确认。"""
+    link = _mapping(_mapping(snapshot).get("device_link"))
+    command = _mapping(_mapping(_mapping(snapshot).get("commands")).get("rudder"))
+    angle, age = command.get("angle_deg"), command.get("age_ms")
+    reason = ("接口不可用" if error else "尚无成功发送记录" if not command else
+              "旧连接记录" if command.get("session_id") != link.get("session_id") else
+              "数值无效" if not _number(angle) or abs(angle) > 45 else "")
+    if reason:
+        value, detail = _missing(reason), "来源/时间：--"
+    else:
+        status = ("板端断开，仅历史记录" if link.get("status") != "connected" else
+                  "最近发送" if command.get("fresh") is True else "发送记录超龄")
+        authority = "已发释放请求" if command.get("eth_control_flag") == 0 else "直控请求"
+        value = f"{angle:+.2f}°（{status}；{authority}）"
+        age_text = f"{age:.0f}ms" if _number(age) and age >= 0 else "未知"
+        detail = (f"来源：{command.get('source') or '未知'}/{command.get('phase') or '--'}  "
+                  f"发送：{command.get('sent_at') or '--'}  年龄：{age_text}")
+    return [f"尾舵上位机指令：{value}", f"      {detail}",
+            "      非板端执行确认/实测角度；commands.csv 记录发送角度和 success。"]
+
+
 class _Topic:
     """按字段判断有效性，不能因为 pitch 无效就抹掉独立有效的 roll。"""
 
@@ -226,6 +248,7 @@ def render_panel(snapshot, *, width=100, endpoint=DEFAULT_URL, error=None):
         "水下滑翔机 · 只读监视   刷新约5Hz",
         f"接口 {endpoint}  {interface_status}",
         f"板端：{link_status if not error else '未知'}  （本窗口不发送控制）",
+        *_rudder_lines(snapshot, error),
         f"轴位置  Pitch：{pitch}",
         f"        Roll ：{roll}",
         f"校准：{calib}  保持：{hold}  原因：{calib_fail}",

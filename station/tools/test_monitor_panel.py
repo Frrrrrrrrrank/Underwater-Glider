@@ -210,7 +210,7 @@ class PanelTests(unittest.TestCase):
         before = copy.deepcopy(self.snapshot)
         for width in (1, 20, 60, 100):
             panel = monitor.render_panel(self.snapshot, width=width, endpoint="\x1b[2J恶意\n地址")
-            self.assertEqual(len(panel.splitlines()), 29)
+            self.assertEqual(len(panel.splitlines()), 32)
             self.assertNotIn("\x1b", panel)
             self.assertTrue(all(monitor.display_width(line) <= width for line in panel.splitlines()))
         self.assertEqual(self.snapshot, before)

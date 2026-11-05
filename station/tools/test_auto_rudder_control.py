@@ -134,14 +134,14 @@ class AutoRudderTargetTests(unittest.TestCase):
         self.assertEqual(self.packet['rudder_angle_cdeg'], 100)
         for _ in range(100):
             self.step()
-        self.assertEqual(self.packet['rudder_angle_cdeg'], 1000)
+        self.assertEqual(self.packet['rudder_angle_cdeg'], 4500)
         self.assertEqual(self.state['direction'], 0)
         self.step('F', dt=0.0)
         self.step()
-        self.assertEqual(self.packet['rudder_angle_cdeg'], 900)
+        self.assertEqual(self.packet['rudder_angle_cdeg'], 4400)
         for _ in range(100):
             self.step()
-        self.assertEqual(self.packet['rudder_angle_cdeg'], -1000)
+        self.assertEqual(self.packet['rudder_angle_cdeg'], -4500)
         self.assertEqual(self.state['direction'], 0)
 
     def test_stop_center_and_zero_override_held_and_new_direction_keys(self):

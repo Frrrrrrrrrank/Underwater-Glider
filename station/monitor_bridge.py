@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
 import socket
 import threading
 import time
@@ -23,6 +24,8 @@ TOPIC_STALE_MS = {"ugekf": 500, "ugctl": 500, "ugwrm": 500,
                   "ugbat": 3000, "ugrds": 2000}
 CLIENT_TIMEOUT_S = 2.0
 MAX_HTTP_CLIENTS = 4
+# 仅是本机发送记录的显示时效，不证明板端已收包或控制租约已失效。
+RUDDER_COMMAND_STALE_MS = 2500
 
 
 class _SnapshotHandler(BaseHTTPRequestHandler):
@@ -135,6 +138,8 @@ class MonitorBridge:
         self._configured_address = (str(local_ip), port)
         self._address = self._configured_address
         self._lock = threading.RLock()
+        self._clock = clock
+        self._rudder_command = None
         self._lifecycle_lock = threading.Lock()
         self._store = StateStore(clock=clock, required_topics=tuple(TOPIC_STALE_MS))
         self._status = LinkStatus.STOPPED
@@ -191,6 +196,7 @@ class MonitorBridge:
             if state is LinkStatus.CONNECTED:
                 self._session_id = uuid.uuid4().hex
                 self._last_keys.clear()
+                self._rudder_command = None
                 self._store.clear_session_telemetry()
             self._status = state
             self._store.set_link(
@@ -222,6 +228,32 @@ class MonitorBridge:
             raise TypeError("实验记录状态提供者必须可调用或为 None")
         with self._lock:
             self._experiment_provider = provider
+
+    def publish_rudder_command(
+        self, *, angle_cdeg, source, phase, seq, msg_type, eth_control_flag,
+        sent_at, sent_monotonic_s,
+    ) -> bool:
+        """缓存最近一次 sendall 成功的指令，独立于板端遥测和执行反馈。"""
+        if (type(angle_cdeg) is not int or not -4500 <= angle_cdeg <= 4500 or
+                type(seq) is not int or not 0 <= seq <= 65535 or
+                msg_type not in (0x01, 0x04, 0x07) or
+                type(eth_control_flag) is not int or eth_control_flag not in (0, 1) or
+                not isinstance(sent_monotonic_s, (int, float)) or
+                not math.isfinite(sent_monotonic_s)):
+            return False
+        with self._lock:
+            if self._status is not LinkStatus.CONNECTED:
+                return False
+            # 旧19B包没有角度字段，含义为撤销偏角；21B包保留实际发送字段。
+            angle = angle_cdeg if msg_type == 0x07 else 0
+            self._rudder_command = {
+                "angle_cdeg": angle, "angle_deg": angle / 100.0,
+                "source": str(source), "phase": str(phase), "seq": seq,
+                "msg_type": msg_type, "eth_control_flag": eth_control_flag,
+                "sent_at": str(sent_at), "sent_monotonic_s": sent_monotonic_s,
+                "session_id": self._session_id,
+            }
+            return True
 
     @staticmethod
     def _apply_monitor_quality(topic: str, sample: dict) -> None:
@@ -277,7 +309,15 @@ class MonitorBridge:
         with self._lock:
             _generation, result = self._store.read()
             experiment_provider = self._experiment_provider
+            rudder = dict(self._rudder_command) if self._rudder_command is not None else None
+            now = self._clock()
         connected = result["device_link"]["status"] == LinkStatus.CONNECTED.value
+        if rudder is not None:
+            age_ms = (now - rudder.pop("sent_monotonic_s")) * 1000.0
+            rudder["age_ms"] = max(0.0, age_ms)
+            rudder["fresh"] = connected and 0.0 <= age_ms <= RUDDER_COMMAND_STALE_MS
+            rudder["stale_after_ms"] = RUDDER_COMMAND_STALE_MS
+        result["commands"] = {"rudder": rudder}
         for topic, sample in result["telemetry"].items():
             self._apply_monitor_quality(topic, sample)
             if not connected:

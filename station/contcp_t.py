@@ -42,11 +42,11 @@ except ImportError:
 
 try:
     from .gamepad_control import (
-        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+        ControlTarget, GamepadConfig, GamepadService, is_gamepad_neutral, map_gamepad_to_target,
     )
 except ImportError:
     from gamepad_control import (
-        ControlTarget, GamepadConfig, GamepadService, map_gamepad_to_target,
+        ControlTarget, GamepadConfig, GamepadService, is_gamepad_neutral, map_gamepad_to_target,
     )
 
 try:
@@ -133,14 +133,16 @@ EXPERIMENT_RECORDER = None
 EXPERIMENT_MANAGED = False
 EXPERIMENT_CONTEXT = threading.local()
 EXPERIMENT_LAST_ERROR = None
+# 只发布成功发送的本机指令；不由监控桥发送任何设备命令。
+CONTROL_MONITOR_BRIDGE = None
 # 主线程标记当前是否处于 PID 命令界面，接收线程据此选择快照显示方式。
 PID_MODE_ACTIVE = threading.Event()
 
 AUTO_SEND_PERIOD_S = 0.10  # 每 100ms 连续刷新一次，板端直控租约为 2.5s。
 AUTO_KEY_POLL_S = 0.02
-AUTO_RUDDER_LIMIT_DEG = 10.0  # 首次联调仅开放中位两侧各 10 度。
+AUTO_RUDDER_LIMIT_DEG = 45.0  # 标称总行程 90 度：中位两侧各 45 度。
 AUTO_RUDDER_RATE_DEG_S = 10.0
-AUTO_RUDDER_MAX_DT_S = 0.10  # PC 卡顿后不补算长时间位移，单步最多 1 度。
+AUTO_RUDDER_MAX_DT_S = 0.10  # PC 卡顿后不补算长时间位移；键盘单步最多1°，手柄默认3°。
 AUTO_VK_MAP = {key: ord(key) for key in 'WSXEDCIKJLUNZHQRFVT'}
 AUTO_VK_MAP['ESC'] = 0x1B
 THRUST_SPEED_MIN = 0.0
@@ -746,7 +748,7 @@ def format_worm_status(snap):
 def format_rudder_status(snap):
     """快照是板端已施加的 PWM 命令，三线舵机没有角度反馈。"""
     mode = int(snap.servo_mode)
-    mode_text = {0: 'PWM 初始化失败/未启动', 1: '中位保护', 2: '网线命令'}.get(
+    mode_text = {0: 'PWM 初始化失败/未启动', 1: '中位保护', 2: '网线命令', 3: 'Ozone 调试'}.get(
         mode, '未知模式')
     return ("[尾舵] applied_pulse_us=%d servo_mode=%d(%s)；命令值，非实测角度"
             % (int(snap.servo_pulse_us), mode, mode_text))
@@ -838,6 +840,25 @@ def _control_fields(msg_type, payload):
     return fields
 
 
+def _publish_sent_rudder(msg_type, payload, seq, context, tx_end_ns):
+    """发送成功后旁路发布，监控错误不能改变控制发送结果。"""
+    bridge = CONTROL_MONITOR_BRIDGE
+    if bridge is None:
+        return
+    try:
+        fields = _control_fields(msg_type, payload)
+        if fields:
+            bridge.publish_rudder_command(
+                angle_cdeg=fields['rudder_angle_cdeg'],
+                source=context.get('source', 'unknown'), phase=context.get('phase', ''),
+                seq=seq, msg_type=msg_type, eth_control_flag=fields['eth_control_flag'],
+                sent_at=datetime.now().astimezone().isoformat(timespec='milliseconds'),
+                sent_monotonic_s=tx_end_ns / 1e9,
+            )
+    except Exception as exc:
+        print(f'[监控] 尾舵发送记录发布失败：{exc}；控制发送结果不受影响。')
+
+
 def send_ugcp_frame(conn, msg_type, payload, label='UGCP', verbose=True):
     """串行化一次完整 UGCP 发送，保证多线程下 seq 顺序与线上顺序一致。"""
     try:
@@ -858,6 +879,8 @@ def send_ugcp_frame(conn, msg_type, payload, label='UGCP', verbose=True):
                 raise
             finally:
                 tx_end_ns = time.monotonic_ns()
+                if sent_ok:
+                    _publish_sent_rudder(msg_type, payload, seq, context, tx_end_ns)
                 # 守护旁路解码，即使记录器自身出错也不能丢失成功发送的返回值。
                 try:
                     _experiment_record(dict(
@@ -1109,8 +1132,8 @@ def _build_default_auto_packet():
     }
 
 
-def _build_auto_sti_packet(target, config):
-    """把推进百分比和 pitch/roll 转速目标填入现有直控协议。"""
+def _build_auto_sti_packet(target, config, rudder_angle_cdeg=0):
+    """把推进、pitch/roll 和 PC 积分后的尾舵绝对角填入现有直控协议。"""
     packet = _build_default_auto_packet()
     speeds = (target.left_percent, target.right_percent)
     if not config.motor1_is_left:
@@ -1136,7 +1159,42 @@ def _build_auto_sti_packet(target, config):
         raise ValueError('roll 目标使能与转速不一致')
     packet['rollmotor_enable'] = target.roll_enable
     packet['rollmotor_speed_rpm'] = target.roll_rpm
+    if (type(rudder_angle_cdeg) is not int or
+            abs(rudder_angle_cdeg) > round(AUTO_RUDDER_LIMIT_DEG * 100)):
+        raise ValueError('尾舵目标必须为 ±4500 内的整数百分之一度')
+    packet['rudder_angle_cdeg'] = rudder_angle_cdeg
     return packet
+
+
+def _update_auto_sti_rudder(state, target, sample, config, dt):
+    """仅在 ACTIVE 调用：速度意图积分为位置，回中后等待三项输入全松。"""
+    old_rate = state['rate_deg_s']
+    center_event = (sample.rudder_center_seq != state['center_seq'] or
+                    (target.rudder_center and not state['center_held']))
+    state['center_seq'] = sample.rudder_center_seq
+    state['center_held'] = target.rudder_center
+    rate = 0.0
+    if center_event or target.rudder_center:
+        # 序号捕获两次主循环之间的 B 短按；持续按住时不重复强制发送。
+        state['angle_deg'] = 0.0
+        state['wait_release'] = True
+    elif state['wait_release']:
+        if (sample.left_trigger <= config.trigger_deadzone and
+                sample.right_trigger <= config.trigger_deadzone):
+            state['wait_release'] = False
+    else:
+        rate = target.rudder_rate_deg_s
+        # 浮点状态避免小输入逐拍取整丢失；直接夹紧积分，端点没有积分积累。
+        state['angle_deg'] = _clamp(
+            state['angle_deg'] + rate * _clamp(dt, 0.0, AUTO_RUDDER_MAX_DT_S),
+            -AUTO_RUDDER_LIMIT_DEG, AUTO_RUDDER_LIMIT_DEG)
+        if ((rate > 0 and state['angle_deg'] >= AUTO_RUDDER_LIMIT_DEG) or
+                (rate < 0 and state['angle_deg'] <= -AUTO_RUDDER_LIMIT_DEG)):
+            rate = 0.0
+    state['rate_deg_s'] = rate
+    # 保持发生在非零舵角，不能用“角度变零”判定扳机松开。
+    force_send = center_event or (old_rate != 0.0 and rate == 0.0)
+    return int(round(state['angle_deg'] * 100)), force_send
 
 
 def _auto_sti_escape_pressed():
@@ -1193,6 +1251,10 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
         return
     initial = gamepad_service.snapshot(controller_index)
     exit_seq, loss_seq = initial.exit_seq, initial.loss_seq
+    # 每次进入重建，退出后不复用上次角度、速度或回中抑制状态。
+    rudder = {'angle_deg': 0.0, 'rate_deg_s': 0.0,
+              'center_seq': initial.rudder_center_seq,
+              'center_held': False, 'wait_release': False}
     previous_stream_mask = get_stream_control_mask()
     streams_changed = False
     control_attempted = False
@@ -1207,11 +1269,13 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
     _experiment_mode('WAIT_CENTER', source='auto_sti', run_id=uuid.uuid4().hex,
                      controller_index=controller_index, config=asdict(config))
     print(f'[AUTO_STI] 绑定槽位 {controller_index}，上限 {config.max_percent:g}%；'
-          '请回中并松开 Y/A 和十字键左/右，X 或 ESC 退出。')
+          '请回中并松开 Y/A、十字键左/右、LT/RT/B，X 或 ESC 退出。')
     print('[AUTO_STI] 左右拨杆控制艇首转向，倒退时同向；纯横拨为零。'
           'Y/A 按住向前/后；'
           f'十字键左/右控制 roll +{config.roll_rpm}/-{config.roll_rpm}RPM，'
           '松开或左右同按停；退出会交还控制权。')
+    print(f'[AUTO_STI] RT/LT 改变尾舵目标，满按 ±{config.rudder_rate_deg_s:g}°/s；'
+          '松开或双按保持，B直接回中，再次偏转前须松开B和两扳机。')
     try:
         while running and not link_closed.is_set():
             sample = gamepad_service.snapshot(controller_index)
@@ -1231,13 +1295,11 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
             if state != 'WAIT_CENTER' and now - last_loop > config.input_timeout_s:
                 reason = '控制循环发生长时间停顿'
                 break
+            dt = now - last_loop
             last_loop = now
-            # 每拍重新计算绝对目标，按键松开不会继承上一拍的运动命令。
+            # 每拍重算输入意图；尾舵位置由本次会话单独保存。
             target = map_gamepad_to_target(sample, config)
-            centered = (abs(sample.left_x) <= config.deadzone and
-                        abs(sample.forward) <= config.deadzone and
-                        not sample.button_y and not sample.button_a and
-                        not sample.dpad_left and not sample.dpad_right)
+            centered = is_gamepad_neutral(sample, config)
             if state == 'WAIT_CENTER':
                 if not centered:
                     time.sleep(config.poll_period_s)
@@ -1271,27 +1333,35 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                 if state == 'PREPARING':
                     if ready and centered and control_attempted:
                         state = 'ACTIVE'
+                        dt = 0.0
+                        rudder['center_seq'] = sample.rudder_center_seq
                         _experiment_mode(state)
                         next_send = now
                         print('[AUTO_STI] 已观察到进入条件满足，开始发送手柄目标（非执行 ACK）。')
                     elif now >= deadline:
                         reason = '准备超时；未观察到所需状态或手柄未回中'
                         break
+            rudder_angle_cdeg, rudder_force_send = 0, False
+            if state == 'ACTIVE':
+                rudder_angle_cdeg, rudder_force_send = _update_auto_sti_rudder(
+                    rudder, target, sample, config, dt)
             packet = _build_auto_sti_packet(
-                target if state == 'ACTIVE' else ControlTarget(), config)
+                target if state == 'ACTIVE' else ControlTarget(), config, rudder_angle_cdeg)
             # 回中和松键的停止不等待下一次常规心跳；普通运动最多按10Hz发送。
             force_stop = last_packet is not None and any(
                 last_packet[key] != 0 and packet[key] == 0 for key in (
                     'thrustmotor1se_speed_rpm', 'thrustmotor2se_speed_rpm',
                     'pitchmotor_enable', 'rollmotor_enable'))
-            if force_stop or now >= next_send:
+            if force_stop or rudder_force_send or now >= next_send:
                 if (link_closed.is_set() or
                         time.monotonic() - sample.sample_time > config.input_timeout_s):
                     reason = '发送前连接失效或本轮输入已过期'
                     break
                 # sendall 报错也可能已经发送部分字节，因此发送前就标记需要清理。
                 control_attempted = True
-                _experiment_context(input=asdict(sample))
+                _experiment_context(input=dict(
+                    asdict(sample), rudder_rate_deg_s=rudder['rate_deg_s'],
+                    rudder_wait_release=rudder['wait_release']))
                 if not send_auto_control_packet(conn, packet, label='AUTO_STI'):
                     reason = '发送失败'
                     break
@@ -1301,7 +1371,10 @@ def run_auto_sti_mode(conn, gamepad_service, ctl_store, wrm_store, link_closed,
                     print(f'[AUTO_STI {state}] 输入前后={sample.forward:+.2f} '
                           f'左右={sample.left_x:+.2f}；目标左={target.left_percent:+.0f}% '
                           f'右={target.right_percent:+.0f}% pitch={packet["pitchmotor_speed_rpm"]:+d}RPM '
-                          f'roll={packet["rollmotor_speed_rpm"]:+d}RPM'
+                          f'roll={packet["rollmotor_speed_rpm"]:+d}RPM；'
+                          f'LT/RT={sample.left_trigger:.2f}/{sample.right_trigger:.2f} '
+                          f'尾舵目标={rudder_angle_cdeg / 100:+.2f}° '
+                          f'变化速度={rudder["rate_deg_s"]:+.1f}°/s'
                           + ('（准备阶段实际发送中立）' if state != 'ACTIVE' else ''))
                     next_report = now + 1.0
             time.sleep(config.poll_period_s)
@@ -2897,6 +2970,7 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
     print("输入 'auto_sti [槽位0..3] [上限%]' 进入 Xbox 模式，默认上限100%；X/ESC退出")
     print("  例：auto_sti 0 20 使用槽位0、推进限制20%；Y/A按住移动pitch，"
           f"十字键左/右控制roll +{GamepadConfig().roll_rpm}/-{GamepadConfig().roll_rpm}RPM")
+    print("  尾舵RT正/LT负，满按30°/s、松开或双按保持；B回中，B/LT/RT全松后再响应")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
     print("输入 'wormon' / 'wormoff' 开 / 停双轴位置遥测 $UGWRM（落 CSV，阶段变化提示）")
@@ -2999,10 +3073,12 @@ def _start_monitor_bridge():
 
 def main():
     global running, EXPERIMENT_RECORDER, EXPERIMENT_LAST_ERROR, EXPERIMENT_MANAGED
+    global CONTROL_MONITOR_BRIDGE
     running = True
     EXPERIMENT_RECORDER = None
     EXPERIMENT_LAST_ERROR = None
     EXPERIMENT_MANAGED = False
+    CONTROL_MONITOR_BRIDGE = None
     EXPERIMENT_CONTEXT.value = {'source': 'session', 'phase': 'CONNECT'}
     server_socket = conn = recv_thread = gamepad_service = None
     monitor_bridge = None
@@ -3030,6 +3106,7 @@ def main():
             try:
                 monitor_bridge.set_link('connected', peer=f'{addr[0]}:{addr[1]}')
                 monitor_bridge.set_experiment_provider(_experiment_snapshot)
+                CONTROL_MONITOR_BRIDGE = monitor_bridge
             except Exception as exc:
                 print(f'[监控] 连接状态发布失败：{exc}；控制台继续运行。')
                 try:
@@ -3096,6 +3173,7 @@ def main():
             EXPERIMENT_MANAGED = False
             if server_socket is not None:
                 server_socket.close()
+            CONTROL_MONITOR_BRIDGE = None
             if monitor_bridge is not None:
                 try:
                     monitor_bridge.stop()

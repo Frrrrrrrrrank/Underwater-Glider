@@ -413,7 +413,9 @@ class AutoStiHarness:
 
     @staticmethod
     def is_motion(payload):
-        return payload[0] != 0 or payload[5] != 0 or any(payload[12:14])
+        # 此处表示非中立指令；非零舵角可能正在保持，并非机械运动反馈。
+        return (payload[0] != 0 or payload[5] != 0 or any(payload[12:14]) or
+                struct.unpack_from('<h', payload, 19)[0] != 0)
 
     def sendall(self, frame):
         parsed = ugcp.parse_frame(frame)
@@ -669,6 +671,155 @@ class AutoStiLoopTests(unittest.TestCase):
         harness = AutoStiHarness([(0.0, {'forward': 1.0})], fault_at=0.10)
         harness.run()
         self.assertEqual(harness.sent, [])
+
+
+class AutoStiRudderTests(unittest.TestCase):
+    assert_cleanup = AutoStiLoopTests.assert_cleanup
+
+    @staticmethod
+    def angles(harness):
+        return [(at, struct.unpack_from('<h', payload, 19)[0])
+                for at, payload in harness.controls()]
+
+    def test_packet_encodes_absolute_angle_and_rejects_invalid_targets(self):
+        config = gamepad.GamepadConfig()
+        for angle in (-4500, -1234, 0, 4500):
+            packet = contcp_t._build_auto_sti_packet(gamepad.ControlTarget(), config, angle)
+            self.assertEqual(struct.unpack_from('<h', ugcp.pack_control21_payload(**packet), 19)[0], angle)
+        for angle in (-4501, 4501, 1.5, True, float('nan')):
+            with self.assertRaises(ValueError):
+                contcp_t._build_auto_sti_packet(gamepad.ControlTarget(), config, angle)
+
+    def test_entry_requires_each_trigger_and_b_released(self):
+        for held in ({'right_trigger': 1.0}, {'left_trigger': 1.0},
+                     {'right_trigger': 1.0, 'left_trigger': 1.0}, {'button_b': True}):
+            with self.subTest(held=held):
+                harness = AutoStiHarness(
+                    [(0.0, held), (0.20, {'right_trigger': 0.0, 'left_trigger': 0.0, 'button_b': False}),
+                     (0.40, {'right_trigger': 1.0})], fault_at=0.70)
+                harness.run()
+                self.assertTrue(all(at >= 0.199 for at, _ in harness.controls()))
+                self.assertTrue(any(angle > 0 for _, angle in self.angles(harness)))
+                self.assert_cleanup(harness)
+
+    def test_preparing_does_not_integrate_or_accept_held_triggers(self):
+        harness = AutoStiHarness(
+            [(0.20, {'right_trigger': 1.0}), (0.60, {'right_trigger': 0.0}),
+             (0.70, {'right_trigger': 1.0})], ready_at=0.40, fault_at=0.90)
+        harness.run()
+        self.assertTrue(all(angle == 0 for at, angle in self.angles(harness) if at < 0.699))
+        moving = [(at, angle) for at, angle in self.angles(harness) if angle > 0]
+        self.assertTrue(moving)
+        self.assertLessEqual(moving[0][1], 360)
+        self.assert_cleanup(harness)
+
+    def test_full_and_partial_triggers_follow_rate_at_ten_hz(self):
+        for changes, rate in (({'right_trigger': 1.0}, 30.0),
+                              ({'left_trigger': 1.0}, -30.0),
+                              ({'right_trigger': 0.55}, 15.0)):
+            with self.subTest(changes=changes):
+                harness = AutoStiHarness([(0.20, changes)], fault_at=0.90)
+                harness.run()
+                moving = [(at, angle) for at, angle in self.angles(harness) if angle]
+                self.assertGreaterEqual(len(moving), 5)
+                for (at1, a1), (at2, a2) in zip(moving, moving[1:]):
+                    self.assertAlmostEqual((a2 - a1) / 100, rate * (at2 - at1), delta=0.011)
+                    self.assertGreaterEqual(at2 - at1, 0.079)
+                    self.assertLessEqual(at2 - at1, 0.121)
+
+    def test_release_or_dual_trigger_immediately_holds_nonzero_target(self):
+        for changes in ({'right_trigger': 0.0}, {'left_trigger': 1.0}):
+            with self.subTest(changes=changes):
+                harness = AutoStiHarness(
+                    [(0.20, {'right_trigger': 1.0}), (0.26, changes)], fault_at=0.60)
+                harness.run()
+                held = [(at, angle) for at, angle in self.angles(harness) if at >= 0.259]
+                self.assertTrue(held)
+                self.assertLessEqual(held[0][0], 0.281)
+                self.assertGreater(held[0][1], 0)
+                self.assertEqual(len({angle for _, angle in held}), 1)
+
+    def test_b_centers_without_affecting_other_axes_and_requires_full_release(self):
+        harness = AutoStiHarness([
+            (0.20, {'right_trigger': 1.0, 'forward': 1.0, 'button_y': True, 'dpad_left': True}),
+            (0.36, {'button_b': True, 'rudder_center_seq': 1}),
+            (0.50, {'button_b': False}),
+            (0.60, {'right_trigger': 0.0, 'left_trigger': 1.0}),
+            (0.70, {'left_trigger': 0.0}), (0.76, {'right_trigger': 1.0})], fault_at=1.0)
+        harness.run()
+        after_b = [(at, angle) for at, angle in self.angles(harness) if at >= 0.359]
+        self.assertLessEqual(after_b[0][0], 0.381)
+        self.assertTrue(all(angle == 0 for at, angle in after_b if at < 0.759))
+        self.assertTrue(any(angle > 0 for at, angle in after_b if at >= 0.759))
+        for at, payload in harness.controls():
+            if 0.359 <= at < 0.759:
+                self.assertEqual((payload[0], payload[5]), (1, 1))
+                self.assertEqual(payload[12:14], bytes((100, 100)))
+        # B持续按住不将发送频率升到主循环的50Hz。
+        times = [at for at, _ in after_b if at < 0.70]
+        self.assertTrue(all(b - a >= 0.079 for a, b in zip(times, times[1:])))
+        self.assert_cleanup(harness)
+
+    def test_b_sequence_catches_short_press_between_control_iterations(self):
+        harness = AutoStiHarness([
+            (0.20, {'right_trigger': 1.0}),
+            (0.36, {'button_b': False, 'rudder_center_seq': 1}),
+            (0.50, {'right_trigger': 0.0}), (0.60, {'left_trigger': 1.0})], fault_at=0.90)
+        harness.run()
+        angles = self.angles(harness)
+        self.assertTrue(any(angle > 0 for at, angle in angles if at < 0.359))
+        self.assertTrue(all(angle == 0 for at, angle in angles if 0.359 <= at < 0.599))
+        self.assertTrue(any(angle < 0 for at, angle in angles if at >= 0.599))
+
+    def test_endpoint_clamps_integral_and_reverses_without_windup(self):
+        harness = AutoStiHarness(
+            [(0.20, {'right_trigger': 1.0}),
+             (2.30, {'right_trigger': 0.0, 'left_trigger': 1.0})], fault_at=4.0)
+        harness.run()
+        angles = self.angles(harness)
+        self.assertTrue(all(abs(angle) <= 4500 for _, angle in angles))
+        self.assertTrue(any(angle == 4500 for _, angle in angles))
+        reverse = [(at, angle) for at, angle in angles if at >= 2.299]
+        self.assertLess(reverse[0][1], 4500)
+        self.assertTrue(any(angle < 0 for _, angle in reverse))
+
+    def test_tiny_input_accumulates_fractional_centidegrees(self):
+        harness = AutoStiHarness([(0.20, {'right_trigger': 0.101})], fault_at=1.20)
+        harness.run()
+        angles = self.angles(harness)
+        self.assertGreaterEqual(angles[-1][1], 2)
+        self.assertLessEqual(angles[-1][1], 4)
+
+    def test_rudder_faults_exit_and_send_existing_neutral_release(self):
+        for fault in ('x', 'missed_x', 'reconnect', 'disconnect', 'stale',
+                      'worker', 'link', 'escape', 'pid', 'homing'):
+            with self.subTest(fault=fault):
+                harness = AutoStiHarness([(0.20, {'right_trigger': 1.0})],
+                                        fault_at=0.40, fault=fault)
+                harness.run()
+                self.assertTrue(any(angle > 0 for _, angle in self.angles(harness)))
+                self.assertTrue(all(at < 0.401 for at, angle in self.angles(harness) if angle))
+                self.assert_cleanup(harness)
+
+    def test_rudder_send_failure_does_not_retry_nonzero_angle(self):
+        harness = AutoStiHarness([(0.20, {'right_trigger': 1.0})], fail_motion=True)
+        harness.run()
+        attempts = [parsed[2] for _, parsed in harness.attempts
+                    if parsed[0] == ugcp.MSG_CONTROL21_STREAM and harness.is_motion(parsed[2])]
+        self.assertEqual(len(attempts), 1)
+        self.assertTrue(all(angle == 0 for _, angle in self.angles(harness)))
+        self.assert_cleanup(harness)
+
+    def test_new_session_and_long_pause_never_restore_previous_angle(self):
+        harness = AutoStiHarness([(0.20, {'right_trigger': 1.0})])
+        harness.pause_at = 0.30
+        harness.run()
+        self.assertTrue(any(angle > 0 for _, angle in self.angles(harness)))
+        self.assertTrue(all(at < 0.30 for at, _ in harness.controls()))
+        self.assert_cleanup(harness)
+        second = AutoStiHarness(fault_at=0.40)
+        second.run()
+        self.assertTrue(all(angle == 0 for _, angle in self.angles(second)))
 
 
 class TelemetryStoreCompatibilityTests(unittest.TestCase):

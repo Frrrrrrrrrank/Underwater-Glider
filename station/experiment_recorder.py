@@ -26,7 +26,7 @@ COMMON_COLUMNS = ("session_id", "event_id", "t_ns", "host_iso")
 COMMAND_COLUMNS = COMMON_COLUMNS + (
     "source", "phase", "run_id", "tx_start_ns", "tx_end_ns", "seq", "msg_type",
     "success", "error", "payload_hex",
-) + CONTROL_FIELDS + ("input_json", "extra_fields_json", "nonfinite_fields_json")
+) + CONTROL_FIELDS + ("input_json", "extra_fields_json", "nonfinite_fields_json", "rudder_angle_deg")
 TELEMETRY_FIELDS = (
     "schema", "seq", "t_ms", "valid", "data_fresh", "span_valid", "pulse",
     "stroke_percent", "cmd_rpm", "fb_rpm", "moving", "alarm", "ref_kind",
@@ -278,6 +278,9 @@ class ExperimentRecorder:
             if not isinstance(fields, dict):
                 fields = {}
             row.update({key: fields.get(key, "") for key in CONTROL_FIELDS})
+            angle = fields.get("rudder_angle_cdeg")
+            # 保留原始百分之一度列；派生度列便于直接查看，发送失败仍由 success 区分。
+            row["rudder_angle_deg"] = angle / 100.0 if type(angle) is int else ""
             row["input_json"] = _json(event.get("input"))
             row["extra_fields_json"] = _json({
                 key: value for key, value in fields.items() if key not in CONTROL_FIELDS})

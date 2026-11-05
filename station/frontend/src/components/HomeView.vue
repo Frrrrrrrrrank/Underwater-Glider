@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { DeviceLinkStatus, TelemetrySample } from '../types'
+import type { DeviceLinkStatus, GamepadPreview, TelemetrySample } from '../types'
+import { gamepadStatusLabel } from '../domain/gamepad'
 import { numeric } from '../domain/fields'
 import DataValue from './DataValue.vue'
 
@@ -8,8 +9,12 @@ const props = defineProps<{
   telemetry: Record<string, TelemetrySample>
   coreLive: boolean
   deviceStatus: DeviceLinkStatus | 'unknown'
+  gamepad: GamepadPreview | null
+  gamepadIssue: string | null
+  gamepadSlot: number
 }>()
-const emit = defineEmits<{ navigate: [page: 'monitor' | 'diagnostic'] }>()
+const emit = defineEmits<{ navigate: [page: 'monitor' | 'diagnostic' | 'gamepad'] }>()
+const inputSlot = computed(() => props.gamepad?.slots.find(item => item.index === props.gamepadSlot))
 const selected = ref('overview')
 const actions = [
   { key: 'overview', title: '操控概览', subtitle: '对象与控制状态' },
@@ -108,6 +113,12 @@ const metrics = [
               <div><dt>双轴校准</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="calib_state" /></dd></div>
             </dl>
             <p class="operation-note">实际控制来源尚待系统快照接入，不能由网页选中的模式推断。</p>
+            <div class="home-input-summary" data-testid="home-gamepad-summary">
+              <span>输入预览 · 核心 XInput / 槽位 {{ gamepadSlot }}</span>
+              <strong :class="inputSlot?.fresh ? 'tone-ok' : 'tone-muted'">{{ inputSlot ? gamepadStatusLabel[inputSlot.status] : '输入不可用' }}</strong>
+              <small>{{ gamepadIssue ?? '未接管；输入新鲜不代表机器人已就绪。' }}</small>
+              <button class="details-link" data-testid="home-gamepad-link" @click="emit('navigate', 'gamepad')">打开手柄输入 ↗</button>
+            </div>
             <p class="access-note">控制服务未接入<br /><span>当前入口用于确认操作布局；不接管、不解锁、不驱动执行器。</span></p>
           </template>
           <template v-else-if="selected === 'direct'">
@@ -117,7 +128,7 @@ const metrics = [
               <div><dt>蜗杆运动状态</dt><dd><DataValue :sample="telemetry.ugwrm" topic="ugwrm" field="moving" /></dd></div>
               <div><dt>油囊位移</dt><dd><DataValue :sample="telemetry.ugctl" topic="ugctl" field="displacement_mm" /> mm</dd></div>
             </dl>
-            <ul class="operation-list"><li>推进：总推力、差动与单独停止。</li><li>蜗杆：前移 / 停止 / 后移；按住点动方式待确认。</li><li>泵：两个方向与停泵，展示位移和联锁。</li><li>横滚步进轴：展开设置使能与转速。</li></ul>
+            <ul class="operation-list"><li>推进：总推力、差动与单独停止。</li><li>蜗杆：前移 / 后移；已确认按住才动、松开即请求停止，网页控制尚未开放。</li><li>泵：两个方向与停泵，展示位移和联锁。</li><li>横滚步进轴：展开设置使能与转速。</li></ul>
             <p class="access-note">接管 / 交还遥控器需要独立确认<br /><span>旧 AUTO 是持续手动遥控，不是自主航行。停止输出和交还 SBUS 必须分开。</span></p>
           </template>
           <template v-else-if="selected === 'pid'">
@@ -226,6 +237,10 @@ const metrics = [
 .access-note span { color: #a49684; font-size: 10px; }
 .homing-flow { color: #b3a5c0; font-size: 10px; margin-top: 17px; line-height: 1.8; }
 .details-link { margin-top: 20px; }
+.home-input-summary { display: grid; gap: 5px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #302737; }
+.home-input-summary > span, .home-input-summary > small { color: #a299ad; font-size: 10px; line-height: 1.5; }
+.home-input-summary > strong { font-size: 11px; font-weight: 500; }
+.home-input-summary .details-link { margin-top: 3px; text-align: left; padding-block: 4px; }
 .home-telemetry { min-width: 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid #302737; align-items: center; }
 .home-metric { min-width: 0; padding: 0 16px; border-right: 1px solid #302737; }
 .home-metric:last-child { border-right: 0; }
