@@ -9,7 +9,9 @@ import time
 
 # 允许从仓库根目录直接执行脚本，不触发 contcp_t 的任何初始化。
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from gamepad_control import GamepadConfig, GamepadService, map_gamepad_to_target
+from gamepad_control import (
+    GamepadConfig, GamepadService, apply_trigger_deadzone, map_gamepad_to_target,
+)
 
 
 def _positive_duration(value):
@@ -24,15 +26,40 @@ def build_parser():
     parser.add_argument("--index", type=int, choices=range(4), help="固定 XInput 槽位 0 到 3")
     parser.add_argument("--max-percent", type=float, default=100, help="显示的最大输出百分率，默认 100")
     parser.add_argument("--deadzone", type=float, default=0.10, help="左右和前后轴各自的死区，默认 0.10")
+    parser.add_argument("--trigger-deadzone", type=float, default=0.10, help="LT/RT 各自的死区，默认 0.10")
+    parser.add_argument("--rudder-rate-deg-s", type=float, default=30.0,
+                        help="满按扳机的尾舵目标角度变化率，默认 30 度/秒")
     parser.add_argument("--duration", type=_positive_duration, help="运行指定秒数后退出")
     return parser
+
+
+def _format_sample(sample, target, config):
+    """显示当前输入和纯映射意图；本诊断不维护接管锁或发送角度。"""
+    left_trigger = apply_trigger_deadzone(sample.left_trigger, config.trigger_deadzone)
+    right_trigger = apply_trigger_deadzone(sample.right_trigger, config.trigger_deadzone)
+    return (
+        "槽位={} 横向={:+.3f} 前后={:+.3f} X/Y/A={}/{}/{} "
+        "十字键左/右={}/{} 左={:+.1f}% 右={:+.1f}% pitch={}RPM roll={}RPM 失连序号={}\n"
+        "  尾舵输入 LT={:.3f} RT={:.3f} 死区后LT/RT={:.3f}/{:.3f} B={} "
+        "目标角速度意图={:+.1f}度/秒 回中意图={} 回中序号={}".format(
+            sample.index, sample.left_x, sample.forward,
+            int(sample.button_x), int(sample.button_y), int(sample.button_a),
+            int(sample.dpad_left), int(sample.dpad_right),
+            target.left_percent, target.right_percent, target.pitch_rpm, target.roll_rpm,
+            sample.loss_seq, sample.left_trigger, sample.right_trigger,
+            left_trigger, right_trigger, int(sample.button_b),
+            target.rudder_rate_deg_s, int(target.rudder_center), sample.rudder_center_seq,
+        )
+    )
 
 
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        config = GamepadConfig(deadzone=args.deadzone, max_percent=args.max_percent)
+        config = GamepadConfig(deadzone=args.deadzone, max_percent=args.max_percent,
+                               trigger_deadzone=args.trigger_deadzone,
+                               rudder_rate_deg_s=args.rudder_rate_deg_s)
     except ValueError as exc:
         parser.error(str(exc))
     try:
@@ -47,6 +74,7 @@ def main(argv=None):
     last_notice = None
     start_time = time.monotonic()
     print("[手柄诊断] 仅显示输入与计算目标，不连接控制板。按 X 或 Ctrl+C 退出。")
+    print("[手柄诊断] 尾舵显示当前输入意图，不是已发送角度或实测速度；auto_sti 的 B 松开保护由控制循环执行。")
     try:
         service.start()
         while args.duration is None or time.monotonic() - start_time < args.duration:
@@ -83,17 +111,7 @@ def main(argv=None):
                     print("[手柄诊断] X 退出。")
                     return 0
                 target = map_gamepad_to_target(sample, config)
-                print(
-                    "槽位={} 横向={:+.3f} 前后={:+.3f} X/Y/A={}/{}/{} "
-                    "十字键左/右={}/{} 左={:+.1f}% 右={:+.1f}% pitch={}RPM roll={}RPM 失连序号={}".format(
-                        selected_index, sample.left_x, sample.forward,
-                        int(sample.button_x), int(sample.button_y), int(sample.button_a),
-                        int(sample.dpad_left), int(sample.dpad_right),
-                        target.left_percent, target.right_percent, target.pitch_rpm, target.roll_rpm,
-                        sample.loss_seq,
-                    ),
-                    flush=True,
-                )
+                print(_format_sample(sample, target, config), flush=True)
             time.sleep(config.send_period_s)
     except KeyboardInterrupt:
         print("\n[手柄诊断] Ctrl+C 退出。")

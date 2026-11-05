@@ -147,6 +147,37 @@ h1, h2, p, dl, dd, ol, pre { margin: 0; }
 .tone-warn { color: var(--amber) !important; }
 .tone-bad { color: var(--red) !important; }
 .tone-muted, .subtle { color: var(--muted) !important; }
+/* 手柄输入与板端遥测独立；固定工作区内使用紧凑表格和局部滚动。 */
+.gamepad-view { display: grid; grid-template-rows: auto auto minmax(0, 1fr); min-width: 0; min-height: 0; gap: 10px; }
+.gamepad-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; padding: 4px 0 3px; }
+.gamepad-toolbar > div:first-child { display: grid; gap: 6px; min-width: 0; }
+.gamepad-toolbar strong { font-size: 12px; font-weight: 500; }
+.gamepad-toolbar span { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.gamepad-slots { display: flex; flex-shrink: 0; gap: 3px; }
+.gamepad-slots button { display: flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid #39303f; border-radius: 0; background: #000; font-size: 11px; }
+.gamepad-slots button.selected { border-color: #765195; background: #30203e; color: #ebddf8; }
+.gamepad-slots i { width: 5px; height: 5px; background: currentColor; }
+.gamepad-state-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 18px; padding: 9px 11px; border: 1px solid var(--line); font-size: 10px; color: var(--muted); }
+.gamepad-state-strip strong { font-weight: 500; }
+.gamepad-state-detail { margin-left: auto; overflow-wrap: anywhere; }
+.gamepad-grid { min-width: 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); grid-template-rows: minmax(0, 1.12fr) minmax(0, 1fr); gap: 10px; }
+.gamepad-grid .panel { border-radius: 0; }
+.gamepad-table-scroll { flex: 1; }
+.gamepad-table { table-layout: fixed; font-size: 11px; }
+.gamepad-table th, .gamepad-table td { padding: 8px 12px; overflow-wrap: anywhere; border-bottom-color: #29252f; }
+.gamepad-table th { font-size: 10px; }
+.gamepad-input-panel .gamepad-table th:first-child { width: 31%; }
+.gamepad-input-panel .gamepad-table th:nth-child(2) { width: 23%; }
+.gamepad-intent-panel .gamepad-table th:first-child { width: 44%; }
+.gamepad-intent-panel .gamepad-table th:last-child { width: 16%; }
+.gamepad-config-panel .gamepad-table th { width: 57%; }
+.gamepad-mapping-table th { width: 25%; }
+.gamepad-buttons { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 10px 12px; gap: 7px; }
+.gamepad-buttons > div { border: 1px solid #302a38; padding: 8px 3px; text-align: center; display: grid; gap: 6px; color: var(--muted); }
+.gamepad-buttons strong { font-size: 10px; font-weight: 500; }
+.gamepad-buttons span { font-size: 10px; }
+.gamepad-buttons .pressed { color: #d7c4f0; background: #30203e; border-color: #72508c; }
+.gamepad-panel-note { margin-top: auto; padding: 7px 12px; flex-shrink: 0; font-size: 10px; line-height: 1.6; color: #9a8ea6; border-top: 1px solid #29252f; }
 /* 笔记本以有效浏览器视口为基准；滚动仅发生在内部面板。 */
 @media (max-height: 800px) {
   .app-shell { grid-template-rows: 52px minmax(0, 1fr) 24px; }
@@ -164,6 +195,13 @@ h1, h2, p, dl, dd, ol, pre { margin: 0; }
   .panel-note { padding-top: 3px; padding-bottom: 3px; font-size: 9px; }
   .worm-track { padding-top: 10px; }
   .trend-grid { padding: 9px 10px; }
+  .gamepad-view, .gamepad-grid { gap: 8px; }
+  .gamepad-toolbar { padding-block: 1px; }
+  .gamepad-state-strip { padding-block: 7px; }
+  .gamepad-table th, .gamepad-table td { padding-block: 6px; }
+  .gamepad-buttons { padding-block: 7px; gap: 5px; }
+  .gamepad-buttons > div { padding-block: 5px; gap: 3px; }
+  .gamepad-panel-note { font-size: 9px; padding-block: 5px; }
 }
 @media (max-width: 1350px) {
   .workspace { grid-template-columns: 132px minmax(0, 1fr); }
@@ -174,6 +212,10 @@ h1, h2, p, dl, dd, ol, pre { margin: 0; }
   .panel-meta { font-size: 9px; }
   .kpi { padding-left: 9px; padding-right: 9px; }
   .kpi strong { gap: 3px; }
+}
+/* 720px 高度保留字号，仅压缩表格留白，使四块输入信息同时完整可见。 */
+@media (max-height: 740px) {
+  .gamepad-table th, .gamepad-table td { padding-block: 4px; }
 }
 @media (max-height: 680px) {
   .monitor-grid { grid-template-rows: minmax(170px, 1.1fr) minmax(120px, .9fr) minmax(100px, .8fr); }

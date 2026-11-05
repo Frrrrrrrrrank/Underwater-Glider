@@ -45,8 +45,9 @@ MAX_LINE_BUFFER = 64 * 1024
 class EthernetRealtimeLink:
     """监听板端 TCP 客户端并把有效遥测发布到 StateStore。
 
-    本类是 socket 的唯一所有者。首批接入只发送一次遥测流订阅，不暴露任何
-    执行器、PID、参数或回零命令。
+    本类是 socket 的唯一所有者。连接后只发送遥测流订阅；请求 RDSS 时先发
+    基础主题，再尝试扩展主题，兼容拒绝未知订阅位的旧固件。不暴露执行器、
+    PID、参数或回零命令。
     """
 
     def __init__(
@@ -218,14 +219,19 @@ class EthernetRealtimeLink:
             self._store.set_link(LinkStatus.DISCONNECTED, last_error=reason)
 
     def _send_stream_subscription(self, connection: socket.socket) -> None:
-        payload = pack_stream_control_payload(self._stream_mask)
-        frame = build_frame(
-            MSG_STREAM_CONTROL,
-            payload,
-            self._sequence.next(),
-        )
-        connection.sendall(frame)
-        self._store.mark_tx()
+        masks = [self._stream_mask]
+        if self._stream_mask & STREAM_RDSS:
+            # 旧固件会整包拒绝未知 RDSS 位；先确保原有主题仍可接收。
+            masks.insert(0, self._stream_mask & ~STREAM_RDSS)
+        for mask in masks:
+            payload = pack_stream_control_payload(mask)
+            frame = build_frame(
+                MSG_STREAM_CONTROL,
+                payload,
+                self._sequence.next(),
+            )
+            connection.sendall(frame)
+            self._store.mark_tx()
 
     def _receive_lines(self, connection: socket.socket, session_id: str) -> str:
         line_buffer = ""
@@ -250,7 +256,10 @@ class EthernetRealtimeLink:
                 newline_index = line_buffer.find("\n")
                 if newline_index < 0:
                     break
-                line = line_buffer[:newline_index].rstrip("\r")
+                line = line_buffer[:newline_index]
+                # 只去掉正常 CRLF 的一个 CR，额外 CR 留给解析器判坏帧。
+                if line.endswith("\r"):
+                    line = line[:-1]
                 line_buffer = line_buffer[newline_index + 1:]
                 decoded = decode_telemetry_line(line)
                 if self._recorder is not None:

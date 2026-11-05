@@ -119,6 +119,10 @@ class BatteryFirmwareProtocolTests(unittest.TestCase):
         rows = self.run_scenario("priority")
         self.assertEqual([r["t_ms"] for r in rows], [5000, 6000])
 
+    def test_real_task_prioritizes_battery_when_rdss_is_also_due(self):
+        rows = self.run_scenario("rdss_priority")
+        self.assertEqual([r["t_ms"] for r in rows], [5000, 7000])
+
     def test_real_task_retries_failed_battery_without_advancing_period(self):
         rows = self.run_scenario("retry")
         self.assertEqual([(r["seq"], r["t_ms"]) for r in rows], [(1, 5001), (2, 6001)])
@@ -166,7 +170,7 @@ static UART_HandleTypeDef fake_uart;
 static UART_HandleTypeDef *s_uart = &fake_uart;
 static uint8_t s_tx_busy, s_snapshot_pending, s_rx_rearm_pending;
 static uint8_t s_ekf_telem_enabled, s_mag_telem_enabled, s_ctl_telem_enabled;
-static uint8_t s_wrm_telem_enabled, s_bat_telem_enabled;
+static uint8_t s_wrm_telem_enabled, s_bat_telem_enabled, s_rdss_telem_enabled;
 static uint32_t s_last_command_tick;
 static uint32_t fake_tick = 10000U, copy_delay;
 static unsigned copies, tx_attempts, setup_calls, critical_depth;
@@ -232,6 +236,8 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
 { event('C'); s_tx_busy = 1U; return HAL_OK; }
 HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void)
 { event('W'); s_tx_busy = 1U; return HAL_OK; }
+HAL_StatusTypeDef EthernetUartDriver_SendRdssTelemetry(void)
+{ event('R'); s_tx_busy = 1U; return HAL_OK; }
 static void osDelay(uint32_t delay)
 {
   assert(delay == ETHERNET_UART_TASK_PERIOD_MS && critical_depth == 0U);
@@ -372,6 +378,29 @@ int main(int argc, char **argv)
     s_tx_busy = 0U;
     at(6000U, true);
     assert(events[3] == 'B' && event_count == 4U && s_snapshot_pending == 1U);
+  }
+  else if (strcmp(argv[1], "rdss_priority") == 0)
+  {
+    scheduler_init();
+    s_rdss_telem_enabled = 1U;
+    /* BAT 与 RDSS 同时到期先发 BAT；UART 忙时不抢占，下一空闲拍再发 RDSS。 */
+    at(5000U, true);
+    assert(events[0] == 'B' && event_count == 1U && s_snapshot_pending == 1U);
+    at(5001U, true);
+    assert(event_count == 1U);
+    s_tx_busy = 0U;
+    at(5020U, true);
+    assert(events[1] == 'R' && event_count == 2U && s_snapshot_pending == 1U);
+    s_tx_busy = 0U;
+    at(5040U, true);
+    assert(events[2] == 'S' && s_snapshot_pending == 0U);
+    /* 两条低频流再次同时到期，仍保持 BAT 优先且 RDSS 不被饿死。 */
+    s_tx_busy = 0U;
+    at(7000U, true);
+    assert(events[3] == 'B' && event_count == 4U);
+    s_tx_busy = 0U;
+    at(7020U, true);
+    assert(events[4] == 'R' && event_count == 5U);
   }
   else if (strcmp(argv[1], "retry") == 0)
   {

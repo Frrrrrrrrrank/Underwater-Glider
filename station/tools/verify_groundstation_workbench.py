@@ -23,10 +23,12 @@ import uvicorn
 import websockets
 
 from groundstation.app import create_app
+from groundstation.gamepad_preview import GamepadPreview
 from groundstation.models import LinkStatus
 from groundstation.state_store import StateStore
 from groundstation.legacy_telemetry import EKF_FIELDS, UGCTL_FIELDS, UGWRM_FIELDS, UGWRM_FIELDS_V2
 from groundstation.session_recorder import disabled_recording_snapshot
+from gamepad_control import GamepadSnapshot
 
 
 def free_port():
@@ -97,7 +99,37 @@ class LocalFixtureLink:
         return state
 
 
-async def inspect_page(cdp_url, url, output, server, fixture_mode):
+class LocalFixtureGamepad:
+    """仅返回合成输入；不构造 XInputBackend，也不建立板端连接。"""
+
+    def __init__(self, config, fixture_mode):
+        self.config = config
+        self.fixture_mode = fixture_mode
+        self.running = False
+
+    def start(self):
+        self.running = True
+
+    def stop(self):
+        self.running = False
+
+    def is_alive(self):
+        return self.running
+
+    def snapshot(self, index):
+        if index == 3:
+            return GamepadSnapshot(index=index, error="本地测试：此槽位无手柄")
+        mode = self.fixture_mode.get('gamepad', 'pressed')
+        sampled_at = time.monotonic() - (1.0 if mode == 'stale' and index == 0 else 0.0)
+        values = {}
+        if index == 0 and mode != 'released':
+            values = dict(forward=1.0, button_y=True, dpad_left=True, right_trigger=1.0)
+        elif index == 2:
+            values = dict(button_b=True, right_trigger=1.0, rudder_center_seq=1)
+        return GamepadSnapshot(index=index, connected=True, sample_time=sampled_at, **values)
+
+
+async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
     async with websockets.connect(cdp_url, max_size=20 * 1024 * 1024) as connection:
         cdp = DevTools(connection)
         await cdp.call("Page.enable")
@@ -125,14 +157,15 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode):
                 radius: active.borderRadius, leftBorder: active.borderLeftWidth, rightBorder: active.borderRightWidth,
                 gradient: getComputedStyle(document.querySelector('.topbar')).backgroundImage};
         })()""")
-        if theme['background'] != 'rgb(0, 0, 0)' or theme['sidebar'] != '工作台侧栏' or theme['tabs'] != ['主页', '运行监控', '遥测诊断', '会话记录']:
+        tabs = ['主页', '手柄输入', '运行监控', '遥测诊断', '会话记录']
+        if theme['background'] != 'rgb(0, 0, 0)' or theme['sidebar'] != '工作台侧栏' or theme['tabs'] != tabs:
             raise AssertionError({'theme': theme})
         if any(theme[key] != '0px' for key in ('radius', 'leftBorder', 'rightBorder')) or 'linear-gradient' not in theme['gradient']:
             raise AssertionError({'theme': theme})
         results = [{'theme': theme}]
         for width, height in ((1366, 768), (1920, 1080), (1280, 720)):
             await cdp.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1, mobile=False)
-            for tab in ("主页", "运行监控", "遥测诊断", "会话记录"):
+            for tab in tabs:
                 clicked = await cdp.evaluate(
                     "(() => { const button = [...document.querySelectorAll('nav button')].find(b => b.textContent.trim().endsWith("
                     + json.dumps(tab) + ")); if (!button) return false; button.click(); return true; })()"
@@ -170,8 +203,84 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode):
                     if len(tables) != 3 or any(item['contentHeight'] > item['height'] + 1 or item['contentWidth'] > item['width'] + 1 for item in tables):
                         raise AssertionError({'critical_tables_clipped': tables, 'width': width, 'height': height})
                     screenshot = await cdp.call("Page.captureScreenshot", format="png")
-                    # 测试产物写入已忽略的 plots 目录，不进入应用静态资源。
+                    # 测试产物仅写入本次输出目录，不进入应用静态资源。
                     (output / ("workbench-%dx%d-test-fixture.png" % (width, height))).write_bytes(base64.b64decode(screenshot["data"]))
+                if tab == '手柄输入':
+                    panels = await cdp.evaluate("""(() => {
+                        const names = ['input', 'intent', 'config', 'mapping'];
+                        return names.map(name => {
+                            const e = document.querySelector('[data-testid=gamepad-' + name + '-panel]');
+                            if (!e) return {name, missing: true};
+                            const r = e.getBoundingClientRect();
+                            const clipped = [e, ...e.querySelectorAll('.panel-scroll')].some(
+                                p => p.scrollWidth > p.clientWidth + 1 || p.scrollHeight > p.clientHeight + 1);
+                            return {name, clipped, left: r.left, right: r.right, top: r.top, bottom: r.bottom};
+                        });
+                    })()""")
+                    if any(panel.get('missing') or panel.get('clipped') or panel['left'] < 0 or
+                           panel['right'] > width + 1 or panel['bottom'] > height + 1 for panel in panels):
+                        raise AssertionError({'gamepad_panels_clipped': panels, 'width': width, 'height': height})
+                    screenshot = await cdp.call('Page.captureScreenshot', format='png')
+                    (output / ('gamepad-%dx%d-test-fixture.png' % (width, height))).write_bytes(base64.b64decode(screenshot['data']))
+                    results.append({'gamepad_panels': panels, 'width': width, 'height': height})
+
+        async def select_gamepad(index):
+            await cdp.evaluate("document.querySelector('[data-testid=gamepad-slot-" + str(index) + "]').click()")
+            await asyncio.sleep(.15)
+
+        async def read_intent():
+            return await cdp.evaluate("""(() => {
+                const result = {};
+                for (const key of ['left_percent', 'right_percent', 'pitch_rpm', 'roll_rpm', 'rudder_rate_deg_s']) {
+                    const e = document.querySelector('[data-testid=gamepad-intent-' + key + ']');
+                    result[key] = e && e.dataset.value !== '' ? Number(e.dataset.value) : null;
+                }
+                return result;
+            })()""")
+
+        await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim() === '手柄输入').click()")
+        await asyncio.sleep(.1)
+        await select_gamepad(0)
+        pressed = await read_intent()
+        if pressed != dict(left_percent=100, right_percent=100, pitch_rpm=-100, roll_rpm=300, rudder_rate_deg_s=30):
+            raise AssertionError({'pressed_mapping': pressed})
+        fixture_mode['gamepad'] = 'released'
+        await asyncio.sleep(.4)
+        released = await read_intent()
+        if released != dict.fromkeys(pressed, 0):
+            raise AssertionError({'released_mapping': released})
+        fixture_mode['gamepad'] = 'pressed'
+        await asyncio.sleep(.3)
+        await select_gamepad(1)
+        if await read_intent() != released:
+            raise AssertionError('选择中立槽位后仍显示其他槽位运动意图')
+        await select_gamepad(3)
+        if any(value is not None for value in (await read_intent()).values()):
+            raise AssertionError('未连接槽位被显示成可用中立输入')
+        # 切换页面不应偷偷选择另一只手柄。
+        await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim() === '主页').click()")
+        await asyncio.sleep(.1)
+        await cdp.evaluate("document.querySelector('[data-testid=home-gamepad-link]').click()")
+        await asyncio.sleep(.1)
+        if any(value is not None for value in (await read_intent()).values()):
+            raise AssertionError('切换页面意外自动选择了已连接槽位')
+        await select_gamepad(0)
+        store.set_link(LinkStatus.DISCONNECTED, peer='LOCAL TEST FIXTURE')
+        await asyncio.sleep(.4)
+        if await read_intent() != pressed:
+            raise AssertionError('板端断开错误阻断了本机手柄预览')
+        store.set_link(LinkStatus.CONNECTED, peer='LOCAL TEST FIXTURE', session_id='browser-verification-only')
+        fixture_mode['gamepad'] = 'stale'
+        await asyncio.sleep(.5)
+        if any(value is not None for value in (await read_intent()).values()):
+            raise AssertionError('遥测持续更新时，陈旧手柄输入仍作为可用意图')
+        if not await cdp.evaluate("document.querySelector('[data-testid=freshness-status]').textContent.includes('遥测新鲜')"):
+            raise AssertionError('手柄陈旧测试没有保持遥测新鲜，不能证明独立年龄判断')
+        results.append({'gamepad_pressed': pressed, 'gamepad_released': released,
+                        'slot_selection_persists': True, 'preview_without_board': True,
+                        'stale_gamepad_with_live_telemetry_unavailable': True})
+        fixture_mode['gamepad'] = 'pressed'
+        await asyncio.sleep(.3)
         await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim().endsWith('运行监控')).click()")
         for case in ('missing_validity', 'non_finite', 'invalid_attitude', 'stopped_stream'):
             fixture_mode['case'] = case
@@ -227,6 +336,11 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode):
             raise AssertionError('断开后主页仍显示有效姿态或航向指针')
         screenshot = await cdp.call("Page.captureScreenshot", format="png")
         (output / "home-disconnected-test-fixture.png").write_bytes(base64.b64decode(screenshot["data"]))
+        await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim() === '手柄输入').click()")
+        await asyncio.sleep(.1)
+        if any(value is not None for value in (await read_intent()).values()):
+            raise AssertionError('核心断开后仍保留可用手柄意图')
+        results.append({'core_closed_gamepad_unavailable': True})
         if any(method not in ('GET', 'HEAD') for method in cdp.http_methods):
             raise AssertionError({'unexpected_write_request': cdp.http_methods})
         results.append({'only_read_requests': True, 'request_count': len(cdp.http_methods)})
@@ -240,7 +354,7 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--edge", default=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
-    parser.add_argument("--output", type=Path, default=STATION_DIR / "plots" / "urgc-workbench-check")
+    parser.add_argument("--output", type=Path, default=STATION_DIR.parent / ".buildtmp" / "urgc-workbench-check")
     args = parser.parse_args()
     if not Path(args.edge).is_file():
         parser.error("未找到 Edge，请用 --edge 指定路径")
@@ -248,7 +362,7 @@ def main():
     store = StateStore()
     store.set_link(LinkStatus.CONNECTED, peer="LOCAL TEST FIXTURE", session_id="browser-verification-only")
     stopped = threading.Event()
-    fixture_mode = {'case': 'valid'}
+    fixture_mode = {'case': 'valid', 'gamepad': 'pressed'}
 
     def publish_fixture():
         started = time.monotonic()
@@ -286,7 +400,8 @@ def main():
     publisher = threading.Thread(target=publish_fixture, daemon=True)
     publisher.start()
     port = free_port()
-    app = create_app(store, link_manager=LocalFixtureLink(), device_link_enabled=False)
+    preview = GamepadPreview(service_factory=lambda config: LocalFixtureGamepad(config, fixture_mode))
+    app = create_app(store, link_manager=LocalFixtureLink(), device_link_enabled=False, gamepad_preview=preview)
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error", timeout_graceful_shutdown=1))
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
@@ -317,7 +432,7 @@ def main():
                     time.sleep(0.1)
             if cdp_url is None:
                 raise RuntimeError("无头浏览器调试服务未启动")
-            asyncio.run(inspect_page(cdp_url, "http://127.0.0.1:%d" % port, args.output, server, fixture_mode))
+            asyncio.run(inspect_page(cdp_url, "http://127.0.0.1:%d" % port, args.output, server, fixture_mode, store))
         finally:
             stopped.set()
             server.should_exit = True

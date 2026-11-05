@@ -44,6 +44,10 @@ _ROLL_STATES = {
 }
 _CALIB_STATES = {0: "未校准", 1: "校准中", 2: "双轴完成", 3: "失败", 4: "已取消"}
 _CALIB_FAILURES = {0: "无", 1: "pitch失败", 2: "roll失败", 3: "已取消", 4: "PID接管"}
+_RDSS_RESULTS = {
+    0: "空闲", 1: "待发", 2: "等待模块回执", 3: "模块确认",
+    4: "模块拒绝", 5: "回执超时", 6: "UART错误",
+}
 _INVALID_REASONS = {
     "non_finite": "非有限数", "ekf_not_valid": "EKF无效",
     "worm_feedback_stale": "反馈过期", "worm_feedback_unknown": "反馈状态未知",
@@ -51,6 +55,8 @@ _INVALID_REASONS = {
     "worm_reference_unavailable": "无有效参考", "roll_reference_invalid": "未标定",
     "roll_reference_unknown": "参考未知", "battery_invalid": "电池数据无效",
     "battery_sample_stale": "采样过期", "battery_sample_age_unknown": "采样年龄未知",
+    "local_fix_unavailable": "无缓存定位", "target_coordinate_unavailable": "目标无效",
+    "coordinate_out_of_range": "坐标无效",
 }
 
 
@@ -69,6 +75,28 @@ def _number(value):
 
 def _missing(reason):
     return f"--（{reason}）"
+
+
+def _rudder_lines(snapshot, error):
+    """显示最近成功发送的历史指令，时效与连接状态不等于执行确认。"""
+    link = _mapping(_mapping(snapshot).get("device_link"))
+    command = _mapping(_mapping(_mapping(snapshot).get("commands")).get("rudder"))
+    angle, age = command.get("angle_deg"), command.get("age_ms")
+    reason = ("接口不可用" if error else "尚无成功发送记录" if not command else
+              "旧连接记录" if command.get("session_id") != link.get("session_id") else
+              "数值无效" if not _number(angle) or abs(angle) > 45 else "")
+    if reason:
+        value, detail = _missing(reason), "来源/时间：--"
+    else:
+        status = ("板端断开，仅历史记录" if link.get("status") != "connected" else
+                  "最近发送" if command.get("fresh") is True else "发送记录超龄")
+        authority = "已发释放请求" if command.get("eth_control_flag") == 0 else "直控请求"
+        value = f"{angle:+.2f}°（{status}；{authority}）"
+        age_text = f"{age:.0f}ms" if _number(age) and age >= 0 else "未知"
+        detail = (f"来源：{command.get('source') or '未知'}/{command.get('phase') or '--'}  "
+                  f"发送：{command.get('sent_at') or '--'}  年龄：{age_text}")
+    return [f"尾舵上位机指令：{value}", f"      {detail}",
+            "      非板端执行确认/实测角度；commands.csv 记录发送角度和 success。"]
 
 
 class _Topic:
@@ -153,6 +181,7 @@ def render_panel(snapshot, *, width=100, endpoint=DEFAULT_URL, error=None):
     ctl = _Topic(snapshot, "ugctl", error)
     wrm = _Topic(snapshot, "ugwrm", error)
     bat = _Topic(snapshot, "ugbat", error)
+    rdss = _Topic(snapshot, "ugrds", error)
     link = _mapping(_mapping(snapshot).get("device_link"))
     link_status = _LINK_NAMES.get(link.get("status"), "未知")
     interface_status = f"不可用：{error}" if error else ("正常" if isinstance(snapshot, Mapping) else "不可用")
@@ -203,10 +232,23 @@ def render_panel(snapshot, *, width=100, endpoint=DEFAULT_URL, error=None):
     crc = ctl.field("active_crc", lambda n: (
         f"0x{int(n):08X}" if int(n) == n and 0 <= n <= 0xFFFFFFFF else _missing("CRC无效")))
 
+    def coordinate(prefix, flag, reason):
+        gate = "" if rdss.data.get(flag) == 1 else reason
+
+        def degrees(limit):
+            return lambda n: (f"{n / 1e7:+.7f}°" if int(n) == n and -limit <= n <= limit
+                              else _missing("坐标无效"))
+
+        return (rdss.field(prefix + "_latitude_deg_e7", degrees(900_000_000), gate) + ", " +
+                rdss.field(prefix + "_longitude_deg_e7", degrees(1_800_000_000), gate))
+
+    yes_no = {0: "否", 1: "是"}
+
     lines = [
         "水下滑翔机 · 只读监视   刷新约5Hz",
         f"接口 {endpoint}  {interface_status}",
         f"板端：{link_status if not error else '未知'}  （本窗口不发送控制）",
+        *_rudder_lines(snapshot, error),
         f"轴位置  Pitch：{pitch}",
         f"        Roll ：{roll}",
         f"校准：{calib}  保持：{hold}  原因：{calib_fail}",
@@ -216,6 +258,13 @@ def render_panel(snapshot, *, width=100, endpoint=DEFAULT_URL, error=None):
         f"EKF   Pitch：{angle('pitch_deg')}   Roll：{angle('roll_deg')}",
         f"      Yaw：{angle('yaw_deg')}   Depth：{depth}（向下为正）",
         f"电池  滤波电压：{voltage}  有效：{battery_valid}",
+        f"北斗  信号：{rdss.enum('signal_good', {0: '弱/无', 1: '良好'})}  就绪：{rdss.enum('ready_to_send', yes_no)}  结果：{rdss.enum('last_result', _RDSS_RESULTS)}",
+        f"      待发：{rdss.enum('pending', yes_no)}  等回执：{rdss.enum('waiting_ack', yes_no)}  模块确认：{rdss.field('sent_count')}  SEND OK：{rdss.field('send_ok_count')}",
+        f"      尝试：{rdss.field('attempt_count')}  拒绝：{rdss.field('reject_count')}  超时：{rdss.field('timeout_count')}  UART失败：{rdss.field('uart_fail_count')}",
+        f"      卡号已知：{rdss.enum('card_id_known', yes_no)}  不匹配：{rdss.enum('card_mismatch', yes_no)}  目标接收：{rdss.field('goto_received_count')}",
+        f"缓存定位（非实时）：{coordinate('local', 'has_cached_fix', '无缓存定位')}",
+        f"目标坐标（纬,经）：{coordinate('target', 'target_valid', '目标无效')}",
+        "北斗模块确认不代表对端送达；缓存定位年龄未上报。",
         f"PID   模式：{ctl.enum('mode', _PID_MODES)}  ARM：{ctl.enum('armed', {0: '否', 1: '是'})}  阶段：{ctl.enum('phase', _PID_PHASES, phase_gate)}",
         f"      故障：{ctl.enum('fault', _PID_FAULTS)}  算法故障：{ctl.enum('core_fault', _CORE_FAULTS)}",
         f"PID请求 深度：{ctl.field('target_depth', lambda n: f'{n:.3f} m')}  Pitch：{ctl.field('target_pitch_deg', lambda n: f'{n:+.2f}°')}",
@@ -224,9 +273,28 @@ def render_panel(snapshot, *, width=100, endpoint=DEFAULT_URL, error=None):
         "PID 整套参数：当前固件未上报（Kp/Ki/Kd/限幅等）",
         "左右实际 PWM：当前固件未上报（有方向 % / μs）",
         f"数据 EKF：{ekf.age()}  CTL：{ctl.age()}",
-        f"     WRM：{wrm.age()}",
+        f"     WRM：{wrm.age()}  RDSS：{rdss.age()}",
         "限位0=触发/1=释放。Ctrl+C退出监视。",
     ]
+    experiment = _mapping(_mapping(snapshot).get("experiment"))
+    if experiment:
+        raw_status = experiment.get("status")
+        if not isinstance(raw_status, str):
+            raw_status = "未知"
+        status = {
+            "recording": "记录中", "active": "记录中", "idle": "未开始",
+            "stopped": "已停止", "closed": "已结束", "error": "记录失败",
+            "degraded": "记录不完整", "starting": "正在开始",
+        }.get(raw_status, raw_status)
+        dropped = experiment.get("dropped_records")
+        dropped_text = str(dropped) if type(dropped) is int and dropped >= 0 else "未知"
+        if error:
+            status, dropped_text = "接口不可用", "未知"
+        # 记录状态放在顶部，小终端也能看见；目录仅供定位本机实验文件。
+        lines[3:3] = [f"实验记录：{status}  丢记录：{dropped_text}",
+                      f"记录目录：{experiment.get('directory') or '--'}"]
+        if experiment.get("last_error"):
+            lines.insert(5, f"记录错误：{experiment['last_error']}")
     return "\n".join(_fit_line(line, width) for line in lines)
 
 
