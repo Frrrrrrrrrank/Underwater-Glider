@@ -21,13 +21,13 @@ except ImportError:
 try:
     from .experiment_recorder import ExperimentRecorder
     from .rdss_telemetry import (
-        UGRDS_FIELDS, UGRDS_CSV_HEADER, UGRDS_RESULT_NAMES,
+        UGRDS_FIELDS, UGRDS_INT_FIELDS, UGRDS_CSV_HEADER, UGRDS_RESULT_NAMES,
         ugrds_parse, ugrds_csv_row,
     )
 except ImportError:
     from experiment_recorder import ExperimentRecorder
     from rdss_telemetry import (
-        UGRDS_FIELDS, UGRDS_CSV_HEADER, UGRDS_RESULT_NAMES,
+        UGRDS_FIELDS, UGRDS_INT_FIELDS, UGRDS_CSV_HEADER, UGRDS_RESULT_NAMES,
         ugrds_parse, ugrds_csv_row,
     )
 
@@ -1732,6 +1732,7 @@ UGCTL_INT_FIELDS = {
 }
 UGCTL_CSV_HEADER = ["host_iso"] + UGCTL_FIELDS
 
+
 #  蜗杆位置遥测($UGWRM)解析 + CSV 记录
 # 字段顺序必须与板端 EthernetUartDriver_SendWormTelemetry() 完全一致。
 UGWRM_FIELDS_V2 = [
@@ -2664,6 +2665,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     rdss_csv = None
     rdss_raw = None
     rdss_csv_failed = False
+    rdss_last_key = None
 
     def publish_monitor(topic, row):
         """仅复制已解析的最新值；面板故障不能中断唯一接收线程。"""
@@ -2736,6 +2738,43 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             rdss_csv_failed = True
             print(f'[北斗记录失败] {exc}；遥测接收和控制继续。')
 
+    def report_rdss(row):
+        """仅在有效北斗状态变化时提示，记录仍走现有异步实验链路。"""
+        nonlocal rdss_last_key
+        key = (
+            row["last_result"], row["signal_good"], row["ready_to_send"],
+            row["pending"], row["waiting_ack"], row["sent_count"],
+            row["reject_count"], row["timeout_count"], row["uart_fail_count"],
+            row["send_ok_count"], row["goto_received_count"],
+            row["target_valid"], row["target_latitude_deg_e7"],
+            row["target_longitude_deg_e7"],
+        )
+        if key != rdss_last_key:
+            rdss_last_key = key
+            local_position = "N/A"
+            if row["has_cached_fix"]:
+                local_position = "%.7f,%.7f" % (
+                    row["local_latitude_deg_e7"] / 1e7,
+                    row["local_longitude_deg_e7"] / 1e7,
+                )
+            target_position = "N/A"
+            if row["target_valid"]:
+                target_position = "%.7f,%.7f" % (
+                    row["target_latitude_deg_e7"] / 1e7,
+                    row["target_longitude_deg_e7"] / 1e7,
+                )
+            print(
+                "\n[RDSS] result=%s signal=%d ready=%d pending=%d ack=%d "
+                "attempt=%d sent=%d send_ok=%d reject=%d timeout=%d uart_fail=%d "
+                "local=%s goto_rx=%d target=%s"
+                % (UGRDS_RESULT_NAMES.get(row["last_result"], row["last_result"]),
+                   row["signal_good"], row["ready_to_send"], row["pending"],
+                   row["waiting_ack"], row["attempt_count"], row["sent_count"],
+                   row["send_ok_count"], row["reject_count"],
+                   row["timeout_count"], row["uart_fail_count"],
+                   local_position, row["goto_received_count"], target_position)
+            )
+
     def handle_line(raw_line, line_index):
         nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
         line = raw_line.strip()
@@ -2761,6 +2800,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
         if topic == 'ugrds':
             if row is not None:
                 publish_monitor('ugrds', row)
+                report_rdss(row)
             record_rdss(row, raw_line)
             return
 

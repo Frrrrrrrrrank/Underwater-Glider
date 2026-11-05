@@ -20,8 +20,13 @@ except ImportError:
     from groundstation.state_store import StateStore
 
 
-TOPIC_STALE_MS = {"ugekf": 500, "ugctl": 500, "ugwrm": 500,
-                  "ugbat": 3000, "ugrds": 2000}
+TOPIC_STALE_MS = {
+    "ugekf": 500,
+    "ugctl": 500,
+    "ugwrm": 500,
+    "ugbat": 3000,
+    "ugrds": 2000,
+}
 CLIENT_TIMEOUT_S = 2.0
 MAX_HTTP_CLIENTS = 4
 # 仅是本机发送记录的显示时效，不证明板端已收包或控制租约已失效。

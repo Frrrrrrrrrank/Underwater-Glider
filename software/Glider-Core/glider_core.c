@@ -29,13 +29,14 @@
 #define GLIDER_SIGNAL_STABLE_COUNT 2U
 #define GLIDER_MODE_SWITCH_COOLDOWN_LINES 3U
 #define GLIDER_CARD_QUERY_COOLDOWN_LOOPS 6U
-#define GLIDER_RN_REFRESH_INTERVAL_MS 30000U
+#define GLIDER_RN_REFRESH_INTERVAL_MS 3000U
 #define GLIDER_RELOCATE_INTERVAL_MS 180000U
-#define GLIDER_SHORTMSG_SEND_INTERVAL_MS 2000U
+#define GLIDER_SHORTMSG_SEND_INTERVAL_MS 30000U
 #define GLIDER_TC_REQUEST_RETRY_MS 3000U
 #define GLIDER_TC_ENTER_GRACE_MS 1200U
-#define GLIDER_RD_MODE_RETRY_MS 10000U
+#define GLIDER_RD_MODE_RETRY_MS 1000U
 #define GLIDER_SHORTMSG_ACK_TIMEOUT_MS 8000U
+#define GLIDER_SHORTMSG_SETUP_TIMEOUT_MS 10000U
 
 static UART_HandleTypeDef *s_uart = NULL;
 static volatile uint8_t s_rx_ring[GLIDER_RX_RING_SIZE];
@@ -51,11 +52,21 @@ static volatile uint32_t s_tx_fail_count = 0;
 static volatile uint32_t s_tx_last_hal_status = 0;
 static volatile uint32_t s_tx_last_uart_error = 0;
 static volatile uint32_t s_shortmsg_sent_count = 0;
+static volatile uint32_t s_shortmsg_attempt_count = 0;
+static volatile uint32_t s_shortmsg_reject_count = 0;
+static volatile uint32_t s_shortmsg_timeout_count = 0;
+static volatile uint32_t s_shortmsg_uart_fail_count = 0;
+static volatile uint32_t s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_IDLE;
+static volatile uint32_t s_shortmsg_send_ok_count = 0U;
+static volatile int32_t s_local_latitude_deg_e7 = 0;
+static volatile int32_t s_local_longitude_deg_e7 = 0;
 static volatile uint32_t s_bdpwi_signal_available = 0;
 static char s_last_tx_text[32] = {0};
 static char s_last_shortmsg_payload[96] = {0};
 
 volatile GliderTargetCoordinate g_target_coordinate = {0};
+volatile uint32_t g_rdss_fix_update_count = 0U;
+volatile uint32_t g_rdss_rn_request_count = 0U;
 
 typedef struct
 {
@@ -136,6 +147,9 @@ static GliderLastState s_last = {
 static volatile uint32_t s_last_valid_fix_tick = 0U;
 static volatile uint32_t s_last_rn_request_tick = 0U;
 static volatile uint32_t s_last_shortmsg_try_tick = 0U;
+static uint32_t s_last_send_cycle_tick = 0U;
+static bool s_send_cycle_started = false;
+static bool s_payload_attempted = false;
 static volatile uint32_t s_last_tc_request_tick = 0U;
 static volatile uint32_t s_last_rd_request_tick = 0U;
 static char s_line_buffer[GLIDER_RX_LINE_SIZE];
@@ -404,7 +418,9 @@ static void update_signal_state(uint32_t new_signal_good)
       s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
       s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
     }
-    else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT && s_tx_mode != GLIDER_TX_MODE_SIGNAL_POLL)
+    else if (s_signal_bad_streak >= GLIDER_SIGNAL_STABLE_COUNT &&
+             s_rn_mode_active == 0U && s_has_cached_fix == 0U &&
+             s_tx_mode != GLIDER_TX_MODE_SIGNAL_POLL)
     {
       s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
       s_mode_switch_cooldown = GLIDER_MODE_SWITCH_COOLDOWN_LINES;
@@ -533,8 +549,11 @@ static bool cache_coordinate_shortmsg(const GliderRdssDecodedFrame *frame)
 
   strncpy(s_cached_shortmsg_payload, payload, sizeof(s_cached_shortmsg_payload) - 1U);
   s_cached_shortmsg_payload[sizeof(s_cached_shortmsg_payload) - 1U] = '\0';
+  s_local_latitude_deg_e7 = frame->gnrmc.latitude_deg_e7;
+  s_local_longitude_deg_e7 = frame->gnrmc.longitude_deg_e7;
   s_has_cached_fix = 1U;
   s_last_valid_fix_tick = HAL_GetTick();
+  g_rdss_fix_update_count++;
   return true;
 }
 
@@ -548,21 +567,35 @@ static bool cached_fix_expired(uint32_t now)
   return ((now - s_last_valid_fix_tick) >= GLIDER_RELOCATE_INTERVAL_MS);
 }
 
+static void finish_shortmsg_and_request_rn(void)
+{
+  s_pending_shortmsg_payload[0] = '\0';
+  s_shortmsg_pending = 0U;
+  s_shortmsg_waiting_ack = 0U;
+  s_transparent_mode_ready = 0U;
+  s_tc_mode_active = 0U;
+  s_tc_mode_requested = 0U;
+  s_rn_mode_active = 0U;
+  s_target_card_query_attempted = 0U;
+  s_tx_mode = GLIDER_TX_MODE_POSITION_TEST;
+  s_last_rn_request_tick = 0U;
+}
+
 static void invalidate_cached_fix_and_request_relocate(void)
 {
   s_has_cached_fix = 0U;
   s_cached_shortmsg_payload[0] = '\0';
-  s_pending_shortmsg_payload[0] = '\0';
-  s_shortmsg_pending = 0U;
-  s_transparent_mode_ready = 0U;
-  s_tc_mode_active = 0U;
-  s_tc_mode_requested = 0U;
-  s_last_rn_request_tick = 0U;
+  finish_shortmsg_and_request_rn();
 }
 
 static void try_queue_cached_shortmsg(void)
 {
   uint32_t now = HAL_GetTick();
+
+  if (s_shortmsg_pending != 0U || s_shortmsg_waiting_ack != 0U)
+  {
+    return;
+  }
 
   if (cached_fix_expired(now))
   {
@@ -578,28 +611,68 @@ static void try_queue_cached_shortmsg(void)
     return;
   }
 
-  if (s_signal_good == 0U)
+  if (s_local_card_id_known == 0U || s_local_card_mismatch != 0U)
   {
     return;
   }
 
+  /* Gate both successful sends and failed setup cycles; subtraction handles wrap. */
+  if (s_send_cycle_started &&
+      ((now - s_last_send_cycle_tick) < GLIDER_SHORTMSG_SEND_INTERVAL_MS ||
+       (s_payload_attempted &&
+        (now - s_last_shortmsg_try_tick) < GLIDER_SHORTMSG_SEND_INTERVAL_MS)))
+  {
+    return;
+  }
+
+  s_last_send_cycle_tick = now;
+  s_send_cycle_started = true;
   strncpy(s_pending_shortmsg_payload, s_cached_shortmsg_payload, sizeof(s_pending_shortmsg_payload) - 1U);
   s_pending_shortmsg_payload[sizeof(s_pending_shortmsg_payload) - 1U] = '\0';
   s_shortmsg_pending = 1U;
+  s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_PENDING;
 }
 
 static bool try_send_pending_shortmsg(void)
 {
   char cmd[48] = {0};
   int written = 0;
+  uint32_t now = HAL_GetTick();
 
   if (s_shortmsg_pending == 0U)
   {
     return false;
   }
 
+  /* ACK timeout must run even if signal or mode flags changed. */
+  if (s_shortmsg_waiting_ack != 0U)
+  {
+    if ((now - s_last_shortmsg_try_tick) >= GLIDER_SHORTMSG_ACK_TIMEOUT_MS)
+    {
+      s_shortmsg_timeout_count++;
+      s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_TIMEOUT;
+      finish_shortmsg_and_request_rn();
+    }
+    return false;
+  }
+  if ((now - s_last_send_cycle_tick) >= GLIDER_SHORTMSG_SETUP_TIMEOUT_MS)
+  {
+    s_shortmsg_timeout_count++;
+    s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_TIMEOUT;
+    finish_shortmsg_and_request_rn();
+    return false;
+  }
+
   if (s_signal_good == 0U || s_local_card_id_known == 0U || s_local_card_mismatch != 0U)
   {
+    /* RN does not provide RD signal reports: refresh them in the send window. */
+    if (s_signal_good == 0U &&
+        (now - s_last_rd_request_tick) >= GLIDER_RD_MODE_RETRY_MS)
+    {
+      (void)GliderCore_SendText(GLIDER_RD_MODE_CMD);
+      (void)GliderCore_SendText(GLIDER_QUERY_SIGNAL_CMD);
+      s_last_rd_request_tick = now;
+    }
     if (s_local_card_id_known == 0U)
     {
       if (s_card_query_cooldown == 0U)
@@ -671,27 +744,20 @@ static bool try_send_pending_shortmsg(void)
     return false;
   }
 
-  if (s_shortmsg_waiting_ack != 0U)
-  {
-    uint32_t now = HAL_GetTick();
-    if ((now - s_last_shortmsg_try_tick) >= GLIDER_SHORTMSG_ACK_TIMEOUT_MS)
-    {
-      s_shortmsg_waiting_ack = 0U;
-      s_transparent_mode_ready = 0U;
-      s_tc_mode_active = 0U;
-      s_tc_mode_requested = 0U;
-      s_target_card_query_attempted = 0U;
-    }
-    return false;
-  }
-
+  s_last_shortmsg_try_tick = now;
+  s_payload_attempted = true;
   if (GliderCore_SendText(s_pending_shortmsg_payload) != HAL_OK)
   {
+    s_shortmsg_uart_fail_count++;
+    s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_UART_ERROR;
+    finish_shortmsg_and_request_rn();
     return false;
   }
 
   s_last_shortmsg_try_tick = HAL_GetTick();
   s_shortmsg_waiting_ack = 1U;
+  s_shortmsg_attempt_count++;
+  s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_WAITING_ACK;
   return true;
 }
 
@@ -806,10 +872,19 @@ static void process_line(const char *line)
 
   if (text_contains_token(s_decoded_frame.text, "ERROR"))
   {
+    if (s_shortmsg_pending != 0U)
+    {
+      s_shortmsg_reject_count++;
+      s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_REJECTED;
+    }
     s_tc_mode_active = 0U;
     s_tc_mode_requested = 0U;
     s_transparent_mode_ready = 0U;
     s_shortmsg_waiting_ack = 0U;
+    if (s_shortmsg_pending != 0U)
+    {
+      finish_shortmsg_and_request_rn();
+    }
   }
 
   if (try_parse_target_card_from_sendto(s_decoded_frame.text))
@@ -826,6 +901,9 @@ static void process_line(const char *line)
       s_shortmsg_pending = 0U;
       s_shortmsg_waiting_ack = 0U;
       s_shortmsg_sent_count++;
+      s_shortmsg_send_ok_count++;
+      s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_SUCCESS;
+      finish_shortmsg_and_request_rn();
       if (cached_fix_expired(HAL_GetTick()))
       {
         invalidate_cached_fix_and_request_relocate();
@@ -840,6 +918,7 @@ static void process_line(const char *line)
         s_last_shortmsg_payload[sizeof(s_last_shortmsg_payload) - 1U] = '\0';
         s_shortmsg_pending = 0U;
         s_shortmsg_sent_count++;
+        s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_SUCCESS;
         if (cached_fix_expired(HAL_GetTick()))
         {
           invalidate_cached_fix_and_request_relocate();
@@ -847,8 +926,11 @@ static void process_line(const char *line)
       }
       else
       {
+        s_shortmsg_reject_count++;
+        s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_REJECTED;
         s_transparent_mode_ready = 0U;
       }
+      finish_shortmsg_and_request_rn();
     }
   }
 
@@ -878,11 +960,12 @@ static void process_line(const char *line)
 
   if (s_decoded_frame.is_rn_mode || s_decoded_frame.is_gnrmc)
   {
-    /* Treat RN text OR continuous GNRMC stream as RN evidence.
-     * This prevents stale TC flags from blocking re-entry/retry. */
+    /* Cache fixes even while switching modes, but do not let queued RN
+     * output cancel an active send window or its ACK timeout. */
     s_rn_mode_active = 1U;
     s_rd_mode_active = 0U;
-    if (s_tc_mode_active != 0U || s_tc_mode_requested != 0U)
+    if (s_shortmsg_pending == 0U &&
+        (s_tc_mode_active != 0U || s_tc_mode_requested != 0U))
     {
       s_tc_mode_active = 0U;
       s_tc_mode_requested = 0U;
@@ -904,9 +987,7 @@ static void process_line(const char *line)
     }
   }
 
-  try_queue_cached_shortmsg();
-
-  (void)try_send_pending_shortmsg();
+  /* The TX task owns scheduling; RX only updates decoded state. */
 
   GliderCore_OnDecodedFrame(&s_decoded_frame);
 
@@ -975,6 +1056,14 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_signal_good = 0U;
   s_tx_mode = GLIDER_TX_MODE_SIGNAL_POLL;
   s_shortmsg_sent_count = 0U;
+  s_shortmsg_attempt_count = 0U;
+  s_shortmsg_reject_count = 0U;
+  s_shortmsg_timeout_count = 0U;
+  s_shortmsg_uart_fail_count = 0U;
+  s_shortmsg_last_result = GLIDER_SHORTMSG_RESULT_IDLE;
+  s_shortmsg_send_ok_count = 0U;
+  s_local_latitude_deg_e7 = 0;
+  s_local_longitude_deg_e7 = 0;
   s_local_card_id_known = 0U;
   s_transparent_mode_ready = 0U;
   s_tc_mode_requested = 0U;
@@ -995,6 +1084,11 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_last_valid_fix_tick = 0U;
   s_last_rn_request_tick = 0U;
   s_last_shortmsg_try_tick = 0U;
+  s_last_send_cycle_tick = 0U;
+  s_send_cycle_started = false;
+  s_payload_attempted = false;
+  g_rdss_fix_update_count = 0U;
+  g_rdss_rn_request_count = 0U;
   s_last_tc_request_tick = 0U;
   s_last_rd_request_tick = 0U;
   s_last_tx_text[0] = '\0';
@@ -1078,9 +1172,14 @@ void GliderCore_RunTxTask(void)
     {
       if (s_last_rn_request_tick == 0U || (now - s_last_rn_request_tick) >= GLIDER_RN_REFRESH_INTERVAL_MS)
       {
-        (void)GliderCore_SendText(GLIDER_POSITION_TEST_CMD);
-        s_last_rn_request_tick = now;
+        if (GliderCore_SendText(GLIDER_POSITION_TEST_CMD) == HAL_OK)
+        {
+          s_last_rn_request_tick = now;
+          g_rdss_rn_request_count++;
+        }
       }
+      osDelay(500U);
+      continue;
     }
     else
     {
@@ -1232,6 +1331,38 @@ uint32_t GliderCore_GetShortMsgPending(void)
 uint32_t GliderCore_GetReadyToSend(void)
 {
   return (s_signal_good != 0U && s_local_card_id_known != 0U && s_local_card_mismatch == 0U && s_has_cached_fix != 0U) ? 1U : 0U;
+}
+
+void GliderCore_CopyShortMsgStatus(GliderShortMsgStatus *out_status)
+{
+  if (out_status == NULL)
+  {
+    return;
+  }
+
+  out_status->signal_good = s_signal_good;
+  out_status->ready_to_send = GliderCore_GetReadyToSend();
+  out_status->pending = s_shortmsg_pending;
+  out_status->waiting_ack = s_shortmsg_waiting_ack;
+  out_status->last_result = s_shortmsg_last_result;
+  out_status->attempt_count = s_shortmsg_attempt_count;
+  out_status->sent_count = s_shortmsg_sent_count;
+  out_status->reject_count = s_shortmsg_reject_count;
+  out_status->timeout_count = s_shortmsg_timeout_count;
+  out_status->uart_fail_count = s_shortmsg_uart_fail_count;
+  out_status->last_hal_status = s_tx_last_hal_status;
+  out_status->last_uart_error = s_tx_last_uart_error;
+  out_status->tx_mode = s_tx_mode;
+  out_status->card_id_known = s_local_card_id_known;
+  out_status->card_mismatch = s_local_card_mismatch;
+  out_status->has_cached_fix = s_has_cached_fix;
+  out_status->send_ok_count = s_shortmsg_send_ok_count;
+  out_status->local_latitude_deg_e7 = s_local_latitude_deg_e7;
+  out_status->local_longitude_deg_e7 = s_local_longitude_deg_e7;
+  out_status->target_latitude_deg_e7 = g_target_coordinate.latitude_deg_e7;
+  out_status->target_longitude_deg_e7 = g_target_coordinate.longitude_deg_e7;
+  out_status->goto_received_count = g_target_coordinate.update_count;
+  out_status->target_valid = g_target_coordinate.valid;
 }
 
 __weak void GliderCore_OnTextFrame(const char *line)

@@ -22,6 +22,9 @@ try:
         UGWRM_FIELDS_V2,
         UGWRM_FIELDS_V3,
         UGWRM_INT_FIELDS,
+        UGRDS_CSV_HEADER,
+        UGRDS_FIELDS,
+        UGRDS_INT_FIELDS,
         ekf_checksum_ok,
         ekf_csv_row,
         ekf_parse,
@@ -29,6 +32,8 @@ try:
         ugctl_parse,
         ugwrm_csv_row,
         ugwrm_parse,
+        ugrds_csv_row,
+        ugrds_parse,
     )
 except ImportError:
     from contcp_t import (
@@ -43,6 +48,9 @@ except ImportError:
         UGWRM_FIELDS_V2,
         UGWRM_FIELDS_V3,
         UGWRM_INT_FIELDS,
+        UGRDS_CSV_HEADER,
+        UGRDS_FIELDS,
+        UGRDS_INT_FIELDS,
         ekf_checksum_ok,
         ekf_csv_row,
         ekf_parse,
@@ -50,6 +58,8 @@ except ImportError:
         ugctl_parse,
         ugwrm_csv_row,
         ugwrm_parse,
+        ugrds_csv_row,
+        ugrds_parse,
     )
 
 
@@ -64,8 +74,9 @@ class DecodedTelemetry:
 
 
 def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
-    """解析 URGC 首批接入的三类遥测；坏帧和其他文本返回 None。"""
+    """解析 URGC 的姿态、控制、双轴及北斗遥测；坏帧和其他文本返回 None。"""
 
+    raw_line = line
     line = line.strip()
     if not line or not ekf_checksum_ok(line):
         return None
@@ -79,6 +90,10 @@ def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
     elif line.startswith("$UGWRM"):
         row = ugwrm_parse(line)
         topic = "ugwrm"
+    elif line.startswith("$UGRDS"):
+        # 北斗使用共享严格解析器，不将空格或损坏行尾修补成有效帧。
+        row = ugrds_parse(raw_line)
+        topic = "ugrds"
     else:
         return None
 
@@ -88,5 +103,5 @@ def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
         topic=topic,
         data=dict(row),
         device_tick_ms=row.get("t_ms"),
-        stale_after_ms=500,
+        stale_after_ms=2000 if topic == "ugrds" else 500,
     )

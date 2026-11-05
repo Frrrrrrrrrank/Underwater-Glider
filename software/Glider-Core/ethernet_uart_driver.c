@@ -8,6 +8,7 @@
 #include "limit_switch.h"
 #include "worm_axis.h"
 #include "battery_monitor.h"
+#include "glider_core.h"
 #include "ekf_bridge.h"   /* EkfBridge_CopyState / StateEstimate / g_ekf_depth_meas */
 #include "ekf_task.h"     /* g_ekf_imu_hz */
 #include "pid_control_service.h"
@@ -234,6 +235,7 @@ static volatile uint8_t s_mag_telem_enabled = 0U;
 static volatile uint8_t s_ctl_telem_enabled = 0U;
 static volatile uint8_t s_wrm_telem_enabled = 0U;
 static volatile uint8_t s_bat_telem_enabled = 0U;
+static volatile uint8_t s_rdss_telem_enabled = 0U;
 /* HAL_BUSY 时不篡改 HAL 内部状态，由 Ethernet task 在 READY 后重试挂接。 */
 static volatile uint8_t s_rx_rearm_pending = 0U;
 
@@ -899,6 +901,8 @@ static void EthernetUartDriver_DispatchFrame(
             ((payload[0] & ETHERNET_UART_STREAM_WRM) != 0U) ? 1U : 0U;
         s_bat_telem_enabled =
             ((payload[0] & ETHERNET_UART_STREAM_BAT) != 0U) ? 1U : 0U;
+        s_rdss_telem_enabled =
+            ((payload[0] & ETHERNET_UART_STREAM_RDSS) != 0U) ? 1U : 0U;
         g_ethernet_uart_diag.telemetry_control_count++;
       }
       break;
@@ -1316,6 +1320,7 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
   s_ctl_telem_enabled = 0U;
   s_wrm_telem_enabled = 0U;
   s_bat_telem_enabled = 0U;
+  s_rdss_telem_enabled = 0U;
   (void)memset(s_ugcp_parse_buffer, 0, sizeof(s_ugcp_parse_buffer));
   (void)memset(&s_param_stage, 0, sizeof(s_param_stage));
   (void)memset((void *)&g_ethernet_uart_readout_pack,
@@ -1344,6 +1349,7 @@ void EthernetUartDriver_RunTask(void *argument)
   };
   const size_t setup_count = sizeof(setup_commands) / sizeof(setup_commands[0]);
   static size_t setup_index = 0U;
+  static uint32_t s_last_rdss_tx_tick = 0U;
   static uint32_t s_last_ekf_tx_tick = 0U; /* EKF 遥测上次推送 tick */
   static uint32_t s_last_mag_tx_tick = 0U; /* MAG 遥测有自己的周期，不依赖 EKF */
   static uint32_t s_last_ctl_tx_tick = 0U; /* PID 控制/ACK 独立周期 */
@@ -1408,6 +1414,14 @@ void EthernetUartDriver_RunTask(void *argument)
         if (EthernetUartDriver_SendBatteryTelemetry() == HAL_OK)
         {
           s_last_bat_tx_tick = now;
+        }
+      }
+      else if (s_tx_busy == 0U && s_rdss_telem_enabled != 0U &&
+          (uint32_t)(now - s_last_rdss_tx_tick) >= ETHERNET_UART_RDSS_PERIOD_MS)
+      {
+        if (EthernetUartDriver_SendRdssTelemetry() == HAL_OK)
+        {
+          s_last_rdss_tx_tick = now;
         }
       }
       else if (s_snapshot_pending != 0U && s_tx_busy == 0U)
@@ -1883,6 +1897,66 @@ HAL_StatusTypeDef EthernetUartDriver_SendBatteryTelemetry(void)
  * 41 个字段每个最多 11 字符，加逗号、前缀和校验仍小于 512B；snprintf 再检查边界。
  * static 缓冲在异步 UART 发送期间保持不变；发送成功才推进序号。
  */
+/* RDSS short-message delivery status, schema 2. Coordinates use degrees * 1e7. */
+HAL_StatusTypeDef EthernetUartDriver_SendRdssTelemetry(void)
+{
+  static char line[384];
+  static uint32_t sequence = 0U;
+  static const char hex_chars[] = "0123456789ABCDEF";
+  GliderShortMsgStatus rdss;
+  HAL_StatusTypeDef status;
+  uint8_t checksum = 0U;
+  int length;
+  int i;
+
+  if (s_uart == NULL)
+  {
+    return HAL_ERROR;
+  }
+  if (s_tx_busy != 0U)
+  {
+    g_ethernet_uart_diag.tx_busy_count++;
+    return HAL_BUSY;
+  }
+
+  GliderCore_CopyShortMsgStatus(&rdss);
+  length = snprintf(line, sizeof(line),
+      "$UGRDS,2,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%ld,%ld,%lu,%lu,%ld,%ld",
+      (unsigned long)(sequence + 1U), (unsigned long)HAL_GetTick(),
+      (unsigned long)rdss.signal_good, (unsigned long)rdss.ready_to_send,
+      (unsigned long)rdss.pending, (unsigned long)rdss.waiting_ack,
+      (unsigned long)rdss.last_result, (unsigned long)rdss.attempt_count,
+      (unsigned long)rdss.sent_count, (unsigned long)rdss.reject_count,
+      (unsigned long)rdss.timeout_count, (unsigned long)rdss.uart_fail_count,
+      (unsigned long)rdss.last_hal_status, (unsigned long)rdss.last_uart_error,
+      (unsigned long)rdss.tx_mode, (unsigned long)rdss.card_id_known,
+      (unsigned long)rdss.card_mismatch, (unsigned long)rdss.has_cached_fix,
+      (unsigned long)rdss.send_ok_count,
+      (long)rdss.local_latitude_deg_e7, (long)rdss.local_longitude_deg_e7,
+      (unsigned long)rdss.target_valid, (unsigned long)rdss.goto_received_count,
+      (long)rdss.target_latitude_deg_e7, (long)rdss.target_longitude_deg_e7);
+  if (length < 0 || (size_t)length + 6U > sizeof(line))
+  {
+    return HAL_ERROR;
+  }
+  for (i = 1; i < length; ++i)
+  {
+    checksum ^= (uint8_t)line[i];
+  }
+  line[length++] = '*';
+  line[length++] = hex_chars[checksum >> 4U];
+  line[length++] = hex_chars[checksum & 0x0FU];
+  line[length++] = '\r';
+  line[length++] = '\n';
+  line[length] = '\0';
+  status = EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)length);
+  if (status == HAL_OK)
+  {
+    sequence++;
+  }
+  return status;
+}
+
 HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void)
 {
   static const char hex_chars[] = "0123456789ABCDEF";

@@ -329,6 +329,9 @@ void _SetupTarget(void) {
   unsigned int VectorTableAddr;
 
   VectorTableAddr = Elf.GetBaseAddr();
+  if (VectorTableAddr == 0xFFFFFFFF) {
+    VectorTableAddr = 0x08000000;
+  }
   //
   // Set up initial stack pointer
   //
@@ -340,9 +343,12 @@ void _SetupTarget(void) {
   // Set up entry point PC
   //
   PC = Elf.GetEntryPointPC();
-  if (PC != 0xFFFFFFFF) {
-    Target.SetReg("PC", PC);
-  } else {
+  if (PC == 0xFFFFFFFF) {
+    PC = Target.ReadU32(VectorTableAddr + 4);
+  }
+  if (PC == 0xFFFFFFFF) {
     Util.Error("Project script error: failed to set up entry point PC", 1);
+  } else {
+    Target.SetReg("PC", PC);
   }
 }

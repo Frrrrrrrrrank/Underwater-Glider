@@ -83,6 +83,42 @@ class RdssTelemetryTests(unittest.TestCase):
         self.assertEqual(row["local_latitude_deg_e7"], 2147483647)
         self.assertEqual(row["target_longitude_deg_e7"], -2147483648)
 
+    def test_cli_and_web_preserve_schema_two_values_and_freshness(self):
+        import contcp_t
+        from groundstation.legacy_telemetry import decode_telemetry_line
+
+        wire = frame(target_valid=1, target_latitude_deg_e7=-900000000,
+                     target_longitude_deg_e7=1800000000, send_ok_count=11)
+        expected = rdss.ugrds_parse(wire)
+        for suffix in ("", "\n", "\r\n"):
+            with self.subTest(suffix=repr(suffix)):
+                self.assertEqual(contcp_t.ugrds_parse(wire + suffix), expected)
+                decoded = decode_telemetry_line(wire + suffix)
+                self.assertIsNotNone(decoded)
+                self.assertEqual(decoded.topic, "ugrds")
+                self.assertEqual(decoded.data, expected)
+                self.assertEqual(decoded.device_tick_ms, expected["t_ms"])
+                self.assertEqual(decoded.stale_after_ms, 2000)
+
+    def test_cli_and_web_reject_same_damaged_rdss_frames(self):
+        import contcp_t
+        from groundstation.legacy_telemetry import decode_telemetry_line
+
+        valid = frame()
+        # 合并不能让旧解析器覆盖严格校验，也不能先 strip 再修复损坏行。
+        invalid_frames = (
+            frame(signal_good=2), frame(last_result=7), frame(t_ms=1 << 32),
+            frame(local_latitude_deg_e7=900000001),
+            frame(target_valid=1, target_longitude_deg_e7=-1800000001),
+            " " + valid, valid + " ", valid + "garbage", valid + "\r",
+            valid + "\r\r\n", valid + "\n\n",
+        )
+        for wire in invalid_frames:
+            with self.subTest(wire=repr(wire)):
+                self.assertIsNone(rdss.ugrds_parse(wire))
+                self.assertIsNone(contcp_t.ugrds_parse(wire))
+                self.assertIsNone(decode_telemetry_line(wire))
+
 
 if __name__ == "__main__":
     unittest.main()
