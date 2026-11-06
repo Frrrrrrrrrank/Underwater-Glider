@@ -58,7 +58,7 @@ export function useStationState() {
 
   const coreLive = computed(() => coreConnection.value === 'live' && acceptedAt.value !== null && now.value - acceptedAt.value < HEARTBEAT_TIMEOUT_MS)
   const gamepad = computed(() => ageGamepadPreview(gamepadSnapshot.value, acceptedAt.value === null ? 0 : Math.max(0, now.value - acceptedAt.value), coreLive.value))
-  const gamepadIssue = computed(() => !coreLive.value ? '核心未在线，无法确认手柄输入' : gamepadParseIssue.value ?? gamepad.value?.error ?? null)
+  const gamepadIssue = computed(() => !coreLive.value ? '核心离线' : gamepadParseIssue.value ?? gamepad.value?.error ?? null)
   const deviceStatus = computed(() => coreLive.value ? snapshot.value?.device_link.status ?? 'unknown' : 'unknown')
   const telemetry = computed<Record<string, TelemetrySample>>(() => {
     const elapsed = acceptedAt.value === null ? 0 : Math.max(0, now.value - acceptedAt.value)
@@ -74,15 +74,15 @@ export function useStationState() {
   function recordEvent(text: string, tone = 'muted') {
     events.value = [{ id: ++eventId, time: new Date().toLocaleTimeString('zh-CN', { hour12: false }), text, tone }, ...events.value].slice(0, 80)
   }
-  watch(coreConnection, value => recordEvent({ connecting: '连接地面站核心', live: '状态推送已建立', reconnecting: '核心连接中断，正在重连', offline: '地面站核心离线' }[value], value === 'live' ? 'ok' : 'warn'))
-  watch(deviceStatus, value => recordEvent({ stopped: '设备监听未启动', waiting: '等待滑翔机接入', connected: '滑翔机已连接', disconnected: '滑翔机已断开', error: '设备链路异常', unknown: '设备状态不可确认' }[value], value === 'connected' ? 'ok' : 'warn'))
+  watch(coreConnection, value => recordEvent({ connecting: '连接核心', live: '核心已连接', reconnecting: '核心重连中', offline: '核心离线' }[value], value === 'live' ? 'ok' : value === 'connecting' ? 'muted' : 'warn'))
+  watch(deviceStatus, value => recordEvent({ stopped: '设备未监听', waiting: '等待设备', connected: '设备已连接', disconnected: '设备已断开', error: '设备连接异常', unknown: '设备状态未知' }[value], value === 'connected' ? 'ok' : ['disconnected', 'error'].includes(value) ? 'warn' : 'muted'))
   watch(errorMessage, value => { if (value) recordEvent(value, 'bad') })
 
   function acceptSnapshot(value: unknown): void {
     if (!isSnapshot(value)) throw new Error('收到不兼容的状态数据')
     // 手柄不通过板端 fresh 门禁；旧核心或坏字段只清除此输入源。
     gamepadSnapshot.value = parseGamepadPreview(value.gamepad)
-    gamepadParseIssue.value = gamepadSnapshot.value ? null : value.gamepad === undefined ? '当前核心未提供手柄预览，请更新核心' : '手柄预览格式无效，已清除输入意图'
+    gamepadParseIssue.value = gamepadSnapshot.value ? null : value.gamepad === undefined ? '核心未提供手柄预览' : '手柄数据格式错误'
     snapshot.value = value
     acceptedAt.value = performance.now()
     now.value = acceptedAt.value
@@ -126,33 +126,33 @@ export function useStationState() {
           coreConnection.value = 'live'
         } else if (message.type === 'error' && typeof message.message === 'string') {
           gamepadSnapshot.value = null
-          gamepadParseIssue.value = '核心报告异常，手柄输入不可确认'
+          gamepadParseIssue.value = '核心异常'
           errorMessage.value = message.message
         }
       } catch (error) {
         gamepadSnapshot.value = null
-        gamepadParseIssue.value = '状态消息无效，已清除手柄输入意图'
+        gamepadParseIssue.value = '状态消息格式错误'
         errorMessage.value = error instanceof Error ? error.message : '无法解析状态消息'
       }
     })
     connection.addEventListener('error', () => {
       if (socket === connection && !disposed) {
         gamepadSnapshot.value = null
-        gamepadParseIssue.value = '状态推送连接异常，手柄输入不可确认'
+        gamepadParseIssue.value = '状态连接异常'
         errorMessage.value = '状态推送连接异常'
       }
     })
     connection.addEventListener('close', () => { if (socket === connection) { socket = null; scheduleReconnect() } })
   }
   onMounted(() => {
-    recordEvent('工作台已打开；等待真实遥测')
+    recordEvent('工作台已打开')
     void fetchInitialState()
     connectWebSocket()
     clockTimer = window.setInterval(() => {
       now.value = performance.now()
       const lastActivity = Math.max(socketStartedAt, acceptedAt.value ?? socketStartedAt)
       if (socket && now.value - lastActivity >= HEARTBEAT_TIMEOUT_MS) {
-        errorMessage.value = '状态推送超时，设备状态不可确认'
+        errorMessage.value = '核心推送超时'
         const expired = socket
         socket = null
         expired.close()

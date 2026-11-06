@@ -12,8 +12,9 @@ const confirmed = ref(false)
 let timer: number | undefined
 let controller: AbortController | null = null
 let disposed = false
-const statusLabels = { idle: '等待会话', starting: '正在准备记录', recording: '正在记录', error: '记录异常', stopped: '记录已停止' }
-const statusText = computed(() => !props.coreLive || !confirmed.value ? '记录状态不可确认' : !recording.value?.enabled ? '记录未启用' : statusLabels[recording.value.status])
+const statusLabels = { idle: '等待会话', starting: '准备记录', recording: '正在记录', error: '记录异常', stopped: '记录停止' }
+const statusText = computed(() => !props.coreLive ? '核心离线' : !confirmed.value ? '状态未知' : !recording.value?.enabled ? '记录未启用' : statusLabels[recording.value.status])
+function filename(path: string) { return path.split(/[\\/]/).pop() || path }
 function valid(value: unknown): value is RecordingState {
   if (!value || typeof value !== 'object') return false
   const item = value as Partial<RecordingState>
@@ -42,13 +43,19 @@ onUnmounted(() => { disposed = true; window.clearInterval(timer); controller?.ab
 </script>
 <template>
   <section class="panel recording-view">
-    <header class="panel-heading"><h2>会话记录</h2><span :class="coreLive && confirmed && recording?.status === 'recording' ? 'tone-ok' : 'tone-warn'">{{ statusText }}</span></header>
+    <header class="panel-heading"><h2>会话记录</h2><span :class="coreLive && confirmed && recording?.status === 'recording' ? 'tone-ok' : requestError || recording?.status === 'error' ? 'tone-warn' : 'tone-muted'">{{ statusText }}</span></header>
     <div class="panel-scroll recording-content">
       <p v-if="requestError || recording?.last_error" class="inline-alert">{{ requestError ?? recording?.last_error }}</p>
-      <dl class="recording-details"><div><dt>会话编号</dt><dd class="mono">{{ recording?.session_id ?? '—' }}</dd></div><div><dt>开始时间</dt><dd>{{ recording?.started_at ? new Date(recording.started_at).toLocaleString('zh-CN', { hour12: false }) : '—' }}</dd></div><div><dt>保存目录</dt><dd class="mono">{{ recording?.directory ?? '等待设备会话建立' }}</dd></div><div><dt>原始报文 / 丢弃记录</dt><dd>{{ recording?.raw_lines ?? '—' }} / <span :class="recording?.dropped_records ? 'tone-bad' : ''">{{ recording?.dropped_records ?? '—' }}</span></dd></div></dl>
-      <table class="data-table"><thead><tr><th>记录项</th><th>文件</th><th class="numeric">记录行数</th></tr></thead><tbody><tr v-for="(file, key) in recording?.files ?? {}" :key="key"><td>{{ key }}</td><td class="mono break-word">{{ file }}</td><td class="numeric mono">{{ recording?.rows[key] ?? '—' }}</td></tr></tbody></table>
-      <p v-if="!recording || Object.keys(recording.files).length === 0" class="empty-message">设备建立会话后，记录文件和写入数量会显示在这里。</p>
-      <p class="recording-note">文件保存在运行 URGC 核心的电脑上。此处显示实际记录状态；离线分析可使用现有日志工具。</p>
+      <dl class="recording-details"><div><dt>会话编号</dt><dd class="mono">{{ recording?.session_id ?? '—' }}</dd></div><div><dt>开始时间</dt><dd>{{ recording?.started_at ? new Date(recording.started_at).toLocaleString('zh-CN', { hour12: false }) : '—' }}</dd></div><div><dt>核心电脑保存目录</dt><dd class="mono">{{ recording?.directory ?? '—' }}</dd></div><div><dt>原始报文 / 丢弃记录</dt><dd>{{ recording?.raw_lines ?? '—' }} / <span :class="recording?.dropped_records ? 'tone-bad' : ''">{{ recording?.dropped_records ?? '—' }}</span></dd></div></dl>
+      <table class="data-table"><thead><tr><th>记录项</th><th>文件名</th><th class="numeric">记录行数</th></tr></thead><tbody><tr v-for="(file, key) in recording?.files ?? {}" :key="key"><td>{{ key }}</td><td class="mono break-word" :title="file">{{ filename(file) }}</td><td class="numeric mono">{{ recording?.rows[key] ?? '—' }}</td></tr></tbody></table>
+      <p v-if="!recording || Object.keys(recording.files).length === 0" class="empty-message">暂无记录</p>
     </div>
   </section>
 </template>
+
+<style scoped>
+.panel-heading h2 { font-size: 14px; }
+.panel-heading > span, .recording-details dt, .data-table th { font-size: 12px; }
+.recording-details dd, .data-table { font-size: 13px; }
+.recording-details > div { grid-template-columns: 145px minmax(0, 1fr); }
+</style>

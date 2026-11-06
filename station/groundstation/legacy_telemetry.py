@@ -10,6 +10,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 try:
+    from ..gps_telemetry import UGPS_CSV_HEADER, UGPS_STALE_MS, ugps_csv_row, ugps_parse
+except ImportError:
+    from gps_telemetry import UGPS_CSV_HEADER, UGPS_STALE_MS, ugps_csv_row, ugps_parse
+
+try:
     from ..contcp_t import (
         EKF_CSV_HEADER,
         EKF_FIELDS,
@@ -90,6 +95,10 @@ def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
     elif line.startswith("$UGWRM"):
         row = ugwrm_parse(line)
         topic = "ugwrm"
+    elif line.startswith("$UGPS"):
+        # 原文交给严格解析器，拒绝被 strip 掩盖的损坏字符。
+        row = ugps_parse(raw_line)
+        topic = "ugps"
     elif line.startswith("$UGRDS"):
         # 北斗使用共享严格解析器，不将空格或损坏行尾修补成有效帧。
         row = ugrds_parse(raw_line)
@@ -103,5 +112,6 @@ def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
         topic=topic,
         data=dict(row),
         device_tick_ms=row.get("t_ms"),
-        stale_after_ms=2000 if topic == "ugrds" else 500,
+        stale_after_ms=(UGPS_STALE_MS if topic == "ugps" else
+                        2000 if topic == "ugrds" else 500),
     )

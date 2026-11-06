@@ -36,6 +36,7 @@ def telemetry(topic, seq=1, **changes):
                   else contcp_t.UGWRM_FIELDS_V3),
         "ugbat": battery.UGBAT_FIELDS,
         "ugrds": contcp_t.UGRDS_FIELDS,
+        "ugps": contcp_t.UGPS_FIELDS,
     }[topic]
     defaults = {
         "ugekf": dict(status=4, fl=3, roll_deg=3.5, pitch_deg=-2.25,
@@ -49,6 +50,9 @@ def telemetry(topic, seq=1, **changes):
                        roll_valid=1, roll_home_state=6, calib_state=2),
         "ugbat": dict(schema=1, adc_raw=21000, battery_mv=23500,
                        filtered_mv=23490, valid=1, state=1, sample_age_ms=10),
+        "ugps": dict(schema=1, state=2, flags=247, sample_seq=7, rx_age_ms=120,
+                       fuse_age_ms=50, lat_e7=220000001, lon_e7=1145000001,
+                       origin_id=1, origin_lat_e7=220000000, origin_lon_e7=1145000000),
         "ugrds": dict(schema=2, has_cached_fix=1, signal_good=1,
                        local_latitude_deg_e7=220000001, local_longitude_deg_e7=1145000001),
     }[topic]
@@ -160,6 +164,24 @@ class MonitorIntegrationTests(unittest.TestCase):
         self.assertNotIn("61.00%", panel)
         self.assertEqual(self.ctl_store.snapshot()[1]["seq"], 1)
         self.assertEqual(self.wrm_store.snapshot()[1]["seq"], 1)
+        self.assert_no_board_commands()
+
+    def test_gps_fragmented_receive_http_and_panel_without_device_writes(self):
+        self.start_receiver()
+        wire = telemetry("ugps")
+        for offset in range(0, len(wire), 7):
+            self.board_socket.sendall(wire[offset:offset + 7])
+        self.wait_seq("ugps", 1)
+        snapshot = monitor.fetch_snapshot(self.url)
+        panel = monitor.render_panel(snapshot, width=160)
+        self.assertIn("+22.0000001°", panel)
+        self.assertIn("接收龄：120ms", panel)
+        self.assertIn("融合龄：50ms", panel)
+        self.assertIn("安装杆臂/真北未实测确认", panel)
+        bad = telemetry("ugps", seq=2).replace(b"UGPS,", b"UGPS,\xff")
+        self.board_socket.sendall(bad + telemetry("ugctl", seq=20))
+        self.wait_seq("ugctl", 20)
+        self.assertEqual(monitor.fetch_snapshot(self.url)["telemetry"]["ugps"]["data"]["seq"], 1)
         self.assert_no_board_commands()
 
     def test_each_bad_checksum_is_dropped_before_snapshot_publication(self):

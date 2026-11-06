@@ -6,6 +6,11 @@ from copy import deepcopy
 from math import isfinite
 from typing import Any, Dict, Mapping, Tuple
 
+try:
+    from ..gps_telemetry import ugps_invalid_fields
+except ImportError:
+    from gps_telemetry import ugps_invalid_fields
+
 
 # 这些字段是 EKF 估计输出；计数器、状态位、原始深度和协方差诊断仍可单独查看。
 EKF_ESTIMATE_FIELDS = (
@@ -57,6 +62,9 @@ def evaluate_telemetry_quality(
                 mark(EKF_ESTIMATE_FIELDS, "ekf_not_valid")
         else:
             unknown_reasons.append("ekf_validity_not_reported")
+    elif topic == "ugps":
+        for field, reason in ugps_invalid_fields(cleaned).items():
+            invalid_fields.setdefault(field, reason)
     elif topic == "ugwrm":
         # data_fresh 判的是板端驱动器反馈，不等于主机刚收到这条遥测。
         if cleaned.get("data_fresh") == 0:

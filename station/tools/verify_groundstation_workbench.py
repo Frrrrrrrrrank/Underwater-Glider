@@ -150,10 +150,10 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
         if not await cdp.evaluate("document.querySelector('nav button[aria-current=page]').textContent.trim() === '主页'"):
             raise AssertionError('默认页面不是主页')
         theme = await cdp.evaluate("""(() => {
-            const active = getComputedStyle(document.querySelector('nav button.active'));
+            const active = getComputedStyle(document.querySelector('.navigation nav button.active'));
             return {background: getComputedStyle(document.body).backgroundColor,
                 sidebar: document.querySelector('.workspace-label').textContent.trim(),
-                tabs: [...document.querySelectorAll('nav button')].map(b => b.textContent.trim()),
+                tabs: [...document.querySelectorAll('.navigation nav button')].map(b => b.textContent.trim()),
                 radius: active.borderRadius, leftBorder: active.borderLeftWidth, rightBorder: active.borderRightWidth,
                 gradient: getComputedStyle(document.querySelector('.topbar')).backgroundImage};
         })()""")
@@ -163,6 +163,15 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
         if any(theme[key] != '0px' for key in ('radius', 'leftBorder', 'rightBorder')) or 'linear-gradient' not in theme['gradient']:
             raise AssertionError({'theme': theme})
         results = [{'theme': theme}]
+
+        async def assert_estimator_ready(expected):
+            state = await cdp.evaluate("""(() => {
+                const e = document.querySelector('[data-testid=freshness-status]');
+                return {ready: e?.dataset.ready, text: e?.textContent.trim()};
+            })()""")
+            if state['ready'] != str(expected).lower() or state['text'] != ('估计就绪' if expected else '估计未就绪'):
+                raise AssertionError({'estimator_expected': expected, 'actual': state})
+
         for width, height in ((1366, 768), (1920, 1080), (1280, 720)):
             await cdp.call("Emulation.setDeviceMetricsOverride", width=width, height=height, deviceScaleFactor=1, mobile=False)
             for tab in tabs:
@@ -180,14 +189,41 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
                 })()""")
                 if bounds["scrollWidth"] > width + 1 or bounds["scrollHeight"] > height + 1:
                     raise AssertionError({"tab": tab, **bounds})
+                # 开发方案和自证文案不再作为操作界面的常驻内容。
+                redundant_copy = await cdp.evaluate("""(() => {
+                    const text = document.body.innerText;
+                    return ['设备概览 · 工作台入口', '布局预览', '点击分组查看方案',
+                        '不会发送控制指令', '建议操作：', '建议独立调参',
+                        '不把所有会动执行器', '此处不显示虚构', '不把未知显示为松开',
+                        '本页不能改配置', '复用 GamepadConfig', 'LIVE FEED',
+                        '— 表示未收到、已过期或字段无效'].filter(value => text.includes(value));
+                })()""")
+                if redundant_copy:
+                    raise AssertionError({'redundant_copy': redundant_copy, 'tab': tab})
                 results.append({"tab": tab, **bounds})
                 if tab == '主页':
                     if not await cdp.evaluate("document.querySelector('[data-testid=home-attitude]').dataset.valid === 'true'"):
                         raise AssertionError('主页姿态仪未使用有效估计')
                     screenshot = await cdp.call('Page.captureScreenshot', format='png')
                     (output / ('home-%dx%d-test-fixture.png' % (width, height))).write_bytes(base64.b64decode(screenshot['data']))
-                    for action in ('direct', 'pid', 'homing', 'maintenance', 'overview'):
-                        await cdp.evaluate("document.querySelector('[data-home-action=" + action + "]').click()")
+                    if await cdp.evaluate("!!document.querySelector('[data-home-action]')"):
+                        raise AssertionError('主页仍保留未实现的操作方案入口')
+                    readouts = await cdp.evaluate("""['attitude', 'heading'].map(name => {
+                        const e = document.querySelector('[data-testid=home-' + name + '-readout]');
+                        if (!e) return {name, missing: true};
+                        const r = e.getBoundingClientRect();
+                        const texts = [e, ...e.querySelectorAll('*')].filter(node => [...node.childNodes].some(
+                            child => child.nodeType === Node.TEXT_NODE && child.textContent.trim()));
+                        return {name, svg: !!e.closest('svg'), width: r.width, height: r.height,
+                            bottom: r.bottom, containerBottom: e.closest('.situation-view').getBoundingClientRect().bottom,
+                            minFont: Math.min(...texts.map(node => parseFloat(getComputedStyle(node).fontSize)))};
+                    })""")
+                    if any(item.get('missing') or item['svg'] or item['minFont'] < 12 or
+                           item['width'] <= 0 or item['height'] <= 0 or
+                           item['bottom'] > item['containerBottom'] + 1 for item in readouts):
+                        raise AssertionError({'home_readouts': readouts, 'width': width, 'height': height})
+                    for action, panel in (('calibration', 'calibration'), ('overview', 'status')):
+                        await cdp.evaluate("document.querySelector('[data-home-tab=" + action + "]').click()")
                         await asyncio.sleep(0.1)
                         clipped = await cdp.evaluate("""(() => {
                             const e = document.querySelector('.home-view');
@@ -195,9 +231,29 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
                         })()""")
                         if clipped:
                             raise AssertionError({'home_action_clipped': action, 'width': width, 'height': height})
-                        if action == 'homing' and width == 1366:
+                        panel_bounds = await cdp.evaluate("""(() => {
+                            const e = document.querySelector('[data-testid=home-""" + panel + """-panel]');
+                            if (!e) return {missing: true};
+                            const r = e.getBoundingClientRect();
+                            const container = e.closest('.operation-content');
+                            return {width: e.clientWidth, contentWidth: e.scrollWidth,
+                                height: e.clientHeight, contentHeight: e.scrollHeight,
+                                containerHeight: container.clientHeight, containerContentHeight: container.scrollHeight,
+                                left: r.left, right: r.right, top: r.top, bottom: r.bottom};
+                        })()""")
+                        if (panel_bounds.get('missing') or
+                                panel_bounds['contentHeight'] > panel_bounds['height'] + 1 or
+                                panel_bounds['contentWidth'] > panel_bounds['width'] + 1 or
+                                panel_bounds['containerContentHeight'] > panel_bounds['containerHeight'] + 1 or
+                                panel_bounds['left'] < 0 or panel_bounds['right'] > width + 1 or
+                                panel_bounds['top'] < 0 or panel_bounds['bottom'] > height + 1):
+                            raise AssertionError({'home_panel_clipped': panel_bounds, 'panel': panel,
+                                                  'width': width, 'height': height})
+                        if action == 'calibration' and width == 1366:
                             screenshot = await cdp.call('Page.captureScreenshot', format='png')
                             (output / 'home-homing-test-fixture.png').write_bytes(base64.b64decode(screenshot['data']))
+                    results.append({'home_readouts': readouts, 'home_panels_fit': True,
+                                    'width': width, 'height': height})
                 if tab == "运行监控":
                     tables = await cdp.evaluate("""[...document.querySelectorAll('.measurements-panel .panel-scroll, .actuator-panel .panel-scroll, .link-panel .panel-scroll')].map(e => ({height: e.clientHeight, contentHeight: e.scrollHeight, width: e.clientWidth, contentWidth: e.scrollWidth}))""")
                     if len(tables) != 3 or any(item['contentHeight'] > item['height'] + 1 or item['contentWidth'] > item['width'] + 1 for item in tables):
@@ -207,7 +263,7 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
                     (output / ("workbench-%dx%d-test-fixture.png" % (width, height))).write_bytes(base64.b64decode(screenshot["data"]))
                 if tab == '手柄输入':
                     panels = await cdp.evaluate("""(() => {
-                        const names = ['input', 'intent', 'config', 'mapping'];
+                        const names = ['input', 'intent'];
                         return names.map(name => {
                             const e = document.querySelector('[data-testid=gamepad-' + name + '-panel]');
                             if (!e) return {name, missing: true};
@@ -223,6 +279,88 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
                     screenshot = await cdp.call('Page.captureScreenshot', format='png')
                     (output / ('gamepad-%dx%d-test-fixture.png' % (width, height))).write_bytes(base64.b64decode(screenshot['data']))
                     results.append({'gamepad_panels': panels, 'width': width, 'height': height})
+                    details = await cdp.evaluate("""['config', 'mapping'].map(name => {
+                        const e = document.querySelector('[data-testid=gamepad-' + name + '-panel]');
+                        return {name, tag: e?.tagName, open: e?.open, summary: !!e?.querySelector('summary')};
+                    })""")
+                    if any(item['tag'] != 'DETAILS' or item['open'] or not item['summary'] for item in details):
+                        raise AssertionError({'gamepad_details_not_collapsed': details})
+                    for name in ('config', 'mapping'):
+                        await cdp.evaluate("document.querySelector('[data-testid=gamepad-" + name + "-panel] summary').click()")
+                        await asyncio.sleep(.1)
+                        expanded = await cdp.evaluate("""(() => {
+                            const details = document.querySelector('[data-testid=gamepad-""" + name + """-panel]');
+                            const content = details.querySelector('.panel-scroll');
+                            const r = details.getBoundingClientRect();
+                            if (!content) return {missingContent: true};
+                            content.scrollTop = content.scrollHeight;
+                            const reached = content.scrollTop;
+                            content.scrollTop = 0;
+                            return {open: details.open, rows: content.querySelectorAll('tbody tr').length,
+                                left: r.left, right: r.right, bottom: r.bottom, reached,
+                                height: content.clientHeight, contentHeight: content.scrollHeight,
+                                width: content.clientWidth, contentWidth: content.scrollWidth,
+                                pageWidth: document.documentElement.scrollWidth,
+                                pageHeight: document.documentElement.scrollHeight};
+                        })()""")
+                        if (expanded.get('missingContent') or not expanded['open'] or expanded['rows'] == 0 or
+                                expanded['left'] < 0 or expanded['right'] > width + 1 or expanded['bottom'] > height + 1 or
+                                expanded['contentWidth'] > expanded['width'] + 1 or expanded['height'] <= 0 or
+                                expanded['pageWidth'] > width + 1 or expanded['pageHeight'] > height + 1 or
+                                (expanded['contentHeight'] > expanded['height'] + 1 and expanded['reached'] == 0)):
+                            raise AssertionError({'gamepad_detail': name, 'expanded': expanded,
+                                                  'width': width, 'height': height})
+                    # 两块详情可同时展开；详情滚动不应使实时输入和目标消失。
+                    live_panels_fit = await cdp.evaluate("""['input', 'intent'].every(name => {
+                        const e = document.querySelector('[data-testid=gamepad-' + name + '-panel]');
+                        const r = e.getBoundingClientRect();
+                        return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight + 1;
+                    })""")
+                    if not live_panels_fit:
+                        raise AssertionError('展开详情后实时手柄面板移出视口')
+                    for name in ('config', 'mapping'):
+                        await cdp.evaluate("document.querySelector('[data-testid=gamepad-" + name + "-panel] summary').click()")
+                    results.append({'gamepad_details_expand_and_scroll': True, 'width': width, 'height': height})
+                if tab == '遥测诊断':
+                    await cdp.evaluate("document.querySelector('[data-testid=diagnostic-raw-toggle]').click()")
+                    for topic, expected_field in (('ugekf', 'fl'), ('ugctl', 'target_depth'), ('ugwrm', 'stroke_percent')):
+                        await cdp.evaluate("document.querySelector('[data-topic=" + topic + "]').click()")
+                        await asyncio.sleep(.1)
+                        raw = await cdp.evaluate("JSON.parse(document.querySelector('[data-testid=diagnostic-raw]').textContent)")
+                        if (raw.get('topic') != topic or expected_field not in (raw.get('sample') or {}).get('data', {}) or
+                                'backend' in raw or 'telemetry' in raw):
+                            raise AssertionError({'diagnostic_topic': topic, 'raw': raw})
+                    await cdp.evaluate("document.querySelector('[data-testid=diagnostic-raw-toggle]').click()")
+                    results.append({'diagnostic_raw_follows_topic': True, 'width': width, 'height': height})
+
+        # 核心在线、设备监听状态与估计器就绪分别判断。
+        store.set_link(LinkStatus.STOPPED)
+        await asyncio.sleep(.4)
+        listener_stopped = await cdp.evaluate("""(() => ({
+            coreLive: document.querySelector('[data-testid=workbench]').dataset.coreLive,
+            device: document.querySelector('[data-testid=device-status]').dataset.status,
+            notice: !!document.querySelector('[data-testid=station-notice]'),
+        }))()""")
+        if listener_stopped != {'coreLive': 'true', 'device': 'stopped', 'notice': False}:
+            raise AssertionError({'listener_stopped': listener_stopped})
+        await assert_estimator_ready(False)
+        store.set_link(LinkStatus.CONNECTED, peer='LOCAL TEST FIXTURE', session_id='browser-verification-only')
+        fixture_mode['case'] = 'not_ready'
+        await asyncio.sleep(.4)
+        if not store.read()[1]['state']['overall_fresh']:
+            raise AssertionError('未就绪夹具没有保持三主题新鲜')
+        await assert_estimator_ready(False)
+        fixture_mode['case'] = 'ekf_only'
+        await asyncio.sleep(.2)
+        store.clear_session_telemetry()
+        await asyncio.sleep(.4)
+        if set(store.read()[1]['telemetry']) != {'ugekf'}:
+            raise AssertionError('单估计主题夹具仍含其他遥测')
+        await assert_estimator_ready(True)
+        results.append({'listener_stopped_without_warning': True, 'fresh_topics_without_estimator_ready': True,
+                        'estimator_ready_without_other_topics': True})
+        fixture_mode['case'] = 'valid'
+        await asyncio.sleep(.4)
 
         async def select_gamepad(index):
             await cdp.evaluate("document.querySelector('[data-testid=gamepad-slot-" + str(index) + "]').click()")
@@ -274,7 +412,8 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
         await asyncio.sleep(.5)
         if any(value is not None for value in (await read_intent()).values()):
             raise AssertionError('遥测持续更新时，陈旧手柄输入仍作为可用意图')
-        if not await cdp.evaluate("document.querySelector('[data-testid=freshness-status]').textContent.includes('遥测新鲜')"):
+        await assert_estimator_ready(True)
+        if not store.read()[1]['state']['overall_fresh']:
             raise AssertionError('手柄陈旧测试没有保持遥测新鲜，不能证明独立年龄判断')
         results.append({'gamepad_pressed': pressed, 'gamepad_released': released,
                         'slot_selection_persists': True, 'preview_without_board': True,
@@ -285,6 +424,8 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
         for case in ('missing_validity', 'non_finite', 'invalid_attitude', 'stopped_stream'):
             fixture_mode['case'] = case
             await asyncio.sleep(1.1)
+            if case in ('missing_validity', 'stopped_stream'):
+                await assert_estimator_ready(False)
             metric = 'pitch_deg' if case == 'invalid_attitude' else 'depth'
             unavailable = await cdp.evaluate("!!document.querySelector('[data-testid=metric-" + metric + "] .data-value.unavailable')")
             if not unavailable:
@@ -316,6 +457,39 @@ async def inspect_page(cdp_url, url, output, server, fixture_mode, store):
             if pointer != expected_available:
                 raise AssertionError({'roll_track_case': case, 'pointer': pointer})
             results.append({'roll_case': case, 'available': available, 'pointer': pointer})
+        # 无效 PID 计算结果与未校准行程只撤销展示，原始主题数据仍供诊断。
+        for case, metric, topic, raw_value, expected_available in (
+                ('valid', 'displacement_mm', 'ugctl', 90, True),
+                ('pid_off', 'displacement_mm', 'ugctl', 90, False),
+                ('pid_disarmed', 'displacement_mm', 'ugctl', 90, False),
+                ('pid_output_invalid', 'displacement_mm', 'ugctl', 90, False),
+                ('pid_fault', 'displacement_mm', 'ugctl', 90, False),
+                ('wrm_observed_range', 'stroke_percent', 'ugwrm', 37.5, False),
+                ('valid', 'stroke_percent', 'ugwrm', 0, True)):
+            fixture_mode['case'] = case
+            await asyncio.sleep(.4)
+            await cdp.evaluate("[...document.querySelectorAll('.navigation nav button')].find(b => b.textContent.trim() === '主页').click()")
+            await asyncio.sleep(.1)
+            available = await cdp.evaluate("!document.querySelector('[data-testid=home-metric-" + metric + "] .data-value.unavailable')")
+            if available != expected_available:
+                raise AssertionError({'quality_case': case, 'metric': metric, 'available': available})
+            independent_values_available = await cdp.evaluate("""['roll_percent', 'depth'].every(key =>
+                !document.querySelector('[data-testid=home-metric-' + key + '] .data-value.unavailable'))""")
+            if not independent_values_available:
+                raise AssertionError('PID 或俯仰轴质量错误影响了横滚轴/估计深度: ' + case)
+            await assert_estimator_ready(True)
+            if store.read()[1]['telemetry'][topic]['data'].get(metric) != raw_value:
+                raise AssertionError('展示门控修改了原始遥测: ' + case)
+            await cdp.evaluate("[...document.querySelectorAll('.navigation nav button')].find(b => b.textContent.trim() === '遥测诊断').click()")
+            await asyncio.sleep(.1)
+            await cdp.evaluate("document.querySelector('[data-topic=" + topic + "]').click()")
+            await cdp.evaluate("document.querySelector('[data-testid=diagnostic-raw-toggle]').click()")
+            await asyncio.sleep(.1)
+            raw = await cdp.evaluate("JSON.parse(document.querySelector('[data-testid=diagnostic-raw]').textContent)")
+            if raw.get('topic') != topic or (raw.get('sample') or {}).get('data', {}).get(metric) != raw_value:
+                raise AssertionError({'quality_case_raw_lost': case, 'raw': raw})
+            results.append({'quality_case': case, 'metric': metric, 'available': available,
+                            'raw_value_preserved': True, 'roll_and_estimate_independent': True})
         fixture_mode['case'] = 'valid'
         await asyncio.sleep(.4)
         await cdp.evaluate("[...document.querySelectorAll('nav button')].find(b => b.textContent.trim() === '主页').click()")
@@ -367,34 +541,50 @@ def main():
     def publish_fixture():
         started = time.monotonic()
         while not stopped.wait(0.1):
-            if fixture_mode['case'] == 'stopped_stream':
+            case = fixture_mode['case']
+            if case == 'stopped_stream':
                 continue
             seconds = time.monotonic() - started
             ekf = dict.fromkeys(EKF_FIELDS, 0)
             ekf.update(t_ms=int(seconds * 1000), fl=3, status=4, depth=2 + math.sin(seconds) * 0.1, roll_deg=12, pitch_deg=-5, yaw_deg=90)
             ctl = dict.fromkeys(UGCTL_FIELDS, 0)
             ctl.update(schema=2, t_ms=ekf["t_ms"], target_depth=2, depth=ekf["depth"], depth_error=2-ekf["depth"],
-                       mode=2, pitch_sp_deg=-5, pitch_deg=-5, displacement_mm=90, target_displacement_mm=90)
+                       mode=2, armed=1, output_valid=1, fault=0,
+                       pitch_sp_deg=-5, pitch_deg=-5, displacement_mm=90, target_displacement_mm=90)
             wrm = dict.fromkeys(UGWRM_FIELDS, 0)
             wrm.update(schema=3, t_ms=ekf["t_ms"], span_valid=1, data_fresh=1, stroke_percent=0, mm_from_front=0, ref_kind=2, home_state=3,
                        roll_pulse=500, roll_pulse_min=0, roll_pulse_max=1000, roll_span_pulses=1000, roll_percent=50,
                        roll_valid=1, roll_home_state=6, calib_state=2, calib_hold=1)
-            if fixture_mode['case'] == 'missing_validity':
+            if case == 'missing_validity':
                 ekf.pop('fl')
-            elif fixture_mode['case'] == 'non_finite':
+            elif case == 'not_ready':
+                ekf['fl'] = 1
+            elif case == 'non_finite':
                 ekf['depth'] = float('nan')
-            elif fixture_mode['case'] == 'invalid_attitude':
+            elif case == 'invalid_attitude':
                 ekf['pitch_deg'] = float('nan')
-            elif fixture_mode['case'] == 'legacy_wrm':
+            elif case == 'legacy_wrm':
                 wrm = {name: wrm[name] for name in UGWRM_FIELDS_V2}
                 wrm['schema'] = 2
-            elif fixture_mode['case'] == 'invalid_roll':
+            elif case == 'invalid_roll':
                 wrm['roll_valid'] = 0
-            elif fixture_mode['case'] == 'missing_roll_validity':
+            elif case == 'missing_roll_validity':
                 wrm.pop('roll_valid')
-            elif fixture_mode['case'] == 'pitch_stale':
+            elif case == 'pitch_stale':
                 wrm['data_fresh'] = 0
+            elif case == 'pid_off':
+                ctl['mode'] = 0
+            elif case == 'pid_disarmed':
+                ctl['armed'] = 0
+            elif case == 'pid_output_invalid':
+                ctl['output_valid'] = 0
+            elif case == 'pid_fault':
+                ctl['fault'] = 1
+            elif case == 'wrm_observed_range':
+                wrm.update(ref_kind=1, stroke_percent=37.5, mm_from_front=22.05)
             for topic, data in (("ugekf", ekf), ("ugctl", ctl), ("ugwrm", wrm)):
+                if case == 'ekf_only' and topic != 'ugekf':
+                    continue
                 store.publish_telemetry(topic, data, session_id="browser-verification-only")
 
     publisher = threading.Thread(target=publish_fixture, daemon=True)

@@ -14,6 +14,15 @@ from dataclasses import asdict
 from datetime import datetime
 
 try:
+    from .gps_telemetry import (
+        UGPS_FIELDS, UGPS_INT_FIELDS, UGPS_CSV_HEADER, ugps_parse, ugps_csv_row,
+    )
+except ImportError:
+    from gps_telemetry import (
+        UGPS_FIELDS, UGPS_INT_FIELDS, UGPS_CSV_HEADER, ugps_parse, ugps_csv_row,
+    )
+
+try:
     from .monitor_bridge import MonitorBridge
 except ImportError:
     from monitor_bridge import MonitorBridge
@@ -2780,6 +2789,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
         line = raw_line.strip()
         topic, row = None, None
         for prefix, name, parser in (
+            ('$UGPS', 'ugps', ugps_parse),
             ('$UGRDS', 'ugrds', ugrds_parse), ('$UGBAT', 'ugbat', ugbat_parse),
             ('$UGWRM', 'ugwrm', ugwrm_parse), ('$UGCTL', 'ugctl', ugctl_parse),
             ('$UGEKF', 'ugekf', ekf_parse),
@@ -2787,7 +2797,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             if line.startswith(prefix):
                 topic = name
                 if name != 'ugekf' or ekf_checksum_ok(line):
-                    row = parser(raw_line if name in ('ugrds', 'ugbat') else line)
+                    row = parser(raw_line if name in ('ugps', 'ugrds', 'ugbat') else line)
                 break
         _experiment_record({
             'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
@@ -2795,6 +2805,12 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             'topic': topic, 'row': row, 'raw': raw_line, 'complete': True,
         })
         if not line:
+            return
+
+        if topic == 'ugps':
+            # GNSS 诊断随 EKF 流推送；只发布/记录，不额外订阅或连接设备。
+            if row is not None:
+                publish_monitor('ugps', row)
             return
 
         if topic == 'ugrds':
@@ -2950,7 +2966,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                 line_index += 1
             if len(line_buffer) > 65536:
                 _experiment_record({'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
-                                    'batch_id': batch_id, 'topic': 'ugrds' if line_buffer.startswith('$UGRDS') else None, 'row': None,
+                                    'batch_id': batch_id, 'topic': ('ugps' if line_buffer.startswith('$UGPS') else
+                                              'ugrds' if line_buffer.startswith('$UGRDS') else None), 'row': None,
                                     'raw': line_buffer, 'complete': False, 'error': 'line_too_long'})
                 if line_buffer.startswith('$UGRDS'):
                     record_rdss(None, line_buffer, complete=False)
@@ -2967,7 +2984,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     # 线程结束前清理
     if line_buffer:
         _experiment_record({'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
-                            'batch_id': batch_id, 'topic': 'ugrds' if line_buffer.startswith('$UGRDS') else None, 'row': None,
+                            'batch_id': batch_id, 'topic': ('ugps' if line_buffer.startswith('$UGPS') else
+                                              'ugrds' if line_buffer.startswith('$UGRDS') else None), 'row': None,
                             'raw': line_buffer, 'complete': False, 'error': 'truncated_on_disconnect'})
         if line_buffer.startswith('$UGRDS'):
             record_rdss(None, line_buffer, complete=False)

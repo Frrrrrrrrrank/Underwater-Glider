@@ -246,7 +246,7 @@ class EthernetRealtimeLink:
             if not data:
                 return "peer_closed"
 
-            line_buffer += data.decode("ascii", errors="ignore")
+            line_buffer += data.decode("ascii", errors="replace")
             if len(line_buffer) > MAX_LINE_BUFFER:
                 line_buffer = ""
                 LOGGER.warning("URGC cleared an oversized device line buffer")

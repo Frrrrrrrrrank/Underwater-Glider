@@ -58,7 +58,51 @@ Set-Location station
 
 可设置 `$env:URGC_GAMEPAD_ENABLED = '0'` 完全禁用手柄采集；其余遥测功能保持可用。
 
-## contcp_t 双终端监控（无需更新固件）
+## 自身 GPS 与 EKF 融合诊断（UGPS schema1）
+
+配套新固件在 EKF 订阅打开时约 1Hz 推送独立 `$UGPS`；沿用原有 EKF 订阅位，
+不改变 `$UGEKF` 字段，不新增 GPS 订阅命令。旧固件未上报时显示“未上报；旧固件可能不支持”，
+UGPS 不列为必需主题。它来自本机 GNSS，地面目标坐标和 RDSS 缓存坐标不作为自身定位。
+
+CLI 仍由 `contcp_t.receive_thread` 独占板端接收；`monitor.py` 读取现有 8801 快照。
+面板分开显示自身经纬度、NE 测量、EKF 的 NE 估计、创新/NIS、接收年龄与最近融合年龄。
+新诊断帧到达不表示新定位，也不表示 EKF 接受了该定位；判断接受需结合 `accept_count`、
+`fuse_age_ms`、状态与有效位。`reference_verified=0` 明示“安装杆臂/真北未实测确认”，
+`aiding_valid=1` 也不表示导航已经就绪。此诊断不发执行器命令或改变控制权限。
+
+报文为 `$UGPS,<33个十进制整数>*HH\r\n`；HH 是 `$` 与 `*` 之间 ASCII 的逐字节异或。
+严格解析定义在 `station/gps_telemetry.py`，字段顺序为：
+
+```text
+schema,seq,t_ms,state,reason,flags,sample_seq,rx_age_ms,fuse_age_ms,
+utc_date,utc_ms,lat_e7,lon_e7,origin_id,origin_lat_e7,origin_lon_e7,
+meas_n_mm,meas_e_mm,est_n_mm,est_e_mm,innov_n_mm,innov_e_mm,nis_milli,
+r_var_cm2,pnn_cm2,pne_cm2,pee_cm2,accept_count,reject_count,reset_count,
+duplicate_count,drop_count,input_reject_count
+```
+
+- `seq/t_ms` 标识诊断快照，`sample_seq` 标识定位样本；重复快照不刷新 CLI/Web 接收新鲜度。
+  诊断主题超过 3000ms 未更新、设备断连或换会话后，不显示旧值为当前值。
+- `rx_age_ms/fuse_age_ms` 为板端快照时的接收/融合年龄，`4294967295` 表示未知；
+  `utc_date` 为 YYYYMMDD，`utc_ms` 为 UTC 日内毫秒，不当作 MCU 单调时钟。
+- 经纬度除以 `1e7` 得到度，NE 位置/创新除以 `1000` 得到米，NIS 除以 `1000`；
+  R/P 除以 `10000` 得到 m²。`pne_cm2` 是允许负数的交叉协方差。
+  `r_var_cm2` 是配置的观测方差，不是接收机报告的 HACC 或实际定位精度。
+- `state`：0 等待定位、1 质量观察、2 融合中、3 失锁推算、4 重新捕获、5 等待 EKF。
+  `reason`：0 无、1 输入无效、2 重复、3 时间倒退、4 过期、5 未就绪、6 质量观察、
+  7 跳点、8 创新超限、9 数值异常、10 水平重置、11 IMU 过期。
+- `flags` bit0～7：地理原点有效、已锚定、辅助有效、参考经实测确认、协方差有效、
+  测量有效、创新有效、曾融合。无效位下可能保留最后有限历史值，缺失或数值溢出时用 0 占位；
+  面板均依有效位显示不可用，原始日志保留收到的整数，不能把历史值或占位零当作当前定位。
+- `reject_count` 为导航门控/算法拒绝，`input_reject_count` 为输入解析拒绝；
+  重复、丢样、重置另计，不能把收到一帧简单等同于完成一次融合。
+
+CLI 默认实验目录新增 `telemetry_ugps.csv`，原 CSV 列顺序保留，GPS 列追加到尾部；
+`row_json` 与 `events.jsonl` 保留原值，坏帧和断连残片保留原文及解析失败状态。
+URGC 共用同一个严格解析器和字段有效性，状态 API 可读 `telemetry.ugps`，
+会话目录增加 `gps_日期_时间.csv`；本阶段不新增网页 GPS 专页，也不新增设备 socket。
+
+## contcp_t 双终端监控（旧主题无需更新固件）
 
 在仓库根目录分别打开两个终端：
 
@@ -101,7 +145,7 @@ contcp_t 退出后面板显示不可用，并等待它再次启动；contcp_t �
 保留显式 `ekfoff/wormoff` 的含义，面板随后显示过期。面板5Hz刷新不改变板端采样/上报频率；
 实时主题接收超时500ms、电池3000ms、北斗2000ms，重复帧不续期；断连、缺失、无效数据不填假0。
 旧固件是否具备 roll/BAT/RDSS 取决于实际烧录版本，本机源码包含这些功能不等于板上已经运行。
-完整面板含记录状态约34行，建议增大终端高度；窗口过矮会显示截断提示。
+完整面板收到 GPS 诊断后会增加多行，建议终端高度至少45行；窗口过矮会显示截断提示。
 
 ### 尾舵 DS820MG：网线指令、记录与 Ozone 调试
 

@@ -17,10 +17,12 @@ from .legacy_telemetry import (
     UGCTL_CSV_HEADER,
     UGWRM_CSV_HEADER,
     UGRDS_CSV_HEADER,
+    UGPS_CSV_HEADER,
     ekf_csv_row,
     ugctl_csv_row,
     ugwrm_csv_row,
     ugrds_csv_row,
+    ugps_csv_row,
 )
 from .models import utc_now_iso
 
@@ -30,6 +32,7 @@ CSV_FORMATS = {
     "ugctl": ("ctl.csv", UGCTL_CSV_HEADER, ugctl_csv_row),
     "ugwrm": ("worm.csv", UGWRM_CSV_HEADER, ugwrm_csv_row),
     "ugrds": ("rdss.csv", UGRDS_CSV_HEADER, ugrds_csv_row),
+    "ugps": ("gps.csv", UGPS_CSV_HEADER, ugps_csv_row),
 }
 
 

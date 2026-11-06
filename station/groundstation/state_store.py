@@ -136,6 +136,13 @@ class StateStore:
 
         received_at = utc_now_iso()
         with self._condition:
+            previous = self._telemetry.get(topic)
+            if (topic == "ugps" and previous is not None and
+                    previous.session_id == session_id and
+                    (previous.data.get("seq"), previous.data.get("t_ms")) ==
+                    (data.get("seq"), data.get("t_ms"))):
+                # 同一 GNSS 诊断快照重复到达不能刷新接收年龄。
+                return self._generation
             self._telemetry[topic] = TelemetrySample(
                 topic=topic,
                 source=source,

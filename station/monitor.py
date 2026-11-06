@@ -18,6 +18,12 @@ from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 
+try:
+    from .gps_telemetry import ugps_invalid_fields
+except ImportError:
+    from gps_telemetry import ugps_invalid_fields
+
+
 DEFAULT_PORT = 8801
 DEFAULT_URL = f"http://127.0.0.1:{DEFAULT_PORT}/snapshot"
 REFRESH_SECONDS = 0.2
@@ -57,6 +63,10 @@ _INVALID_REASONS = {
     "battery_sample_stale": "采样过期", "battery_sample_age_unknown": "采样年龄未知",
     "local_fix_unavailable": "无缓存定位", "target_coordinate_unavailable": "目标无效",
     "coordinate_out_of_range": "坐标无效",
+    "gps_origin_unavailable": "无地理原点", "gps_not_anchored": "尚未锚定",
+    "gps_covariance_unavailable": "协方差无效", "gps_measurement_unavailable": "无有效测量",
+    "gps_innovation_unavailable": "无有效创新", "gps_never_fused": "尚未融合",
+    "gps_age_unknown": "年龄未知",
 }
 
 
@@ -149,6 +159,51 @@ class _Topic:
         quality = _mapping(self.sample.get("quality")).get("status")
         label = {"valid": "有效", "invalid": "部分无效", "unknown": "质量未知"}.get(quality, "质量未知")
         return f"{int(age)}ms/{label}" if _number(age) and age >= 0 else f"年龄未知/{label}"
+
+
+
+_GPS_STATES = {0: "等待定位", 1: "质量观察", 2: "融合中", 3: "失锁推算",
+               4: "重新捕获", 5: "等待EKF"}
+_GPS_REASONS = {0: "无", 1: "输入无效", 2: "重复", 3: "时间倒退", 4: "过期",
+                5: "未就绪", 6: "质量观察", 7: "跳点", 8: "创新超限",
+                9: "数值异常", 10: "水平重置", 11: "IMU过期"}
+
+
+def _gps_lines(snapshot, error):
+    """分别显示自身观测、融合结果和参考校验，不把新诊断帧当新定位。"""
+    gps = _Topic(snapshot, "ugps", error)
+    if not gps.sample:
+        reason = gps.reason if gps.reason != "未收到" else "未上报；旧固件可能不支持"
+        return ["GPS诊断：" + _missing(reason)]
+    gps.invalid = dict(gps.invalid)
+    for field, reason in ugps_invalid_fields(gps.data).items():
+        gps.invalid.setdefault(field, reason)
+
+    def bit(index):
+        return gps.field("flags", lambda flags: "是" if int(flags) & (1 << index) else "否")
+
+    def pair(north, east):
+        return (gps.field(north, lambda n: f"{n / 1000:+.3f}") + ", " +
+                gps.field(east, lambda n: f"{n / 1000:+.3f}"))
+
+    latitude = gps.field("lat_e7", lambda n: f"{n / 1e7:+.7f}°")
+    longitude = gps.field("lon_e7", lambda n: f"{n / 1e7:+.7f}°")
+    reference = gps.field("flags", lambda flags:
+                          "已标记验证（非导航就绪）" if int(flags) & 8 else
+                          "安装杆臂/真北未实测确认，非导航就绪")
+    return [
+        f"GPS融合  状态：{gps.enum('state', _GPS_STATES)}  原因：{gps.enum('reason', _GPS_REASONS)}  辅助有效：{bit(2)}",
+        f"自身定位（纬,经）：{latitude}, {longitude}  样本：{gps.field('sample_seq')}",
+        f"      接收龄：{gps.field('rx_age_ms', lambda n: f'{n}ms')}  融合龄：{gps.field('fuse_age_ms', lambda n: f'{n}ms')}  原点ID：{gps.field('origin_id')}",
+        f"      NE测量(m)：{pair('meas_n_mm', 'meas_e_mm')}  NE估计(m)：{pair('est_n_mm', 'est_e_mm')}",
+        f"      NE创新(m)：{pair('innov_n_mm', 'innov_e_mm')}  NIS：{gps.field('nis_milli', lambda n: f'{n / 1000:.3f}')}",
+        f"      R配置(m²)：{gps.field('r_var_cm2', lambda n: f'{n / 10000:.4f}')}  Pnn/ne/ee(m²)："
+        + "/".join(gps.field(name, lambda n: f"{n / 10000:.4f}") for name in ('pnn_cm2', 'pne_cm2', 'pee_cm2')),
+        f"      接受/拒绝/重置：{gps.field('accept_count')}/{gps.field('reject_count')}/{gps.field('reset_count')}  "
+        f"重复/丢样/输入拒绝：{gps.field('duplicate_count')}/{gps.field('drop_count')}/{gps.field('input_reject_count')}",
+        f"      参考：{reference}",
+        "      接收与融合年龄分开；R为配置方差，不是接收机报告精度。",
+    ]
 
 
 def display_width(text):
@@ -265,6 +320,7 @@ def render_panel(snapshot, *, width=100, endpoint=DEFAULT_URL, error=None):
         f"缓存定位（非实时）：{coordinate('local', 'has_cached_fix', '无缓存定位')}",
         f"目标坐标（纬,经）：{coordinate('target', 'target_valid', '目标无效')}",
         "北斗模块确认不代表对端送达；缓存定位年龄未上报。",
+        *_gps_lines(snapshot, error),
         f"PID   模式：{ctl.enum('mode', _PID_MODES)}  ARM：{ctl.enum('armed', {0: '否', 1: '是'})}  阶段：{ctl.enum('phase', _PID_PHASES, phase_gate)}",
         f"      故障：{ctl.enum('fault', _PID_FAULTS)}  算法故障：{ctl.enum('core_fault', _CORE_FAULTS)}",
         f"PID请求 深度：{ctl.field('target_depth', lambda n: f'{n:.3f} m')}  Pitch：{ctl.field('target_pitch_deg', lambda n: f'{n:+.2f}°')}",

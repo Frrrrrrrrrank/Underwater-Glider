@@ -27,6 +27,7 @@ def telemetry(topic, seq=1, **changes):
     fields = {
         "ugwrm": contcp_t.UGWRM_FIELDS_V3,
         "ugrds": contcp_t.UGRDS_FIELDS,
+        "ugps": contcp_t.UGPS_FIELDS,
         "ugctl": contcp_t.UGCTL_FIELDS,
         "ugekf": contcp_t.EKF_FIELDS,
         "ugbat": battery_telemetry.UGBAT_FIELDS,
@@ -38,6 +39,7 @@ def telemetry(topic, seq=1, **changes):
                       stroke_percent=25.0, ref_kind=2, home_state=3,
                       roll_valid=1, roll_percent=50.0, roll_home_state=6, calib_state=2),
         "ugrds": dict(schema=2, signal_good=1, ready_to_send=1),
+        "ugps": dict(schema=1, flags=247, state=2, sample_seq=7, pne_cm2=-5000),
         "ugctl": dict(schema=2),
         "ugekf": dict(status=4, fl=3, depth=1.5),
         "ugbat": dict(schema=1, battery_mv=25000, filtered_mv=25000, valid=1, state=1),
@@ -156,6 +158,29 @@ class ExperimentIntegrationTests(unittest.TestCase):
         self.assertTrue(closed.is_set())
         self.assertTrue(conn.closed)
         return ctl, wrm, bridge
+
+    def test_gps_receiver_records_raw_bad_frames_partial_tail_and_all_integer_columns(self):
+        import csv
+        recorder, directory = self.start_recorder()
+        good = telemetry("ugps", lat_e7=220000001, lon_e7=1145000001)
+        bad = telemetry("ugps", seq=2).replace(b"UGPS,", b"UGPS,\xff")
+        tail = b"$UGPS,1,3"
+        wire = good + bad + tail
+        conn = FakeSocket([wire[offset:offset + 11] for offset in range(0, len(wire), 11)])
+        _ctl, _wrm, bridge = self.run_receiver(conn)
+        recorder.stop()
+        self.assertEqual(conn.frames, [])
+        self.assertEqual([row["seq"] for topic, row in bridge.rows if topic == "ugps"], [1])
+        with (directory / "telemetry_ugps.csv").open(encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["lat_e7"], "220000001")
+        self.assertEqual(rows[0]["pne_cm2"], "-5000")
+        self.assertEqual(rows[1]["lat_e7"], "")
+        self.assertEqual(rows[2]["raw"], tail.decode("ascii"))
+        events = [event for event in self.events(directory) if event.get("topic") == "ugps"]
+        self.assertEqual(len(events), 3)
+        self.assertFalse(events[-1]["complete"])
 
     def test_actual_control_payload_sequence_and_transport_times_are_recorded(self):
         recorder, directory = self.start_recorder()

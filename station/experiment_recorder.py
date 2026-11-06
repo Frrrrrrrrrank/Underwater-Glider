@@ -14,6 +14,11 @@ import threading
 import time
 import uuid
 
+try:
+    from .gps_telemetry import UGPS_FIELDS
+except ImportError:
+    from gps_telemetry import UGPS_FIELDS
+
 
 CONTROL_FIELDS = (
     "pitchmotor_enable", "pitchmotor_speed_rpm", "rollmotor_enable",
@@ -36,9 +41,11 @@ TELEMETRY_FIELDS = (
     "displacement_mm", "mode", "armed", "output_valid", "fault",
     "battery_mv", "filtered_mv", "state", "sample_age_ms", "error_count",
 )
+# 新列放到原 CSV 尾部，旧主题的原有列名/顺序不变。
+GPS_TELEMETRY_FIELDS = tuple(name for name in UGPS_FIELDS if name not in TELEMETRY_FIELDS)
 TELEMETRY_COLUMNS = COMMON_COLUMNS + ("batch_id", "line_index", "topic") + TELEMETRY_FIELDS + (
     "row_json", "raw", "nonfinite_fields_json",
-)
+) + GPS_TELEMETRY_FIELDS
 
 
 def _host_iso():
@@ -289,7 +296,7 @@ class ExperimentRecorder:
         elif kind == "rx":
             row = {key: event.get(key, "") for key in TELEMETRY_COLUMNS}
             parsed = event.get("row")
-            for key in TELEMETRY_FIELDS:
+            for key in TELEMETRY_FIELDS + GPS_TELEMETRY_FIELDS:
                 row[key] = parsed.get(key, "") if isinstance(parsed, dict) else ""
             # 全部字段存 JSON 列，避免老协议首帧决定表头后丢失新版字段。
             row["row_json"] = _json(parsed)

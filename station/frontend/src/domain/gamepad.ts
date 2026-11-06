@@ -64,7 +64,7 @@ export function ageGamepadPreview(preview: GamepadPreview | null, elapsedMs: num
       return {
         ...slot, age_ms: age === null ? null : Math.round(age), fresh,
         status: (expired ? 'stale' : preview.status !== 'running' ? 'unavailable' : slot.status) as GamepadSlotStatus,
-        reason: expired ? '输入样本已超龄，意图不可用' : slot.reason,
+        reason: expired ? '采样超时' : slot.reason,
         sample: fresh ? slot.sample : null, intent: fresh ? slot.intent : null, neutral: fresh ? slot.neutral : null,
       }
     }),
@@ -72,5 +72,5 @@ export function ageGamepadPreview(preview: GamepadPreview | null, elapsedMs: num
 }
 
 export const gamepadStatusLabel: Record<GamepadSlotStatus, string> = {
-  fresh: '输入新鲜', stale: '输入已过期', disconnected: '未连接', unavailable: '不可用', waiting: '等待采样', invalid: '输入无效',
+  fresh: '输入正常', stale: '输入超时', disconnected: '未连接', unavailable: '不可用', waiting: '等待采样', invalid: '输入无效',
 }

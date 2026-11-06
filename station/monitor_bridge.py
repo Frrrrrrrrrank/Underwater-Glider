@@ -13,9 +13,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Mapping, Optional, Tuple
 
 try:
+    from .gps_telemetry import UGPS_STALE_MS
     from .groundstation.models import LinkStatus
     from .groundstation.state_store import StateStore
 except ImportError:
+    from gps_telemetry import UGPS_STALE_MS
     from groundstation.models import LinkStatus
     from groundstation.state_store import StateStore
 
@@ -26,6 +28,7 @@ TOPIC_STALE_MS = {
     "ugwrm": 500,
     "ugbat": 3000,
     "ugrds": 2000,
+    "ugps": UGPS_STALE_MS,
 }
 CLIENT_TIMEOUT_S = 2.0
 MAX_HTTP_CLIENTS = 4
@@ -146,7 +149,9 @@ class MonitorBridge:
         self._clock = clock
         self._rudder_command = None
         self._lifecycle_lock = threading.Lock()
-        self._store = StateStore(clock=clock, required_topics=tuple(TOPIC_STALE_MS))
+        # UGPS 是可选诊断；旧固件未上报不能降低既有主题的整体新鲜度。
+        self._store = StateStore(clock=clock, required_topics=tuple(
+            topic for topic in TOPIC_STALE_MS if topic != "ugps"))
         self._status = LinkStatus.STOPPED
         self._session_id: Optional[str] = None
         self._last_keys = {}
