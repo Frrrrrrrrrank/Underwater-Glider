@@ -67,6 +67,12 @@ _INVALID_REASONS = {
     "gps_covariance_unavailable": "协方差无效", "gps_measurement_unavailable": "无有效测量",
     "gps_innovation_unavailable": "无有效创新", "gps_never_fused": "尚未融合",
     "gps_age_unknown": "年龄未知",
+    "gps_velocity_untrusted": "速度尚不可信",
+    "gps_velocity_measurement_unavailable": "无有效速度测量",
+    "gps_velocity_covariance_unavailable": "速度协方差无效",
+    "gps_velocity_innovation_unavailable": "无有效速度创新",
+    "gps_recovery_unavailable": "尚无恢复记录",
+    "gps_recovery_value_unavailable": "该恢复值无效",
 }
 
 
@@ -164,9 +170,14 @@ class _Topic:
 
 _GPS_STATES = {0: "等待定位", 1: "质量观察", 2: "融合中", 3: "失锁推算",
                4: "重新捕获", 5: "等待EKF"}
+_GPS_STATES_V2 = {0: "等待定位", 1: "仅位置锚定", 2: "连续跟踪", 3: "推算不可信",
+                  4: "重新捕获", 5: "等待EKF"}
 _GPS_REASONS = {0: "无", 1: "输入无效", 2: "重复", 3: "时间倒退", 4: "过期",
                 5: "未就绪", 6: "质量观察", 7: "跳点", 8: "创新超限",
-                9: "数值异常", 10: "水平重置", 11: "IMU过期"}
+                9: "数值异常", 10: "水平重置", 11: "IMU过期", 12: "无定位",
+                13: "速度创新超限", 14: "定位质量不足"}
+_GPS_RECOVERY_REASONS = {0: "无", 1: "首次定位", 2: "辅助失锁", 3: "滤波器重启",
+                         4: "数值恢复", 5: "连续拒绝恢复"}
 
 
 def _gps_lines(snapshot, error):
@@ -191,19 +202,49 @@ def _gps_lines(snapshot, error):
     reference = gps.field("flags", lambda flags:
                           "已标记验证（非导航就绪）" if int(flags) & 8 else
                           "安装杆臂/真北未实测确认，非导航就绪")
-    return [
-        f"GPS融合  状态：{gps.enum('state', _GPS_STATES)}  原因：{gps.enum('reason', _GPS_REASONS)}  辅助有效：{bit(2)}",
+    schema2 = gps.data.get("schema") == 2
+    states = _GPS_STATES_V2 if schema2 else _GPS_STATES
+    lines = [
+        f"GPS融合  状态：{gps.enum('state', states)}  原因：{gps.enum('reason', _GPS_REASONS)}  辅助有效：{bit(2)}",
+        f"      测量有效：{bit(5)}  位置锚定：{bit(1)}  速度可信：{bit(8) if schema2 else _missing('旧协议未上报')}",
         f"自身定位（纬,经）：{latitude}, {longitude}  样本：{gps.field('sample_seq')}",
         f"      接收龄：{gps.field('rx_age_ms', lambda n: f'{n}ms')}  融合龄：{gps.field('fuse_age_ms', lambda n: f'{n}ms')}  原点ID：{gps.field('origin_id')}",
         f"      NE测量(m)：{pair('meas_n_mm', 'meas_e_mm')}  NE估计(m)：{pair('est_n_mm', 'est_e_mm')}",
         f"      NE创新(m)：{pair('innov_n_mm', 'innov_e_mm')}  NIS：{gps.field('nis_milli', lambda n: f'{n / 1000:.3f}')}",
-        f"      R配置(m²)：{gps.field('r_var_cm2', lambda n: f'{n / 10000:.4f}')}  Pnn/ne/ee(m²)："
+        f"      {'位置R' if schema2 else 'R配置'}(m²)：{gps.field('r_var_cm2', lambda n: f'{n / 10000:.4f}')}  Pnn/ne/ee(m²)："
         + "/".join(gps.field(name, lambda n: f"{n / 10000:.4f}") for name in ('pnn_cm2', 'pne_cm2', 'pee_cm2')),
+    ]
+    if schema2:
+        # 恢复前后值按各自 mask 显示；它们是历史事件，不代替当前连续估计。
+        lines.extend([
+            f"      速度来源：{gps.enum('velocity_source', {0: '未知', 1: 'RMC', 2: '位置更新逐渐约束'})}  "
+            f"质量来源：{gps.enum('quality_source', {0: '配置/未知', 1: '设备报告'})}  "
+            f"速度融合龄：{gps.field('vel_fuse_age_ms', lambda n: f'{n}ms')}",
+            f"      NE速度测量(m/s)：{pair('meas_vn_mmps', 'meas_ve_mmps')}  "
+            f"NE速度估计(m/s)：{pair('est_vn_mmps', 'est_ve_mmps')}",
+            f"      速度NIS：{gps.field('vel_nis_milli', lambda n: f'{n / 1000:.3f}')}  "
+            f"速度R(m²/s²)：{gps.field('vel_r_var_cm2ps2', lambda n: f'{n / 10000:.4f}')}  Pvnn/ne/ee："
+            + "/".join(gps.field(name, lambda n: f"{n / 10000:.4f}")
+                       for name in ('pvn_cm2ps2', 'pvne_cm2ps2', 'pve_cm2ps2')),
+            f"      最近恢复：{gps.enum('recovery_reason', _GPS_RECOVERY_REASONS)}  "
+            f"恢复龄：{gps.field('reset_age_ms', lambda n: f'{n}ms')}  "
+            f"无定位计数：{gps.field('no_fix_count')}",
+            f"      恢复前 NE(m)：{pair('reset_before_n_mm', 'reset_before_e_mm')}  "
+            f"NE速度(m/s)：{pair('reset_before_vn_mmps', 'reset_before_ve_mmps')}",
+            f"      恢复后锚点 NE(m)：{pair('reset_after_n_mm', 'reset_after_e_mm')}  "
+            f"NE速度(m/s)：{pair('reset_after_vn_mmps', 'reset_after_ve_mmps')}",
+            f"      速度接受/拒绝：{gps.field('vel_accept_count')}/{gps.field('vel_reject_count')}",
+        ])
+    else:
+        lines.append("      速度来源/速度融合龄/恢复前后值：" + _missing("旧协议未上报"))
+    lines.extend([
         f"      接受/拒绝/重置：{gps.field('accept_count')}/{gps.field('reject_count')}/{gps.field('reset_count')}  "
         f"重复/丢样/输入拒绝：{gps.field('duplicate_count')}/{gps.field('drop_count')}/{gps.field('input_reject_count')}",
         f"      参考：{reference}",
-        "      接收与融合年龄分开；R为配置方差，不是接收机报告精度。",
-    ]
+        ("      接收、位置/速度融合及恢复年龄分别记录；未知速度先验不算速度观测。" if schema2 else
+         "      接收与融合年龄分开；R为配置方差，不是接收机报告精度。"),
+    ])
+    return lines
 
 
 def display_width(text):

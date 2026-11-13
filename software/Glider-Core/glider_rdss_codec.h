@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "gnss_sample.h"
 
 typedef enum
 {
@@ -142,5 +143,11 @@ typedef struct
 } GliderRdssDecodedFrame;
 
 bool GliderRdssCodec_TryDecodeLine(const char *line, GliderRdssDecodedFrame *out_frame);
+
+/* 严格定位/无定位事件入口；速度可选，不改变 RDSS 解码/短信策略。
+ * true 包括 NO_FIX 事件，消费方必须检查 flags；失败清空整个输出。 */
+bool GliderRdssCodec_TryMakeGnssSample(const GliderRdssDecodedFrame *frame,
+                                     uint64_t t_rx_us, uint32_t seq,
+                                     GnssSample *out_sample);
 
 #endif

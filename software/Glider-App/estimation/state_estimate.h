@@ -4,7 +4,7 @@
  * 内嵌 ESKF wrapper 的 UgEkfOutput（姿态/位置/速度/状态/健康/诊断）+ 自增序号。
  *
  * 约定：
- *   - 控制器只认 out.valid_for_control（== status==RUNNING && healthy）。
+ *   - out.valid_for_control 是原有姿态/数值健康；水平位置另看 gnss 有效位和年龄。
  *   - 散读全局 g_state_estimate 仅供 Ozone 观察；闭环必须走 EkfBridge_CopyState()。
  */
 #ifndef GLIDER_STATE_ESTIMATE_H
@@ -12,6 +12,7 @@
 
 #include "ug_estimation/embedded/ug_ekf_glider.h"
 #include <stdint.h>
+#include "gnss_diagnostics.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,6 +24,8 @@ typedef struct {
   /* 只在一帧新压力被实际投喂给 EKF 时变化，供低速深度外环判新样本。 */
   uint32_t    depth_measurement_seq;
   uint32_t    depth_measurement_tick_ms;
+  uint32_t    update_tick_ms; /* 本快照生成时刻；与遥测发送时刻区分 */
+  GnssNavDiagnostics gnss;    /* 原点、鲜度、接受/拒绝和重捕获，随 out 一致发布 */
 } StateEstimate;
 
 #ifdef __cplusplus

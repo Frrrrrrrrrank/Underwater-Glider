@@ -59,15 +59,16 @@ class UgcpProtocolTests(unittest.TestCase):
         self.assertEqual(ugcp.MSG_CASCADE_COMMAND, 0x05)
         self.assertEqual(ugcp.MSG_STREAM_CONTROL, ugcp.MSG_TELEM_CONTROL)
         self.assertEqual(
-            [ugcp.pack_stream_control_payload(mask) for mask in range(64)],
-            [bytes((mask,)) for mask in range(64)],
+            [ugcp.pack_stream_control_payload(mask) for mask in range(128)],
+            [bytes((mask,)) for mask in range(128)],
         )
         self.assertEqual(ugcp.STREAM_BAT, 0x10)
         self.assertEqual(ugcp.STREAM_RDSS, 0x20)
-        self.assertEqual(ugcp.STREAM_ALL, 0x3F)
+        self.assertEqual(ugcp.STREAM_RAW, 0x40)
+        self.assertEqual(ugcp.STREAM_ALL, 0x7F)
         self.assertEqual(ugcp.pack_telem_control_payload(False), b'\x00')
         self.assertEqual(ugcp.pack_telem_control_payload(True), b'\x01')
-        for invalid in (-1, 64, 255):
+        for invalid in (-1, 128, 255):
             with self.assertRaises(ugcp.UgcpProtocolError):
                 ugcp.pack_stream_control_payload(invalid)
 

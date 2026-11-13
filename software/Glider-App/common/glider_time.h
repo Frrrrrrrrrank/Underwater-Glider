@@ -12,9 +12,9 @@
 extern "C" {
 #endif
 
-/* 单调微秒时间戳。
- * 目前:(uint64_t)HAL_GetTick() * 1000ULL —— 1ms 分辨率，64 位不回绕。
- * 升级路径: DWT CYCCNT / TIM 1MHz —— 注意其 32 位回绕需软件扩展到 64 位。 */
+/* 任务上下文单调微秒时间戳，1ms 分辨率；软件扩展 HAL 32位毫秒回绕。
+ * 必须至少每 49.7 天调用一次，不能从 ISR/NMI 调用。
+ * 升级路径: DWT CYCCNT / TIM 1MHz，同样需要软件扩展回绕。 */
 uint64_t GliderTime_NowUs(void);
 
 /* 单调毫秒（HAL_GetTick 直通）。 */

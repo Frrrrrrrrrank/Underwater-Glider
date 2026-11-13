@@ -70,6 +70,10 @@ HAL_StatusTypeDef GliderCore_SendText(const char *text);
 
 uint32_t GliderCore_GetRxLineCount(void);
 uint32_t GliderCore_GetRxOverflowCount(void);
+/* decoder超长行丢弃计数；与UART ring丢字节、采集FIFO丢行分开。 */
+uint32_t GliderCore_GetRxLineDropCount(void);
+/* 仅计 GNSS 输入语法/质量拒绝；NO_FIX 是合法事件，UTC 重复/乱序由消费方统计。 */
+uint32_t GliderCore_GetGnssRejectedCount(void);
 uint32_t GliderCore_GetTxAttemptCount(void);
 uint32_t GliderCore_GetTxOkCount(void);
 uint32_t GliderCore_GetTxFailCount(void);
@@ -92,5 +96,12 @@ void GliderCore_CopyShortMsgStatus(GliderShortMsgStatus *out_status);
 void GliderCore_OnTextFrame(const char *line);
 void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len);
 void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame);
+/* RX 上下文的定位/NO_FIX 通知；接收者必须复制并检查 flags，不能保留指针。 */
+void GliderCore_OnGnssSample(const GnssSample *sample);
+/* UART7逐LF原始行入口；src_len含CR、不含终结LF，data保留NUL/非ASCII。
+ * 最多保存384B前缀，src_len按uint32饱和；即使decoder丢整行仍通知。
+ * 时间是RX task处理LF的时刻，含ISR/ring延迟；回调仅作有界复制，不得发送。 */
+void GliderCore_OnRawLine(const uint8_t *data, uint32_t src_len,
+                         uint16_t kept_len, uint64_t t_rx_us);
 
 #endif

@@ -9,6 +9,8 @@
 #include "worm_axis.h"
 #include "battery_monitor.h"
 #include "glider_core.h"
+#include "raw_capture.h"
+#include "glider_time.h"
 #include "ekf_bridge.h"   /* EkfBridge_CopyState / StateEstimate / g_ekf_depth_meas */
 #include "ekf_task.h"     /* g_ekf_imu_hz */
 #include "pid_control_service.h"
@@ -281,6 +283,26 @@ static void EthernetUartDriver_ProcessReceivedData(void);
 static void EthernetUartDriver_ProcessLine(const char *line);
 static void EthernetUartDriver_FeedFrameParser(uint8_t byte);
 static void EthernetUartDriver_ProcessFrameParser(void);
+/* 完整订阅掩码；raw仅在合法控制帧中续租，坏长度/未知位不能延长租约。 */
+static void EthernetUartDriver_HandleTelemetrySubscription(const uint8_t *payload, uint16_t length)
+{
+  if (payload == NULL || length != 1U ||
+      (payload[0] & (uint8_t)(~ETHERNET_UART_STREAM_ALL)) != 0U)
+  {
+    g_ethernet_uart_diag.frame_length_error_count++;
+    g_ethernet_uart_diag.frame_type_error_count++;
+    return;
+  }
+  s_ekf_telem_enabled = (payload[0] & ETHERNET_UART_STREAM_EKF) != 0U;
+  s_mag_telem_enabled = (payload[0] & ETHERNET_UART_STREAM_MAG) != 0U;
+  s_ctl_telem_enabled = (payload[0] & ETHERNET_UART_STREAM_CTL) != 0U;
+  s_wrm_telem_enabled = (payload[0] & ETHERNET_UART_STREAM_WRM) != 0U;
+  s_bat_telem_enabled = (payload[0] & ETHERNET_UART_STREAM_BAT) != 0U;
+  s_rdss_telem_enabled = (payload[0] & ETHERNET_UART_STREAM_RDSS) != 0U;
+  RawCapture_SetEnabled((payload[0] & ETHERNET_UART_STREAM_RAW) != 0U, HAL_GetTick());
+  g_ethernet_uart_diag.telemetry_control_count++;
+}
+
 static void EthernetUartDriver_DispatchFrame(
     uint8_t message_type, const uint8_t *payload, uint16_t payload_length);
 static HAL_StatusTypeDef EthernetUartDriver_SendRaw(const uint8_t *data, uint16_t length);
@@ -883,28 +905,7 @@ static void EthernetUartDriver_DispatchFrame(
       break;
 
     case ETHERNET_UART_MSG_TELEM_CONTROL:
-      if (payload_length != 1U ||
-          (payload[0] & (uint8_t)(~ETHERNET_UART_STREAM_ALL)) != 0U)
-      {
-        g_ethernet_uart_diag.frame_length_error_count++;
-        g_ethernet_uart_diag.frame_type_error_count++;
-      }
-      else
-      {
-        s_ekf_telem_enabled =
-            ((payload[0] & ETHERNET_UART_STREAM_EKF) != 0U) ? 1U : 0U;
-        s_mag_telem_enabled =
-            ((payload[0] & ETHERNET_UART_STREAM_MAG) != 0U) ? 1U : 0U;
-        s_ctl_telem_enabled =
-            ((payload[0] & ETHERNET_UART_STREAM_CTL) != 0U) ? 1U : 0U;
-        s_wrm_telem_enabled =
-            ((payload[0] & ETHERNET_UART_STREAM_WRM) != 0U) ? 1U : 0U;
-        s_bat_telem_enabled =
-            ((payload[0] & ETHERNET_UART_STREAM_BAT) != 0U) ? 1U : 0U;
-        s_rdss_telem_enabled =
-            ((payload[0] & ETHERNET_UART_STREAM_RDSS) != 0U) ? 1U : 0U;
-        g_ethernet_uart_diag.telemetry_control_count++;
-      }
+      EthernetUartDriver_HandleTelemetrySubscription(payload, payload_length);
       break;
 
     case ETHERNET_UART_MSG_SNAPSHOT_REQ:
@@ -1321,6 +1322,7 @@ void EthernetUartDriver_Init(UART_HandleTypeDef *huart)
   s_wrm_telem_enabled = 0U;
   s_bat_telem_enabled = 0U;
   s_rdss_telem_enabled = 0U;
+  RawCapture_Init();
   (void)memset(s_ugcp_parse_buffer, 0, sizeof(s_ugcp_parse_buffer));
   (void)memset(&s_param_stage, 0, sizeof(s_param_stage));
   (void)memset((void *)&g_ethernet_uart_readout_pack,
@@ -1350,6 +1352,7 @@ void EthernetUartDriver_RunTask(void *argument)
   const size_t setup_count = sizeof(setup_commands) / sizeof(setup_commands[0]);
   static size_t setup_index = 0U;
   static uint32_t s_last_rdss_tx_tick = 0U;
+  static uint32_t s_last_gps_tx_tick = 0U;
   static uint32_t s_last_ekf_tx_tick = 0U; /* EKF 遥测上次推送 tick */
   static uint32_t s_last_mag_tx_tick = 0U; /* MAG 遥测有自己的周期，不依赖 EKF */
   static uint32_t s_last_ctl_tx_tick = 0U; /* PID 控制/ACK 独立周期 */
@@ -1375,6 +1378,8 @@ void EthernetUartDriver_RunTask(void *argument)
     /* 必须在处理 RX 之后取时刻：HandleControl() 也在处理过程中取 tick。
      * 若反过来，跨 1ms 时 now-last_rx 会发生 uint32 下溢并误触发超时。 */
     now = HAL_GetTick();
+    /* 即使TX持续忙也要到期停采集/清FIFO，不能把断连后的原始流永久留开。 */
+    RawCapture_Poll(now);
     g_ethernet_uart_diag.control_age_ms =
         (g_ethernet_control_last_rx_tick != 0U)
             ? (now - g_ethernet_control_last_rx_tick)
@@ -1424,6 +1429,11 @@ void EthernetUartDriver_RunTask(void *argument)
           s_last_rdss_tx_tick = now;
         }
       }
+      else if (s_tx_busy == 0U && s_ekf_telem_enabled != 0U &&
+          (uint32_t)(now - s_last_gps_tx_tick) >= ETHERNET_UART_GPS_PERIOD_MS)
+      {
+        if (EthernetUartDriver_SendGpsTelemetry() == HAL_OK) s_last_gps_tx_tick = now;
+      }
       else if (s_snapshot_pending != 0U && s_tx_busy == 0U)
       {
         EthernetUartDriver_SendSystemSnapshot();
@@ -1467,6 +1477,11 @@ void EthernetUartDriver_RunTask(void *argument)
           s_last_wrm_tx_tick = now;
         }
       }
+      else if (s_tx_busy == 0U)
+      {
+        /* 原始采集排在全部现有遥测之后，内部另限2048 wire bytes/s。 */
+        EthernetUartDriver_SendRawCapture();
+      }
       /* 保留原心跳计数（AT 心跳本就注释掉，仅留 liveness 计数） */
       if ((now - g_ethernet_uart_diag.last_tx_tick) >= ETHERNET_UART_HEARTBEAT_PERIOD_MS)
       {
@@ -1480,6 +1495,18 @@ void EthernetUartDriver_RunTask(void *argument)
     
     osDelay(ETHERNET_UART_TASK_PERIOD_MS);
   }
+}
+
+static int raw_capture_send(const uint8_t *data, uint16_t length)
+{
+  return EthernetUartDriver_SendRaw(data, length) == HAL_OK;
+}
+
+void EthernetUartDriver_SendRawCapture(void)
+{
+  /* HAL IT仍引用s_wire；忙时必须在格式化前退出，关闭/重开采集也不改旧缓冲。 */
+  if (s_tx_busy != 0U || s_uart == NULL) return;
+  (void)RawCapture_TryTransmit(HAL_GetTick(), GliderTime_NowUs(), raw_capture_send);
 }
 
 void EthernetUartDriver_SendText(const char *text)
@@ -1826,9 +1853,123 @@ HAL_StatusTypeDef EthernetUartDriver_SendControlTelemetry(void)
   return EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)i);
 }
 
-/* 电池遥测 schema 1：所有电压均为整数毫伏，禁止把发送时刻当成采样时刻。
- * $UGBAT,1,seq,t_ms,adc_raw,battery_mv,filtered_mv,valid,state,sample_age_ms,error_count*HH
- * 静态缓冲在 UART 中断发送期间保持有效；仅本以太网任务调用。 */
+/* GNSS 融合诊断 schema2，33个原字段后追加26个速度/恢复字段。
+ * 每秒随EKF订阅发送，坐标mm、速度mm/s、NIS×1000、方差×10000。
+ * 静态缓冲在异步UART发送期间保持有效；只由以太网任务调用。 */
+HAL_StatusTypeDef EthernetUartDriver_SendGpsTelemetry(void)
+{
+  static char line[1024];
+  static const char hex[] = "0123456789ABCDEF";
+  StateEstimate snapshot;
+  const GnssNavDiagnostics *d = &snapshot.gnss;
+  uint32_t flags, reset_mask;
+  int32_t values[28];
+  float raw[28];
+  int length, extra, i;
+  uint8_t checksum = 0U;
+  if (s_uart == NULL) return HAL_ERROR;
+  if (s_tx_busy != 0U) {
+    g_ethernet_uart_diag.tx_busy_count++;
+    return HAL_BUSY;
+  }
+  if (EkfBridge_CopyState(&snapshot) == 0U) return HAL_ERROR;
+  flags = d->flags;
+  reset_mask = d->reset_valid_mask;
+  raw[0] = d->meas_n; raw[1] = d->meas_e;
+  raw[2] = snapshot.out.pN; raw[3] = snapshot.out.pE;
+  raw[4] = d->innov_n; raw[5] = d->innov_e;
+  raw[6] = d->nis; raw[7] = d->r_var;
+  raw[8] = snapshot.out.Pnn; raw[9] = snapshot.out.Pne; raw[10] = snapshot.out.Pee;
+  raw[11] = d->meas_vn; raw[12] = d->meas_ve;
+  raw[13] = snapshot.out.vN; raw[14] = snapshot.out.vE;
+  raw[15] = d->vel_nis; raw[16] = d->vel_r_var;
+  raw[17] = snapshot.out.Pvn; raw[18] = snapshot.out.Pvne; raw[19] = snapshot.out.Pve;
+  raw[20] = d->reset_before_n; raw[21] = d->reset_before_e;
+  raw[22] = d->reset_before_vn; raw[23] = d->reset_before_ve;
+  raw[24] = d->reset_after_n; raw[25] = d->reset_after_e;
+  raw[26] = d->reset_after_vn; raw[27] = d->reset_after_ve;
+  for (i = 0; i < 28; ++i) {
+    const double scale = ((i >= 7 && i <= 10) || (i >= 16 && i <= 19)) ? 10000.0 : 1000.0;
+    const double scaled = (double)raw[i] * scale;
+    if (!isfinite(scaled) || scaled > 2147483646.0 || scaled < -2147483646.0 ||
+        ((i == 6 || i == 7 || i == 8 || i == 10 || i == 15 || i == 16 ||
+          i == 17 || i == 19) && scaled < 0.0)) {
+      values[i] = 0;
+      /* 不把溢出/非有限值伪装成精确的 0；同时撤销对应显示有效位。 */
+      if (i < 2) flags &= ~GNSS_FLAG_MEASUREMENT;
+      else if (i < 4) flags &= ~(GNSS_FLAG_ANCHORED | GNSS_FLAG_AIDING_VALID);
+      else if (i < 7) flags &= ~GNSS_FLAG_INNOVATION;
+      else if (i <= 10) flags &= ~(GNSS_FLAG_COVARIANCE | GNSS_FLAG_AIDING_VALID);
+      else if (i <= 12) flags &= ~GNSS_FLAG_VELOCITY_MEASUREMENT;
+      else if (i <= 14) flags &= ~(GNSS_FLAG_VELOCITY_VALID | GNSS_FLAG_AIDING_VALID);
+      else if (i == 15) flags &= ~GNSS_FLAG_VELOCITY_INNOVATION;
+      else if (i <= 19) flags &= ~(GNSS_FLAG_VELOCITY_COVARIANCE |
+                                 GNSS_FLAG_VELOCITY_VALID | GNSS_FLAG_AIDING_VALID);
+      else reset_mask &= ~(1U << (i - 20));
+    } else {
+      values[i] = (int32_t)(scaled >= 0.0 ? scaled + 0.5 : scaled - 0.5);
+    }
+  }
+  length = snprintf(line, sizeof(line),
+      "$UGPS,2,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%ld,%ld,%lu,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%lu,%lu,%lu,%lu,%lu,%lu",
+      (unsigned long)snapshot.update_seq,
+      (unsigned long)snapshot.update_tick_ms,
+      (unsigned long)d->state,
+      (unsigned long)d->reason,
+      (unsigned long)flags,
+      (unsigned long)d->sample_seq,
+      (unsigned long)d->rx_age_ms,
+      (unsigned long)d->fuse_age_ms,
+      (unsigned long)d->utc_date,
+      (unsigned long)d->utc_ms,
+      (long)d->lat_e7,
+      (long)d->lon_e7,
+      (unsigned long)d->origin_id,
+      (long)d->origin_lat_e7,
+      (long)d->origin_lon_e7,
+      (long)values[0],
+      (long)values[1],
+      (long)values[2],
+      (long)values[3],
+      (long)values[4],
+      (long)values[5],
+      (long)values[6],
+      (long)values[7],
+      (long)values[8],
+      (long)values[9],
+      (long)values[10],
+      (unsigned long)d->accept_count,
+      (unsigned long)d->reject_count,
+      (unsigned long)d->reset_count,
+      (unsigned long)d->duplicate_count,
+      (unsigned long)d->drop_count,
+      (unsigned long)d->input_reject_count);
+  if (length < 0 || (size_t)length >= sizeof(line)) return HAL_ERROR;
+  extra = snprintf(line + length, sizeof(line) - (size_t)length,
+      ",%lu,%lu,%lu,%lu,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%lu,%lu,%lu,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%lu,%lu",
+      (unsigned long)d->quality_source, (unsigned long)d->velocity_source,
+      (unsigned long)d->vel_fuse_age_ms, (unsigned long)d->no_fix_count,
+      (long)values[11], (long)values[12], (long)values[13], (long)values[14],
+      (long)values[15], (long)values[16], (long)values[17], (long)values[18], (long)values[19],
+      (unsigned long)d->vel_accept_count, (unsigned long)d->vel_reject_count,
+      (unsigned long)d->recovery_reason,
+      (long)values[20], (long)values[21], (long)values[22], (long)values[23],
+      (long)values[24], (long)values[25], (long)values[26], (long)values[27],
+      (unsigned long)d->reset_age_ms, (unsigned long)reset_mask);
+  if (extra < 0) return HAL_ERROR;
+  length += extra;
+  if (length < 0 || (size_t)length + 6U > sizeof(line)) return HAL_ERROR;
+  for (i = 1; i < length; ++i) checksum ^= (uint8_t)line[i];
+  line[length++] = '*';
+  line[length++] = hex[checksum >> 4U];
+  line[length++] = hex[checksum & 15U];
+  line[length++] = '\r';
+  line[length++] = '\n';
+  line[length] = '\0';
+  return EthernetUartDriver_SendRaw((const uint8_t *)line, (uint16_t)length);
+}
+
+/* 电池遥测schema1：毫伏/毫秒；静态缓冲仅以太网任务调用。 */
 HAL_StatusTypeDef EthernetUartDriver_SendBatteryTelemetry(void)
 {
   static char line[160];

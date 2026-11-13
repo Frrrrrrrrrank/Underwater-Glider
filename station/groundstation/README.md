@@ -24,6 +24,40 @@ PB3 释放点 0% 测到 PB5 释放点 100%，再回到 50%。只有两轴都成�
 完成、失败或取消后需新中立命令重新接管；auto_sti 会先发中立并等待保持位解除。
 校准没有通信租约，断链不代表停止。roll 为开环脉冲估算，50% 不代表艇体水平；参考只存 RAM。
 
+## UART7 原始行采集与 GPS 离线分析
+
+配套原始采集固件支持独立 `RAW=0x40` 订阅，默认关闭。采集复用现有设备连接；CLI与Web选择一种运行。它记录天线经过UART7送到控制板的文本行，不要求内层NMEA校验正确；原文用HEX转发，保留CR/NUL/非ASCII，按LF分行，单行保留上限384字节。
+
+在仓库根启动终端地面站：
+
+```powershell
+D:/xinjian/python.exe -B station/contcp_t.py
+```
+
+连接控制板后输入 `rawon` 开始，输入 `rawoff` 停止。实验记录必须已成功启动；启用命令发送成功表示已请求采集，实际收到 `$UGRAW` 才确认固件支持。数据进入该次实验目录的 `telemetry_ugraw.csv` 与 `events.jsonl`，目录由控制台显示，默认在 `station/logs/control/experiments/` 下。退出时等待日志收尾。
+
+选择Web核心采集时，在新PowerShell窗口、仓库根执行：
+
+```powershell
+$env:URGC_DEVICE_LINK_ENABLED = '1'
+$env:URGC_RECORDING_ENABLED = '1'
+$env:URGC_RAW_CAPTURE_ENABLED = '1'
+Set-Location station
+.\.venv\Scripts\python.exe -B -m groundstation
+```
+
+原始行写入本次 `station/logs/sessions/` 会话目录的 `uart7_raw_时间戳.csv` 和 `raw.log`；`URGC_LOG_DIR` 可改变根目录。没有新增网页按钮或GPS专页。若关闭记录却开启RAW，核心会提示只接收、不落盘。采集每5秒续租，板端15秒无续租自动停止；基础遥测优先，原始流预算2048线字节/秒，队列溢出计数随帧保存。
+
+外层格式与字段含义见 [估计模块说明](../../software/Glider-App/estimation/README.md#uart7-原始报文采集与离线分析)。共享解析器 `raw_telemetry.ugraw_parse()` 只校验外层合同，内层坏NMEA仍然记录。`rx_us/tx_us` 是板端组行/准备转发时间，PC的 `t_ns` 是单调收包时间；不能直接跨时钟相减推测GNSS绝对延迟。
+
+使用采集日志后，在仓库根运行：
+
+```powershell
+D:/xinjian/python.exe -B station/tools/analyze_gnss_capture.py "实际会话目录" --output-dir "分析输出目录"
+```
+
+若此次实验明确保持天线静止，再追加 `--static`。输出 `summary.json` 和 `epochs.csv`；先看采集损失/截断、有效位置比例、NO_FIX、重复/乱序，再看报文到达与独立UTC频率、定位间断和恢复。静止统计描述相对采样中心的重复性，不自动作为EKF位置方差或绝对精度。GGA/GST的出现只作为后续质量接入依据，当前板端定位输入仍是严格合格的GNRMC。
+
 ## 网页手柄只读预览（G0）
 
 工作台侧栏的“手柄输入”页复用现有 `gamepad_control.py`，由核心的
@@ -58,20 +92,25 @@ Set-Location station
 
 可设置 `$env:URGC_GAMEPAD_ENABLED = '0'` 完全禁用手柄采集；其余遥测功能保持可用。
 
-## 自身 GPS 与 EKF 融合诊断（UGPS schema1）
+## 自身 GPS 与 EKF 融合诊断（UGPS schema1/2）
 
 配套新固件在 EKF 订阅打开时约 1Hz 推送独立 `$UGPS`；沿用原有 EKF 订阅位，
 不改变 `$UGEKF` 字段，不新增 GPS 订阅命令。旧固件未上报时显示“未上报；旧固件可能不支持”，
 UGPS 不列为必需主题。它来自本机 GNSS，地面目标坐标和 RDSS 缓存坐标不作为自身定位。
 
 CLI 仍由 `contcp_t.receive_thread` 独占板端接收；`monitor.py` 读取现有 8801 快照。
-面板分开显示自身经纬度、NE 测量、EKF 的 NE 估计、创新/NIS、接收年龄与最近融合年龄。
+面板分开显示自身经纬度、NE 测量、当前 NE 估计、测量有效、位置锚定和速度可信。
+schema2 还显示速度来源、速度测量/估计、最近恢复原因、恢复前后的位置/速度及恢复年龄。
+“恢复后锚点”是一次历史恢复记录；当前估计显示在另一行，后续预测不会改写该历史记录。
 新诊断帧到达不表示新定位，也不表示 EKF 接受了该定位；判断接受需结合 `accept_count`、
 `fuse_age_ms`、状态与有效位。`reference_verified=0` 明示“安装杆臂/真北未实测确认”，
 `aiding_valid=1` 也不表示导航已经就绪。此诊断不发执行器命令或改变控制权限。
 
-报文为 `$UGPS,<33个十进制整数>*HH\r\n`；HH 是 `$` 与 `*` 之间 ASCII 的逐字节异或。
-严格解析定义在 `station/gps_telemetry.py`，字段顺序为：
+报文为 `$UGPS,<十进制整数字段>*HH\r\n`；HH 是 `$` 与 `*` 之间 ASCII 的逐字节异或。
+schema1 为33字段，schema2 为原33字段加26字段，共59字段；均不含 UGPS 前缀。
+严格解析定义在 `station/gps_telemetry.py:ugps_parse`，按版本独立检查字段数、枚举和有效位。
+旧帧保留原字段，新字段显示“旧协议未上报”，记录为空列，不补成有效零值。
+原33字段顺序不变：
 
 ```text
 schema,seq,t_ms,state,reason,flags,sample_seq,rx_age_ms,fuse_age_ms,
@@ -81,26 +120,55 @@ r_var_cm2,pnn_cm2,pne_cm2,pee_cm2,accept_count,reject_count,reset_count,
 duplicate_count,drop_count,input_reject_count
 ```
 
-- `seq/t_ms` 标识诊断快照，`sample_seq` 标识定位样本；重复快照不刷新 CLI/Web 接收新鲜度。
+schema2 尾部依次追加：
+
+```text
+quality_source,velocity_source,vel_fuse_age_ms,no_fix_count,
+meas_vn_mmps,meas_ve_mmps,est_vn_mmps,est_ve_mmps,vel_nis_milli,
+vel_r_var_cm2ps2,pvn_cm2ps2,pvne_cm2ps2,pve_cm2ps2,vel_accept_count,
+vel_reject_count,recovery_reason,reset_before_n_mm,reset_before_e_mm,
+reset_before_vn_mmps,reset_before_ve_mmps,reset_after_n_mm,reset_after_e_mm,
+reset_after_vn_mmps,reset_after_ve_mmps,reset_age_ms,reset_valid_mask
+```
+
+- `schema/seq/t_ms` 标识诊断快照，`sample_seq` 标识定位样本；重复快照不刷新 CLI/Web 接收新鲜度。
   诊断主题超过 3000ms 未更新、设备断连或换会话后，不显示旧值为当前值。
-- `rx_age_ms/fuse_age_ms` 为板端快照时的接收/融合年龄，`4294967295` 表示未知；
+- `rx_age_ms/fuse_age_ms` 为板端快照时的接收/位置融合年龄，`vel_fuse_age_ms/reset_age_ms`
+  分别为速度融合和最近恢复的年龄；`4294967295` 表示未知。未知速度先验不刷新速度融合年龄。
   `utc_date` 为 YYYYMMDD，`utc_ms` 为 UTC 日内毫秒，不当作 MCU 单调时钟。
 - 经纬度除以 `1e7` 得到度，NE 位置/创新除以 `1000` 得到米，NIS 除以 `1000`；
   R/P 除以 `10000` 得到 m²。`pne_cm2` 是允许负数的交叉协方差。
-  `r_var_cm2` 是配置的观测方差，不是接收机报告的 HACC 或实际定位精度。
-- `state`：0 等待定位、1 质量观察、2 融合中、3 失锁推算、4 重新捕获、5 等待 EKF。
-  `reason`：0 无、1 输入无效、2 重复、3 时间倒退、4 过期、5 未就绪、6 质量观察、
-  7 跳点、8 创新超限、9 数值异常、10 水平重置、11 IMU 过期。
+  schema1 的 `r_var_cm2` 是配置的观测方差；schema2 按 `quality_source` 区分配置与设备报告来源。
+  它是本次使用的观测方差，不是实际定位误差；当前 RMC 未报告 HACC，通常使用配置方差。
+- `*_mmps` 除以1000为 m/s；速度 R/P 的 `*_cm2ps2` 除以10000为 m²/s²；
+  `pvne_cm2ps2` 允许负数。恢复前后的位置和速度均为有符号整数。
+- schema1 `state` 沿用：0 等待定位、1 质量观察、2 融合中、3 失锁推算、4 重新捕获、5 等待 EKF。
+  schema2 `state` 为：0 WAIT_FIX、1 POSITION_ONLY（仅位置锚定）、2 TRACKING（连续跟踪）、
+  3 DR_UNTRUSTED（推算不可信）、4 REACQUIRING、5 WAIT_EKF。两个版本按各自语义显示。
+- `reason` 0～11沿用：无、输入无效、重复、时间倒退、过期、未就绪、质量观察、
+  跳点、创新超限、数值异常、水平重置、IMU过期；schema2 增加12无定位、13速度创新超限、14质量不足。
 - `flags` bit0～7：地理原点有效、已锚定、辅助有效、参考经实测确认、协方差有效、
-  测量有效、创新有效、曾融合。无效位下可能保留最后有限历史值，缺失或数值溢出时用 0 占位；
+  测量有效、创新有效、本轮滤波器曾融合。schema2 追加 bit8速度可信、bit9本样本速度有效、
+  bit10曾有恢复记录、bit11速度协方差有效、bit12速度创新有效。
+  无效位下可能保留最后有限历史值，缺失或数值溢出时用 0 占位；
   面板均依有效位显示不可用，原始日志保留收到的整数，不能把历史值或占位零当作当前定位。
+- `quality_source`：0配置/未知、1设备报告；`velocity_source`：0未知、1 RMC、2位置更新逐渐约束。
+  `recovery_reason`：0无、1首次定位、2辅助失锁、3滤波器重启、4数值恢复、5连续拒绝恢复。
+  `reset_valid_mask` 低8位依次对应恢复前 N/E/Vn/Ve、恢复后 N/E/Vn/Ve；每个值单独判有效。
 - `reject_count` 为导航门控/算法拒绝，`input_reject_count` 为输入解析拒绝；
-  重复、丢样、重置另计，不能把收到一帧简单等同于完成一次融合。
+  重复、丢样、重置另计。schema2 的 `no_fix_count` 单列无定位事件，
+  `vel_accept_count/vel_reject_count` 单列速度更新，不和位置接受/拒绝计数混用。
 
 CLI 默认实验目录新增 `telemetry_ugps.csv`，原 CSV 列顺序保留，GPS 列追加到尾部；
 `row_json` 与 `events.jsonl` 保留原值，坏帧和断连残片保留原文及解析失败状态。
 URGC 共用同一个严格解析器和字段有效性，状态 API 可读 `telemetry.ugps`，
-会话目录增加 `gps_日期_时间.csv`；本阶段不新增网页 GPS 专页，也不新增设备 socket。
+会话目录增加 `gps_日期_时间.csv`。两种CSV都使用包含schema2的列超集，混合旧帧时新增列为空。
+schema2 最大行长上限1024字符，schema1仍限512；沿用现有接收拆包与设备socket。
+本阶段不新增网页 GPS 专页。终端显示全部schema2诊断建议至少60行。
+
+例如恢复帧上报 `reset_before_n_mm=500000`、`reset_after_n_mm=1200`、`reset_age_ms=300`，
+面板显示300ms前从 N=500m恢复到 N=1.2m；`est_n_mm` 是当前估计，可随之后的预测继续变化。
+若恢复后速度采用未知先验，速度可信位仍为0、速度融合年龄仍未知，不把该先验显示成有效速度测量。
 
 ## contcp_t 双终端监控（旧主题无需更新固件）
 

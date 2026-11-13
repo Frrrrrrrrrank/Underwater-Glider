@@ -18,7 +18,8 @@ class Eskf {
 
   // IMU 推进
   // 输入FRD 系角速度、比力（含重力）；t 为传感器时间戳 (s)
-  void predictImu(Scalar t, const Vec3& gyro_FRD, const Vec3& accel_FRD);
+  // 绝对时间保持 double；先作差再转 Scalar，避免长时 FP32 丢失 IMU 周期。
+  void predictImu(double t, const Vec3& gyro_FRD, const Vec3& accel_FRD);
 
   // 测量更新，返回是否被接受 (false = NIS 拒绝)
   bool updateDepth(Scalar t, Scalar depth_m, Scalar R);
@@ -27,11 +28,22 @@ class Eskf {
   // 调用方负责运动门控（|‖a‖-g|<ε_a 且 |gyro|<ε_ω）。
   bool updateAccelTilt(Scalar t, const Vec3& accel_FRD, Scalar R_tilt);
   bool updateMag  (Scalar t, const Vec3& mag_FRD, Scalar R_yaw);
-  bool updateGps  (Scalar t, const Vec2& pNE, const Mat2& R);        // Phase 3
+  bool updateGps(double t, const Vec2& antennaNE, const Mat2& R);
+  // 显式水平重锚定；保留速度均值、深度、姿态、偏置和 IMU 时间基准。
+  bool resetHorizontalPosition(const Vec2& antennaNE, const Mat2& R);
+  bool updateGpsVelocity(double t, const Vec2& antennaVelocityNE, const Mat2& R,
+                         const Vec3& gyro_FRD);
+  // 长失锁时原子恢复p/v；未知速度仅建立一次宽先验，保留垂向/姿态/偏置。
+  bool reanchorHorizontal(const Vec2& antennaNE, const Mat2& positionR,
+                           const Vec2& antennaVelocityNE, const Mat2& velocityR,
+                           bool velocity_measured, const Vec3& gyro_FRD);
+  // 只检查需要保留的状态/P块；水平数值损坏不应阻止局部恢复。
+  bool horizontalRecoveryReady() const;
   bool updateDvl  (Scalar t, const Vec3& v_FRD, const Mat3& R);      // Phase 3 
 
   // 静态对齐，从静止段累积 accel/gyro/mag 估计初始 RPY 与 b_g
-  // 内部不分配；wrapper 持有定长缓冲区指针传入。
+  // 内部不分配；wrapper 持有定长缓冲区指针传入
+  // ROS里面用，下面的是嵌入式里面用的
   void staticAlign(const Vec3* acc_buf, const Vec3* gyro_buf,
                    const Vec3* mag_buf, std::size_t n);
 
@@ -48,7 +60,7 @@ class Eskf {
   bool                initialized() const { return initialized_; }
 
  private:
-  bool injectErrorState(const Vec15& dx);
+  bool applyCorrection(const Vec15& dx, const Mat15& joseph_covariance);
   void enforceSymmetry();
 
   State        x_;
@@ -56,7 +68,7 @@ class Eskf {
   InitParams   params_{};
   Diagnostics  diag_{};
   bool         initialized_ = false;
-  Scalar       t_prev_ = Scalar(-1);
+  double       t_prev_ = -1.0;
 };
 
 }  // namespace ug_ekf

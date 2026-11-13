@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "glider_core.h"
+#include "raw_capture.h"
 #include "glider_rdss_codec.h"
 #include "imu_core.h"
 #include "rudder_driver.h"
@@ -2031,6 +2032,21 @@ void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len)
     g_dbg_view.last_rx_bin[i] = g_dbg_last_rx_bin[i];
   }
   g_dbg_view.last_rx_update_count = g_dbg_last_rx_update_count;
+}
+
+/* 自机 GNSS 与短信缓存分流：此回调在串口任务，只转交 EKF 输入邮箱。 */
+void GliderCore_OnGnssSample(const GnssSample *sample)
+{
+  EkfTask_PublishGnss(sample);
+}
+
+/* UART7 RX task只入静态采集FIFO；实际发送由Ethernet task低优先级执行。 */
+void GliderCore_OnRawLine(const uint8_t *data, uint32_t src_len,
+                         uint16_t kept_len, uint64_t t_rx_us)
+{
+  RawCapture_Observe(data, src_len, kept_len, t_rx_us,
+                     GliderCore_GetRxOverflowCount(), GliderCore_GetRxLineDropCount(),
+                     HAL_GetTick());
 }
 
 void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)

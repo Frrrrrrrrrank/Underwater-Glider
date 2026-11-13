@@ -46,6 +46,7 @@ def create_app(
             station_store,
             host=os.getenv("URGC_DEVICE_HOST", "192.168.57.100"),
             port=int(os.getenv("URGC_DEVICE_PORT", "8800")),
+            raw_capture_enabled=_environment_flag("URGC_RAW_CAPTURE_ENABLED", False),
             recorder=(
                 SessionRecorder(Path(os.getenv(
                     "URGC_LOG_DIR", str(Path(__file__).resolve().parents[1] / "logs" / "sessions")

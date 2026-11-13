@@ -5,32 +5,37 @@ from __future__ import annotations
 import logging
 import socket
 import threading
+import time
 import uuid
 from typing import Optional, Tuple
 
 from .legacy_telemetry import decode_telemetry_line
-from .models import LinkStatus
+from .models import LinkStatus, utc_now_iso
 from .state_store import StateStore
 from .session_recorder import SessionRecorder, disabled_recording_snapshot
 
 try:
+    from ..raw_telemetry import UGRAW_RENEW_S
     from ..ugcp_protocol import (
         MSG_STREAM_CONTROL,
         STREAM_CTL,
         STREAM_EKF,
         STREAM_WRM,
         STREAM_RDSS,
+        STREAM_RAW,
         SequenceCounter,
         build_frame,
         pack_stream_control_payload,
     )
 except ImportError:
+    from raw_telemetry import UGRAW_RENEW_S
     from ugcp_protocol import (
         MSG_STREAM_CONTROL,
         STREAM_CTL,
         STREAM_EKF,
         STREAM_WRM,
         STREAM_RDSS,
+        STREAM_RAW,
         SequenceCounter,
         build_frame,
         pack_stream_control_payload,
@@ -59,12 +64,16 @@ class EthernetRealtimeLink:
         stream_mask: int = DEFAULT_STREAM_MASK,
         retry_delay_s: float = 2.0,
         recorder: Optional[SessionRecorder] = None,
+        raw_capture_enabled: bool = False,
     ) -> None:
         self._store = store
         self._recorder = recorder
         self._host = host
         self._port = int(port)
-        self._stream_mask = int(stream_mask)
+        self._stream_mask = int(stream_mask) | (STREAM_RAW if raw_capture_enabled else 0)
+        self._raw_last_renew_s = 0.0
+        if self._stream_mask & STREAM_RAW and recorder is None:
+            LOGGER.warning("UART7原始采集已启用，但记录器关闭：仅接收转发数据，不落盘")
         self._retry_delay_s = float(retry_delay_s)
         self._sequence = SequenceCounter()
         self._stop_event = threading.Event()
@@ -114,10 +123,14 @@ class EthernetRealtimeLink:
         with self._socket_lock:
             listener = self._listener
             connection = self._connection
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        # 接收者在最多0.5秒的recv超时后自行发全关，避免第二个线程竞争发送。
+        if self._stream_mask & STREAM_RAW and self._thread is not None:
+            self._thread.join(timeout=min(0.6, max(0.0, timeout_s)))
         self._close_socket(connection)
         self._close_socket(listener)
         if self._thread is not None:
-            self._thread.join(timeout=max(0.0, timeout_s))
+            self._thread.join(timeout=max(0.0, deadline - time.monotonic()))
         self._thread = None
         if self._recorder is not None:
             self._recorder.stop()
@@ -210,6 +223,11 @@ class EthernetRealtimeLink:
         except OSError as exc:
             reason = str(exc)
         finally:
+            if self._stream_mask & STREAM_RAW:
+                try:
+                    self._send_stream_mask(connection, 0)
+                except OSError:
+                    pass
             self._set_connection(None)
             self._close_socket(connection)
             if self._recorder is not None:
@@ -218,36 +236,61 @@ class EthernetRealtimeLink:
         if not self._stop_event.is_set():
             self._store.set_link(LinkStatus.DISCONNECTED, last_error=reason)
 
-    def _send_stream_subscription(self, connection: socket.socket) -> None:
+    def _send_stream_subscription(self, connection: socket.socket, *, renew: bool = False) -> None:
         masks = [self._stream_mask]
-        if self._stream_mask & STREAM_RDSS:
-            # 旧固件会整包拒绝未知 RDSS 位；先确保原有主题仍可接收。
-            masks.insert(0, self._stream_mask & ~STREAM_RDSS)
-        for mask in masks:
-            payload = pack_stream_control_payload(mask)
-            frame = build_frame(
-                MSG_STREAM_CONTROL,
-                payload,
-                self._sequence.next(),
-            )
-            connection.sendall(frame)
-            self._store.mark_tx()
+        if not renew:
+            base = self._stream_mask & ~STREAM_RAW
+            if self._stream_mask & STREAM_RAW:
+                masks.insert(0, base)
+            if base & STREAM_RDSS:
+                # 旧固件会整包拒绝未知位；初次分级订阅，续租不能插入关闭RAW的包。
+                masks.insert(0, base & ~STREAM_RDSS)
+        for mask in dict.fromkeys(masks):
+            self._send_stream_mask(connection, mask)
+        if self._stream_mask & STREAM_RAW:
+            self._raw_last_renew_s = time.monotonic()
+
+    def _send_stream_mask(self, connection: socket.socket, mask: int) -> None:
+        frame = build_frame(MSG_STREAM_CONTROL, pack_stream_control_payload(mask), self._sequence.next())
+        connection.sendall(frame)
+        self._store.mark_tx()
+
+    def _renew_raw_subscription(self, connection: socket.socket, now: Optional[float] = None) -> None:
+        if (self._stream_mask & STREAM_RAW and
+                (time.monotonic() if now is None else now) - self._raw_last_renew_s >= UGRAW_RENEW_S):
+            self._send_stream_subscription(connection, renew=True)
 
     def _receive_lines(self, connection: socket.socket, session_id: str) -> str:
         line_buffer = ""
+        received_ns = None
+        received_at = None
+
+        def finish(reason: str) -> str:
+            # 断线留下的不完整外包也入日志，不能悄悄当成没有收到。
+            if line_buffer.startswith("$UGRAW") and self._recorder is not None:
+                self._recorder.record(line_buffer, None, received_ns=received_ns, received_at=received_at)
+            return reason
+
         while not self._stop_event.is_set():
             try:
+                self._renew_raw_subscription(connection)
                 data = connection.recv(4096)
             except socket.timeout:
                 continue
             except ConnectionResetError:
-                return "connection_reset"
+                return finish("connection_reset")
+            except OSError:
+                finish("socket_error")
+                raise
 
             if not data:
-                return "peer_closed"
+                return finish("peer_closed")
+
+            received_ns, received_at = time.monotonic_ns(), utc_now_iso()
 
             line_buffer += data.decode("ascii", errors="replace")
             if len(line_buffer) > MAX_LINE_BUFFER:
+                finish("line_too_long")
                 line_buffer = ""
                 LOGGER.warning("URGC cleared an oversized device line buffer")
                 continue
@@ -256,15 +299,20 @@ class EthernetRealtimeLink:
                 newline_index = line_buffer.find("\n")
                 if newline_index < 0:
                     break
+                raw_line = line_buffer[:newline_index + 1]
                 line = line_buffer[:newline_index]
                 # 只去掉正常 CRLF 的一个 CR，额外 CR 留给解析器判坏帧。
                 if line.endswith("\r"):
                     line = line[:-1]
                 line_buffer = line_buffer[newline_index + 1:]
-                decoded = decode_telemetry_line(line)
+                is_raw = line.startswith("$UGRAW")
+                decoded = decode_telemetry_line(raw_line if is_raw else line)
                 if self._recorder is not None:
-                    self._recorder.record(line, decoded)
-                if decoded is None:
+                    if is_raw:
+                        self._recorder.record(raw_line, decoded, received_ns=received_ns, received_at=received_at)
+                    else:
+                        self._recorder.record(line, decoded)
+                if decoded is None or is_raw:
                     continue
                 self._store.publish_telemetry(
                     decoded.topic,
@@ -275,4 +323,4 @@ class EthernetRealtimeLink:
                     stale_after_ms=decoded.stale_after_ms,
                 )
 
-        return "station_stopped"
+        return finish("station_stopped")

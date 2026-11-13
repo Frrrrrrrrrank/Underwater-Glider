@@ -1,4 +1,5 @@
 #include "glider_rdss_codec.h"
+#include <math.h>
 
 
 static bool is_digit_ascii(char c)
@@ -746,9 +747,7 @@ static void locate_bdpwi_coordinates(const char *body, size_t body_len, GliderRd
   size_t len1 = 0U;
   size_t len2 = 0U;
   size_t len3 = 0U;
-  char dir0 = '\0';
   char dir1 = '\0';
-  char dir2 = '\0';
   char dir3 = '\0';
 
   if (body == NULL || out_frame == NULL)
@@ -1474,5 +1473,206 @@ bool GliderRdssCodec_TryDecodeLine(const char *line, GliderRdssDecodedFrame *out
 
   out_frame->type = GLIDER_RDSS_FRAME_UNKNOWN;
   copy_token(out_frame->text, sizeof(out_frame->text), normalized_line, normalized_len);
+  return true;
+}
+
+
+/* 以下检查只服务 GNSS 融合，不改变用于诊断和卫星通信的宽松解码。 */
+static bool parse_gnss_digits(const char *field, size_t len, uint32_t *value)
+{
+  size_t i;
+  uint32_t result = 0U;
+  if (field == NULL || value == NULL || len == 0U || len > 9U) { return false; }
+  for (i = 0U; i < len; ++i)
+  {
+    if (!is_digit_ascii(field[i])) { return false; }
+    result = result * 10U + (uint32_t)(field[i] - '0');
+  }
+  *value = result;
+  return true;
+}
+
+static bool parse_gnss_utc(const char *field, size_t len, uint32_t *ms_of_day)
+{
+  uint32_t h, m, sec, fraction = 0U;
+  size_t digits;
+  /* 本接口的历元分辨率为 1ms；拒绝更细精度，避免静默合并不同历元。
+   * 秒为 60 的闰秒暂不融合，不能映射成下一天的零秒。 */
+  if (!(len == 6U || (len >= 8U && len <= 10U))) { return false; }
+  if (!parse_gnss_digits(field, 2U, &h) ||
+      !parse_gnss_digits(field + 2U, 2U, &m) ||
+      !parse_gnss_digits(field + 4U, 2U, &sec) ||
+      h > 23U || m > 59U || sec > 59U) { return false; }
+  if (len > 6U)
+  {
+    digits = len - 7U;
+    if (field[6] != '.' || !parse_gnss_digits(field + 7U, digits, &fraction))
+    { return false; }
+    while (digits++ < 3U) { fraction *= 10U; }
+  }
+  *ms_of_day = ((h * 60U + m) * 60U + sec) * 1000U + fraction;
+  return true;
+}
+
+static bool parse_gnss_date(const char *field, size_t len, uint32_t *date)
+{
+  static const uint8_t month_days[12] = {31U, 28U, 31U, 30U, 31U, 30U,
+                                       31U, 31U, 30U, 31U, 30U, 31U};
+  uint32_t day, month, year, limit;
+  if (len != 6U || !parse_gnss_digits(field, 2U, &day) ||
+      !parse_gnss_digits(field + 2U, 2U, &month) ||
+      !parse_gnss_digits(field + 4U, 2U, &year) || month < 1U || month > 12U)
+  { return false; }
+  year += 2000U;
+  limit = month_days[month - 1U];
+  if (month == 2U && year % 4U == 0U) { ++limit; }
+  if (day < 1U || day > limit) { return false; }
+  *date = year * 10000U + month * 100U + day;
+  return true;
+}
+
+static bool parse_gnss_coordinate(const char *field, size_t len,
+                                  const char *direction, size_t dir_len,
+                                  bool longitude, int32_t *deg_e7)
+{
+  const size_t whole_digits = longitude ? 5U : 4U;
+  const uint32_t limit = longitude ? 180U : 90U;
+  uint32_t whole, fraction = 0U, deg, minute;
+  uint64_t scale = 1U, minutes_scaled, result;
+  size_t i;
+  bool negative;
+  if (dir_len != 1U || len < whole_digits) { return false; }
+  if (longitude)
+  {
+    if (direction[0] != 'E' && direction[0] != 'W') { return false; }
+    negative = direction[0] == 'W';
+  }
+  else
+  {
+    if (direction[0] != 'N' && direction[0] != 'S') { return false; }
+    negative = direction[0] == 'S';
+  }
+  if (!parse_gnss_digits(field, whole_digits, &whole)) { return false; }
+  if (len > whole_digits)
+  {
+    const size_t digits = len - whole_digits - 1U;
+    if (field[whole_digits] != '.' ||
+        !parse_gnss_digits(field + whole_digits + 1U, digits, &fraction))
+    { return false; }
+    for (i = 0U; i < digits; ++i) { scale *= 10U; }
+  }
+  deg = whole / 100U;
+  minute = whole % 100U;
+  if (minute >= 60U || deg > limit ||
+      (deg == limit && (minute != 0U || fraction != 0U))) { return false; }
+  minutes_scaled = (uint64_t)minute * scale + fraction;
+  result = (uint64_t)deg * 10000000ULL +
+           (minutes_scaled * 10000000ULL + 30ULL * scale) / (60ULL * scale);
+  *deg_e7 = negative ? -(int32_t)result : (int32_t)result;
+  return true;
+}
+
+static bool parse_gnss_unsigned_decimal(const char *field, size_t len, float *value)
+{
+  size_t whole_len = 0U, fraction_len, i;
+  uint32_t whole, fraction = 0U, scale = 1U;
+  if (field == NULL || value == NULL || len == 0U) { return false; }
+  while (whole_len < len && field[whole_len] != '.') { ++whole_len; }
+  if (!parse_gnss_digits(field, whole_len, &whole)) { return false; }
+  if (whole_len < len)
+  {
+    fraction_len = len - whole_len - 1U;
+    if (!parse_gnss_digits(field + whole_len + 1U, fraction_len, &fraction))
+    { return false; }
+    for (i = 0U; i < fraction_len; ++i) { scale *= 10U; }
+  }
+  *value = (float)whole + (float)fraction / (float)scale;
+  return isfinite(*value);
+}
+
+static void parse_gnss_velocity(const char *body, size_t body_len, GnssSample *sample)
+{
+  const char *field;
+  size_t len;
+  float speed_knots, course_deg, speed_mps, course_rad;
+  /* 速度是可选观测：空值、坏格式、低速 COG 均不影响独立的位置观测。
+   * 0.3m/s 以下方向不可靠，不能用任意 COG 伪造二维速度或艇体航向。 */
+  if (!extract_csv_field(body, body_len, 7U, &field, &len) ||
+      !parse_gnss_unsigned_decimal(field, len, &speed_knots) ||
+      !extract_csv_field(body, body_len, 8U, &field, &len) ||
+      !parse_gnss_unsigned_decimal(field, len, &course_deg) || course_deg >= 360.0f)
+  { return; }
+  speed_mps = speed_knots * (1852.0f / 3600.0f);
+  if (!isfinite(speed_mps) || speed_mps < 0.3f) { return; }
+  course_rad = course_deg * 0.01745329251994329577f;
+  sample->vel_n_mps = speed_mps * cosf(course_rad);
+  sample->vel_e_mps = speed_mps * sinf(course_rad);
+  sample->velocity_source = GNSS_VELOCITY_RMC;
+  sample->validity_flags |= GNSS_VALID_VELOCITY;
+}
+
+bool GliderRdssCodec_TryMakeGnssSample(const GliderRdssDecodedFrame *frame,
+                                     uint64_t t_rx_us, uint32_t seq,
+                                     GnssSample *out_sample)
+{
+  const char *body, *star, *field, *coordinate, *direction;
+  size_t body_len, len, coordinate_len, direction_len;
+  bool no_fix;
+  GnssSample sample;
+  if (out_sample == NULL) { return false; }
+  bytes_zero((uint8_t *)out_sample, sizeof(*out_sample));
+  bytes_zero((uint8_t *)&sample, sizeof(sample));
+  if (frame == NULL || frame->type != GLIDER_RDSS_FRAME_NMEA_TEXT ||
+      !frame->is_gnrmc || !frame->has_checksum || !frame->checksum_valid)
+  { return false; }
+  star = find_char(frame->text, '*');
+  if (star == NULL || frame->text[0] != '$') { return false; }
+  body = frame->text + 1U;
+  body_len = (size_t)(star - body);
+  if (!extract_csv_field(body, body_len, 1U, &field, &len) ||
+      !parse_gnss_utc(field, len, &sample.utc_ms_of_day) ||
+      !extract_csv_field(body, body_len, 9U, &field, &len) ||
+      !parse_gnss_date(field, len, &sample.utc_date_yyyymmdd)) { return false; }
+  if (!extract_csv_field(body, body_len, 2U, &field, &len) ||
+      len != 1U || !(field[0] == 'A' || field[0] == 'V')) { return false; }
+  no_fix = field[0] == 'V';
+  /* 兼容没有 mode 的旧 RMC。N 明确表示无定位；E/M/S 不作为实测位置。
+   * V 事件可携带 E/M/S 模式，但只通知无定位，不发布其中的坐标。 */
+  if (extract_csv_field(body, body_len, 12U, &field, &len) && len != 0U)
+  {
+    if (len != 1U) { return false; }
+    if (field[0] == 'N') { no_fix = true; }
+    else if (!(field[0] == 'A' || field[0] == 'D' || field[0] == 'F' ||
+               field[0] == 'R' || field[0] == 'P' ||
+               (no_fix && (field[0] == 'E' || field[0] == 'M' || field[0] == 'S'))))
+    { return false; }
+  }
+  if (extract_csv_field(body, body_len, 13U, &field, &len) && len != 0U)
+  {
+    if (len != 1U) { return false; }
+    if (field[0] == 'V') { no_fix = true; }
+    else if (!(field[0] == 'S' || (no_fix && (field[0] == 'C' || field[0] == 'U'))))
+    { return false; }
+  }
+  if (extract_csv_field(body, body_len, 14U, &field, &len)) { return false; }
+  sample.seq = seq;
+  sample.t_rx_us = t_rx_us;
+  if (no_fix)
+  {
+    sample.validity_flags = GNSS_VALID_CHECKSUM | GNSS_VALID_UTC | GNSS_VALID_NO_FIX;
+    *out_sample = sample;
+    return true;
+  }
+  if (!extract_csv_field(body, body_len, 3U, &coordinate, &coordinate_len) ||
+      !extract_csv_field(body, body_len, 4U, &direction, &direction_len) ||
+      !parse_gnss_coordinate(coordinate, coordinate_len, direction, direction_len,
+                             false, &sample.lat_deg_e7) ||
+      !extract_csv_field(body, body_len, 5U, &coordinate, &coordinate_len) ||
+      !extract_csv_field(body, body_len, 6U, &direction, &direction_len) ||
+      !parse_gnss_coordinate(coordinate, coordinate_len, direction, direction_len,
+                             true, &sample.lon_deg_e7)) { return false; }
+  sample.validity_flags = GNSS_VALID_REQUIRED;
+  parse_gnss_velocity(body, body_len, &sample);
+  *out_sample = sample;
   return true;
 }

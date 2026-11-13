@@ -23,6 +23,11 @@ except ImportError:
     )
 
 try:
+    from .raw_telemetry import UGRAW_RENEW_S, ugraw_parse
+except ImportError:
+    from raw_telemetry import UGRAW_RENEW_S, ugraw_parse
+
+try:
     from .monitor_bridge import MonitorBridge
 except ImportError:
     from monitor_bridge import MonitorBridge
@@ -79,6 +84,7 @@ try:
         STREAM_WRM,
         STREAM_BAT,
         STREAM_RDSS,
+        STREAM_RAW,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -115,6 +121,7 @@ except ImportError:
         STREAM_WRM,
         STREAM_BAT,
         STREAM_RDSS,
+        STREAM_RAW,
         SequenceCounter,
         build_frame,
         crc32_iso_hdlc,
@@ -135,8 +142,11 @@ except ImportError:
 running = True          # 控制线程退出
 UGCP_TX_SEQUENCE = SequenceCounter()
 UGCP_TX_LOCK = threading.Lock()
-TELEMETRY_STREAM_LOCK = threading.Lock()
+TELEMETRY_STREAM_LOCK = threading.RLock()
 TELEMETRY_STREAM_MASK = 0
+RAW_CAPTURE_REQUESTED = False
+RAW_CAPTURE_CONFIRMED = False
+RAW_LAST_RENEW_S = 0.0
 # 记录器只观察既有收发；上下文属于发送线程，不参与控制计算。
 EXPERIMENT_RECORDER = None
 EXPERIMENT_MANAGED = False
@@ -946,27 +956,66 @@ def send_auto_control_packet(conn, packet, label='AUTO'):
         conn, MSG_CONTROL21_STREAM, payload, f'{label} 连续控制包', verbose=False)
 
 
-def send_stream_control(conn, mask, label='遥测流控制', *, keep_battery=True):
-    """设置完整遥测状态；控制会话始终保留电池流，退出时才显式全关。"""
-    global TELEMETRY_STREAM_MASK
-    if keep_battery:
-        mask = int(mask) | STREAM_BAT
-    if mask & STREAM_RDSS:
-        # 未知位会使旧固件拒绝整包。每次启停/恢复都先发兼容掩码，
-        # 不能仅在启动时兜底；sendall成功不表示板端支持BAT或RDSS。
-        for fallback in dict.fromkeys((mask & ~(STREAM_BAT | STREAM_RDSS), mask & ~STREAM_RDSS)):
+def send_stream_control(conn, mask, label='遥测流控制', *, keep_battery=True,
+                        raw_enabled=None, renew=False):
+    """原始采集偏好独立保存；模式恢复不会覆盖它，续租只发完整掩码。"""
+    global TELEMETRY_STREAM_MASK, RAW_CAPTURE_REQUESTED, RAW_LAST_RENEW_S
+    with TELEMETRY_STREAM_LOCK:
+        raw_was_active = bool(TELEMETRY_STREAM_MASK & STREAM_RAW) and RAW_CAPTURE_CONFIRMED
+        if int(mask) == 0 and not keep_battery:
+            RAW_CAPTURE_REQUESTED = False
+        elif raw_enabled is not None:
+            RAW_CAPTURE_REQUESTED = bool(raw_enabled)
+        mask = int(mask) & ~STREAM_RAW
+        if keep_battery:
+            mask |= STREAM_BAT
+        if RAW_CAPTURE_REQUESTED:
+            mask |= STREAM_RAW
+        # 首次扩展订阅分级兼容旧固件；采集中不得先发关闭RAW的兜底包。
+        fallbacks = []
+        if not renew and (not raw_was_active or not mask & STREAM_RAW):
+            if mask & STREAM_RAW:
+                base = mask & ~STREAM_RAW
+                if base & STREAM_RDSS:
+                    fallbacks.extend((base & ~(STREAM_BAT | STREAM_RDSS), base & ~STREAM_RDSS))
+                fallbacks.append(base)
+            elif mask & STREAM_RDSS:
+                fallbacks.extend((mask & ~(STREAM_BAT | STREAM_RDSS), mask & ~STREAM_RDSS))
+        for fallback in dict.fromkeys(fallbacks):
             if not send_ugcp_frame(conn, MSG_STREAM_CONTROL,
-                                   pack_stream_control_payload(fallback), label + '（兼容）', verbose=False):
+                                  pack_stream_control_payload(fallback), label + '（兼容）', verbose=False):
                 return False
-    ok = send_ugcp_frame(
-        conn,
-        MSG_STREAM_CONTROL,
-        pack_stream_control_payload(mask),
-        label,
-    )
+        ok = send_ugcp_frame(conn, MSG_STREAM_CONTROL, pack_stream_control_payload(mask),
+                             label, verbose=not renew)
+        if ok:
+            TELEMETRY_STREAM_MASK = mask
+            if mask & STREAM_RAW:
+                RAW_LAST_RENEW_S = time.monotonic()
+        return ok
+
+
+def renew_raw_capture(conn, now=None):
+    """由唯一接收线程续15秒租约；持续收包时也每5秒检查。"""
+    with TELEMETRY_STREAM_LOCK:
+        if not RAW_CAPTURE_REQUESTED or not TELEMETRY_STREAM_MASK & STREAM_RAW:
+            return True
+        if (time.monotonic() if now is None else now) - RAW_LAST_RENEW_S < UGRAW_RENEW_S:
+            return True
+        return send_stream_control(conn, TELEMETRY_STREAM_MASK, '原始采集续租', renew=True)
+
+
+def set_raw_capture(conn, enabled):
+    """显式启停采集；记录不可用时不把发送成功当成落盘成功。"""
+    if enabled:
+        recording = _experiment_snapshot()
+        if EXPERIMENT_RECORDER is None or recording.get('status') != 'recording':
+            print('[RAW] 无法落盘，未启用原始采集：' + str(
+                recording.get('last_error') or '异步实验记录器未就绪'))
+            return False
+    ok = send_stream_control(conn, get_stream_control_mask(), '原始UART7采集', raw_enabled=enabled)
     if ok:
-        with TELEMETRY_STREAM_LOCK:
-            TELEMETRY_STREAM_MASK = int(mask)
+        print('[RAW] 已请求' + ('开启；收到 $UGRAW 后写 telemetry_ugraw.csv，旧固件可能不支持。'
+                               if enabled else '关闭原始采集。'))
     return ok
 
 
@@ -2785,10 +2834,12 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             )
 
     def handle_line(raw_line, line_index):
+        global RAW_CAPTURE_CONFIRMED
         nonlocal ctl_csv, ctl_csv_path, wrm_csv, wrm_csv_path
         line = raw_line.strip()
         topic, row = None, None
         for prefix, name, parser in (
+            ('$UGRAW', 'ugraw', ugraw_parse),
             ('$UGPS', 'ugps', ugps_parse),
             ('$UGRDS', 'ugrds', ugrds_parse), ('$UGBAT', 'ugbat', ugbat_parse),
             ('$UGWRM', 'ugwrm', ugwrm_parse), ('$UGCTL', 'ugctl', ugctl_parse),
@@ -2797,7 +2848,7 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             if line.startswith(prefix):
                 topic = name
                 if name != 'ugekf' or ekf_checksum_ok(line):
-                    row = parser(raw_line if name in ('ugps', 'ugrds', 'ugbat') else line)
+                    row = parser(raw_line if name in ('ugraw', 'ugps', 'ugrds', 'ugbat') else line)
                 break
         _experiment_record({
             'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
@@ -2807,7 +2858,14 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
         if not line:
             return
 
+        if topic == 'ugraw':
+            # 原始流只入有界异步日志，不向监控界面推高频原文。
+            if row is not None:
+                RAW_CAPTURE_CONFIRMED = True
+            return
+
         if topic == 'ugps':
+            # schema1/2 共用严格解析与唯一接收线程；缺失扩展字段不补成有效零值。
             # GNSS 诊断随 EKF 流推送；只发布/记录，不额外订阅或连接设备。
             if row is not None:
                 publish_monitor('ugps', row)
@@ -2935,6 +2993,9 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
             last_recording_error = recording.get('last_error')
             print(f'[实验记录不完整] {last_recording_error}；控制继续，请保留现场记录。')
         try:
+            if not renew_raw_capture(conn):
+                print('[RAW] 续租发送失败，结束本连接。')
+                break
             # 设置超时，以便能定期检查 running 标志
             conn.settimeout(1.0)
             data = conn.recv(4096)
@@ -2966,7 +3027,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
                 line_index += 1
             if len(line_buffer) > 65536:
                 _experiment_record({'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
-                                    'batch_id': batch_id, 'topic': ('ugps' if line_buffer.startswith('$UGPS') else
+                                    'batch_id': batch_id, 'topic': ('ugraw' if line_buffer.startswith('$UGRAW') else
+                                              'ugps' if line_buffer.startswith('$UGPS') else
                                               'ugrds' if line_buffer.startswith('$UGRDS') else None), 'row': None,
                                     'raw': line_buffer, 'complete': False, 'error': 'line_too_long'})
                 if line_buffer.startswith('$UGRDS'):
@@ -2984,7 +3046,8 @@ def _receive_thread_body(conn, ctl_store=None, wrm_store=None, battery_monitor=N
     # 线程结束前清理
     if line_buffer:
         _experiment_record({'kind': 'rx', 't_ns': received_ns, 'host_iso': received_iso,
-                            'batch_id': batch_id, 'topic': ('ugps' if line_buffer.startswith('$UGPS') else
+                            'batch_id': batch_id, 'topic': ('ugraw' if line_buffer.startswith('$UGRAW') else
+                                              'ugps' if line_buffer.startswith('$UGPS') else
                                               'ugrds' if line_buffer.startswith('$UGRDS') else None), 'row': None,
                             'raw': line_buffer, 'complete': False, 'error': 'truncated_on_disconnect'})
         if line_buffer.startswith('$UGRDS'):
@@ -3031,6 +3094,7 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
     print("  尾舵RT正/LT负，满按30°/s、松开或双按保持；B回中，B/LT/RT全松后再响应")
     print("输入 'pid' 进入双环 PID 调参界面（内含独立开环推进器接口）")
     print("输入 'ekfon' / 'ekfoff' 开 / 停板子 EKF 遥测")
+    print("输入 'rawon' / 'rawoff' 开 / 停 UART7 原始采集（默认关闭，沿当前连接异步落盘）")
     print("输入 'wormon' / 'wormoff' 开 / 停双轴位置遥测 $UGWRM（落 CSV，阶段变化提示）")
     print("电池监测默认常开：低压主动报警；预警每30秒、严重低压每10秒提醒，数据失效会另行提示")
     print("输入 'calib' 同时校准 pitch 和 roll（pitch 到前端0%，roll 测两端后回50%）")
@@ -3075,6 +3139,8 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
                     print(f'[AUTO_STI 参数错误] {exc}')
             elif user_input.lower() == 'pid':
                 run_pid_mode(conn, ctl_store)
+            elif user_input.lower() in ('rawon', 'rawoff'):
+                set_raw_capture(conn, user_input.lower() == 'rawon')
             elif user_input.lower() == 'ekfoff':
                 send_telem_control(conn, 0)
                 print("[EKF] 已请求板子停发遥测")
@@ -3101,7 +3167,7 @@ def _run_console(conn, gamepad_service, ctl_store, wrm_store, link_closed):
             elif user_input.lower() == 'snapshot':
                 send_snapshot_request(conn)
             else:
-                print("[命令] 未识别，未发送；可用 pack/auto/auto_sti/pid/ekfon/ekfoff/wormon/wormoff/calib/calibstop/snapshot/quit")
+                print("[命令] 未识别，未发送；可用 pack/auto/auto_sti/pid/ekfon/ekfoff/rawon/rawoff/wormon/wormoff/calib/calibstop/snapshot/quit")
     except KeyboardInterrupt:
         print("\n检测到 Ctrl+C，退出。")
 
@@ -3132,7 +3198,12 @@ def _start_monitor_bridge():
 def main():
     global running, EXPERIMENT_RECORDER, EXPERIMENT_LAST_ERROR, EXPERIMENT_MANAGED
     global CONTROL_MONITOR_BRIDGE
+    global RAW_CAPTURE_REQUESTED, RAW_CAPTURE_CONFIRMED, RAW_LAST_RENEW_S, TELEMETRY_STREAM_MASK
     running = True
+    RAW_CAPTURE_REQUESTED = False
+    RAW_CAPTURE_CONFIRMED = False
+    RAW_LAST_RENEW_S = 0.0
+    TELEMETRY_STREAM_MASK = 0
     EXPERIMENT_RECORDER = None
     EXPERIMENT_LAST_ERROR = None
     EXPERIMENT_MANAGED = False

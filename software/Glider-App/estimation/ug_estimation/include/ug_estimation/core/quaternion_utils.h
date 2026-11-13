@@ -57,4 +57,20 @@ inline Quat InjectDeltaTheta(const Quat& q, const Vec3& dtheta) {
   return qn;
 }
 
+// 右乘误差注入后的协方差变换；小角度级数避免 FP32 下 1-cos 的消差。
+inline Mat3 RightJacobianSO3(const Vec3& phi) {
+  const Scalar theta2 = phi.squaredNorm();
+  const Mat3 A = Hat(phi);
+  Scalar a, b;
+  if (theta2 < Scalar(1e-4)) {
+    a = Scalar(0.5) - theta2 / Scalar(24) + theta2 * theta2 / Scalar(720);
+    b = Scalar(1.0 / 6.0) - theta2 / Scalar(120) + theta2 * theta2 / Scalar(5040);
+  } else {
+    const Scalar theta = std::sqrt(theta2);
+    a = (Scalar(1) - std::cos(theta)) / theta2;
+    b = (theta - std::sin(theta)) / (theta2 * theta);
+  }
+  return Mat3::Identity() - a * A + b * A * A;
+}
+
 }  // namespace ug_ekf

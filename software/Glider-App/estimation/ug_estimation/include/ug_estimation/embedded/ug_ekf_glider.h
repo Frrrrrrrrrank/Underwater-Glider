@@ -51,6 +51,13 @@ typedef struct {
   float nis_gate_depth, nis_gate_tilt, nis_gate_mag;
   float tilt_gate_acc, tilt_gate_gyro;
   float depth_reset_streak;  /* 深度连续拒绝达此值触发失锁重置；0=用默认(10) */
+  /* GNSS 使用固定当地 N/E 米；经纬度转换及固定原点由调用方管理。 */
+  float r_gps_frd[3];       /* IMU/状态参考点 -> 天线相位中心，FRD，m */
+  float nis_gate_gps;       /* 默认 9.21034，二维 NIS */
+  float gps_reset_velocity_var; /* 重锚定追加水平速度方差，默认 4 (m/s)^2 */
+  float nis_gate_gps_velocity; /* 天线二维速度 NIS，默认 9.21034 */
+  float gps_velocity_gyro_var; /* 角速样本方差 (rad/s)^2，默认 1e-4；待实测 */
+  uint32_t gps_velocity_gyro_max_age_us; /* 速度与最近IMU时间最大距离，默认250000us */
 } UgEkfConfig;
 
 /* EKF 运行阶段 / 健康状态机 (out.status) */
@@ -66,8 +73,8 @@ typedef enum {
 /* 输出状态 (NED-FRD 约定) */
 typedef struct {
   float roll, pitch, yaw;   /* rad */
-  float pN, pE;             /* NED 水平位置估计 (m)。Phase1 无水平观测会漂移,
-                               用于观察 x/y 发散程度, 勿用于闭环定位 */
+  float pN, pE;             /* NED 水平位置估计 (m)；是否可用于导航由调用方的
+                               固定原点/新鲜度/定位与航向状态共同判定 */
   float depth_m;            /* = p_NED.z, 正=水下 */
   float vN, vE, vD;         /* NED 速度 m/s */
   float b_g[3], b_a[3];     /* 在线估计的零偏 (FRD) */
@@ -88,14 +95,41 @@ typedef struct {
   uint8_t  aligned;           /* 1=已完成静态对齐 (= status==RUNNING), 向后兼容保留 */
   uint8_t  healthy;           /* 1=finite && RUNNING && dt 正常 */
   uint8_t  still;             /* 当前是否判为静止 (对齐期 align gate, 运行期 tilt gate) */
-  uint8_t  valid_for_control; /* = (status==RUNNING && healthy); 控制器/上位机只判这一个 */
+  uint8_t  valid_for_control; /* RUNNING且原有姿态/数值/IMU健康；不代表水平导航有效 */
   uint8_t  finite;            /* 1=全部输出状态有限 (无 NaN/Inf, 含速度) */
   uint32_t align_sample_count;/* 已采纳的静止 IMU 样本数 */
   uint32_t align_reset_count; /* 对齐中途晃动丢弃窗口次数 (区别于 reset_count) */
   float    align_elapsed_s;   /* 当前静止窗口已持续秒数 */
   float    dt_last;           /* 最近一次 predict 的 dt (s) */
   float    t_last;            /* 最近喂入的 IMU 时间戳 (s); 上位机用 (now-t_last) 判数据中断 */
+  /* 水平定位诊断与全局 valid_for_control 分离；有 GNSS 不等于航向已标定。 */
+  float nis_gps;
+  uint32_t accept_gps, reject_gps, gps_reset_count;
+  float gps_innov_n, gps_innov_e;
+  float Pnn, Pne, Pee;      /* 水平位置协方差，m^2 */
+  int32_t gps_last_result;
+  float Pvn, Pvne, Pve; /* 水平速度协方差，(m/s)^2 */
+  float nis_gps_velocity;
+  uint32_t accept_gps_velocity, reject_gps_velocity;
+  float gps_velocity_innov_n, gps_velocity_innov_e;
+  int32_t gps_velocity_last_result;
+  uint32_t horizontal_velocity_reset_count;
+  uint32_t horizontal_velocity_source; /* UgEkfHorizontalVelocitySource；不是外层导航有效位 */
+  uint8_t horizontal_recovery_ready; /* 保留块及IMU步长健康，允许仅水平损坏时局部修复；调用方另查年龄 */
 } UgEkfOutput;
+
+typedef enum {
+  UG_EKF_VELOCITY_NONE = 0,
+  UG_EKF_VELOCITY_UNKNOWN_PRIOR = 1,
+  UG_EKF_VELOCITY_GNSS_MEASURED = 2
+} UgEkfHorizontalVelocitySource;
+
+typedef enum {
+  UG_EKF_GPS_ACCEPTED = 1,
+  UG_EKF_GPS_REJECTED = 0,   /* NIS 拒绝，状态和 P 未改变 */
+  UG_EKF_GPS_INVALID = -1,   /* 非有限输入、坏协方差、时间非递增或数值失败 */
+  UG_EKF_GPS_NOT_READY = -2  /* 未完成对齐或 EKF 当前不健康 */
+} UgEkfGpsResult;
 
 /* 用默认值填充 cfg（调用方可随后覆盖个别字段）。 */
 void UgEkf_DefaultConfig(UgEkfConfig* cfg);
@@ -115,6 +149,33 @@ void UgEkf_PushPressureBar(float pressure_bar, uint64_t t_us);
 
 /* 直接喂深度 (m)，若上层已自行换算。 */
 void UgEkf_PushDepth(float depth_m, uint64_t t_us);
+
+/* 天线 N/E 位置与协方差，m / m^2；只在 RUNNING 且健康时融合。
+ * epoch_id 是调用方验证的单调测量历元标识；t_us 是与 IMU 一致的单调接收时刻。
+ * 两个 UTC 历元可以具有相同 t_us；旧缓存/延迟由调用方先筛选。
+ * 返回 UgEkfGpsResult；同一或倒退 epoch_id 不会被重复融合。 */
+int UgEkf_PushGpsPosition(float north, float east, float var_n, float cov_ne,
+                         float var_e, uint64_t epoch_id, uint64_t t_us);
+
+/* 仅位置重置，保留深度/姿态/偏置/速度均值；保留给明确可信速度的兼容调用。
+ * 长失锁且速度不可信时使用 ReanchorHorizontal；不改变任何地理原点。 */
+int UgEkf_ResetHorizontalPosition(float north, float east, float var_n, float cov_ne,
+                                 float var_e, uint64_t epoch_id, uint64_t t_us);
+
+/* 天线NE速度(m/s)及协方差；使用最近角速、gyro bias和FRD杆臂。
+ * 位置/速度独立去重，同一历元可各融合一次；不接受由已融合位置差分出的伪独立速度。
+ * 接收机位置/速度噪声按不相关近似，无法表达未知的跨观测相关性。 */
+int UgEkf_PushGpsVelocity(float vn, float ve, float var_n, float cov_ne,
+                         float var_e, uint64_t epoch_id, uint64_t t_us);
+
+/* 原子p/v重锚定，不改变地理原点、深度、姿态或bias。
+ * velocity_measured=1: vn/ve是天线速度；=0:忽略vn/ve，以0均值建立一次未知速度先验。
+ * 两种模式均要求显式SPD速度协方差；不会周期性施加零速观测。
+ * 成功同时消费本历元p/v，gps_reset_count仅+1；正常accept计数不增加。
+ * 仅水平非有限时可修复；保留块损坏则原子拒绝。 */
+int UgEkf_ReanchorHorizontal(float n, float e, float var_n, float cov_ne, float var_e,
+                            float vn, float ve, float vvar_n, float vcov_ne, float vvar_e,
+                            uint32_t velocity_measured, uint64_t epoch_id, uint64_t t_us);
 
 /* 读取当前状态。 */
 void UgEkf_GetOutput(UgEkfOutput* out);

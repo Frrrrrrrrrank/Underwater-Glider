@@ -17,6 +17,7 @@ if str(STATION_DIR) not in sys.path:
     sys.path.insert(0, str(STATION_DIR))
 
 import battery_telemetry
+import gps_telemetry as gps
 import contcp_t
 from experiment_recorder import ExperimentRecorder
 import ugcp_protocol as ugcp
@@ -27,7 +28,7 @@ def telemetry(topic, seq=1, **changes):
     fields = {
         "ugwrm": contcp_t.UGWRM_FIELDS_V3,
         "ugrds": contcp_t.UGRDS_FIELDS,
-        "ugps": contcp_t.UGPS_FIELDS,
+        "ugps": gps.UGPS_FIELDS_BY_SCHEMA[changes.get("schema", 1)],
         "ugctl": contcp_t.UGCTL_FIELDS,
         "ugekf": contcp_t.EKF_FIELDS,
         "ugbat": battery_telemetry.UGBAT_FIELDS,
@@ -181,6 +182,34 @@ class ExperimentIntegrationTests(unittest.TestCase):
         events = [event for event in self.events(directory) if event.get("topic") == "ugps"]
         self.assertEqual(len(events), 3)
         self.assertFalse(events[-1]["complete"])
+
+    def test_mixed_gps_schemas_keep_old_columns_and_append_velocity_recovery(self):
+        import csv
+        recorder, directory = self.start_recorder()
+        old = telemetry("ugps")
+        new = telemetry("ugps", seq=2, schema=2, flags=8191, velocity_source=1,
+                        meas_vn_mmps=1500, est_ve_mmps=-700, recovery_reason=2,
+                        reset_before_n_mm=500000, reset_after_n_mm=1200,
+                        reset_age_ms=300, reset_valid_mask=255)
+        wire = old + new
+        conn = FakeSocket([wire[offset:offset + 17] for offset in range(0, len(wire), 17)])
+        _ctl, _wrm, bridge = self.run_receiver(conn)
+        recorder.stop()
+        self.assertEqual(conn.frames, [])
+        self.assertEqual([row["schema"] for topic, row in bridge.rows if topic == "ugps"], [1, 2])
+        with (directory / "telemetry_ugps.csv").open(encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            columns = reader.fieldnames
+            rows = list(reader)
+        self.assertEqual(len(rows), 2)
+        self.assertGreater(columns.index("velocity_source"), columns.index("input_reject_count"))
+        self.assertEqual(rows[0]["velocity_source"], "")
+        self.assertEqual(rows[0]["reset_before_n_mm"], "")
+        self.assertEqual(rows[1]["meas_vn_mmps"], "1500")
+        self.assertEqual(rows[1]["est_ve_mmps"], "-700")
+        self.assertEqual(rows[1]["reset_before_n_mm"], "500000")
+        self.assertEqual(rows[1]["reset_valid_mask"], "255")
+        self.assertEqual(json.loads(rows[1]["row_json"])["reset_after_n_mm"], 1200)
 
     def test_actual_control_payload_sequence_and_transport_times_are_recorded(self):
         recorder, directory = self.start_recorder()

@@ -19,6 +19,15 @@ UgEkfConfig g_cfg;
 bool       g_initialized = false;
 bool       g_aligned     = false;
 double     g_t0_s        = -1.0;
+uint64_t   g_last_imu_us = 0, g_last_gps_epoch = 0;
+bool       g_have_imu_time = false, g_have_gps_epoch = false;
+int        g_gps_last_result = UG_EKF_GPS_NOT_READY;
+uint64_t   g_last_gps_velocity_epoch = 0;
+bool       g_have_gps_velocity_epoch = false;
+int        g_gps_velocity_last_result = UG_EKF_GPS_NOT_READY;
+// 历元消费结果与最近一次API诊断分开：前置NOT_READY不能抹掉NIS拒绝后的恢复资格。
+int        g_gps_epoch_result = UG_EKF_GPS_NOT_READY;
+int        g_gps_velocity_epoch_result = UG_EKF_GPS_NOT_READY;
 double     g_align_window_t0_s = -1.0;
 Vec3       g_last_gyro_frd = Vec3::Zero();
 Mat3       g_mountR        = Mat3::Identity();
@@ -40,6 +49,19 @@ constexpr float kDtMaxS          = 0.1f;  // predict dt 上限 (s)，与 buildPa
 constexpr int   kDefaultNonstillReset = 5;// 连续非静止样本数达此值才丢弃对齐窗口
 
 inline double us_to_s(uint64_t t_us) { return double(t_us) * 1e-6; }
+
+bool recentGyroForVelocity(uint64_t t_us) {
+  if (!g_have_imu_time || !g_last_gyro_frd.allFinite()) return false;
+  const uint64_t age = t_us >= g_last_imu_us ? t_us - g_last_imu_us : g_last_imu_us - t_us;
+  const uint32_t limit = g_cfg.gps_velocity_gyro_max_age_us != 0 ?
+      g_cfg.gps_velocity_gyro_max_age_us : 250000u;
+  return age <= limit;
+}
+
+bool canResetEpoch(bool have_time, uint64_t previous, int result, uint64_t candidate) {
+  return !have_time || candidate > previous ||
+      (candidate == previous && result == UG_EKF_GPS_REJECTED);
+}
 
 inline Vec3 toFrd(float x, float y, float z) {
   return g_mountR * Vec3(Scalar(x), Scalar(y), Scalar(z));
@@ -79,6 +101,12 @@ InitParams buildParams() {
   p.nis_gate_tilt  = pick(g_cfg.nis_gate_tilt, 11.345);
   p.nis_gate_mag   = pick(g_cfg.nis_gate_mag, 6.635);
   p.depth_reset_streak = pick(g_cfg.depth_reset_streak, 10.0);
+  p.r_gps_FRD = Vec3(Scalar(g_cfg.r_gps_frd[0]), Scalar(g_cfg.r_gps_frd[1]),
+                     Scalar(g_cfg.r_gps_frd[2]));
+  p.nis_gate_gps = pick(g_cfg.nis_gate_gps, 9.21034);
+  p.gps_reset_velocity_var = pick(g_cfg.gps_reset_velocity_var, 4.0);
+  p.nis_gate_gps_velocity = pick(g_cfg.nis_gate_gps_velocity, 9.21034);
+  p.gps_velocity_gyro_var = pick(g_cfg.gps_velocity_gyro_var, 1e-4);
   p.noise.sigma_g  = pick(g_cfg.sigma_g, 1e-3);
   p.noise.sigma_a  = pick(g_cfg.sigma_a, 1e-2);
   p.noise.sigma_bg = pick(g_cfg.sigma_bg, 1e-5);
@@ -136,6 +164,11 @@ void UgEkf_DefaultConfig(UgEkfConfig* cfg) {
   cfg->depth_reset_streak = 10.0f;
   cfg->tilt_var = 0.25f;
   cfg->mag_yaw_var = 0.01f;
+  cfg->nis_gate_gps = 9.21034f;
+  cfg->gps_reset_velocity_var = 4.0f;
+  cfg->nis_gate_gps_velocity = 9.21034f;
+  cfg->gps_velocity_gyro_var = 1e-4f;
+  cfg->gps_velocity_gyro_max_age_us = 250000u;
   cfg->tilt_gate_acc = 0.5f;
   cfg->tilt_gate_gyro = 0.05f;
 }
@@ -155,6 +188,13 @@ void UgEkf_Init(const UgEkfConfig* cfg) {
   }
 
   g_aligned = false; g_t0_s = -1.0;
+  g_have_imu_time = false; g_have_gps_epoch = false;
+  g_last_imu_us = 0; g_last_gps_epoch = 0;
+  g_gps_last_result = UG_EKF_GPS_NOT_READY;
+  g_gps_velocity_last_result = UG_EKF_GPS_NOT_READY;
+  g_gps_epoch_result = g_gps_velocity_epoch_result = UG_EKF_GPS_NOT_READY;
+  g_have_gps_velocity_epoch = false;
+  g_last_gps_velocity_epoch = 0;
   resetAlignAccum();
   g_last_gyro_frd = Vec3::Zero();
   g_status = UG_EKF_WAIT_BOOT_DELAY;
@@ -171,6 +211,9 @@ void UgEkf_Init(const UgEkfConfig* cfg) {
 void UgEkf_PushImu(float gx, float gy, float gz,
                    float ax, float ay, float az, uint64_t t_us) {
   if (!g_initialized) return;
+  if (g_have_imu_time && t_us <= g_last_imu_us) return;
+  g_last_imu_us = t_us;
+  g_have_imu_time = true;
   const double t = us_to_s(t_us);
   g_last_t_s = t;
   const Vec3 gyro = toFrd(gx, gy, gz);
@@ -213,7 +256,7 @@ void UgEkf_PushImu(float gx, float gy, float gz,
     return;
   }
 
-  g_ekf.predictImu(Scalar(t), gyro, acc);
+  g_ekf.predictImu(t, gyro, acc);
   g_last_gyro_frd = gyro;
 
   const Scalar g = pick(g_cfg.gravity, 9.81);
@@ -250,9 +293,99 @@ void UgEkf_PushPressureBar(float pressure_bar, uint64_t t_us) {
   UgEkf_PushDepth(float(depth), t_us);
 }
 
+int UgEkf_PushGpsPosition(float north, float east, float var_n, float cov_ne,
+                         float var_e, uint64_t epoch_id, uint64_t t_us) {
+  UgEkfOutput current;
+  UgEkf_GetOutput(&current);
+  if (!g_initialized || !g_aligned || !current.valid_for_control) {
+    return g_gps_last_result = UG_EKF_GPS_NOT_READY;
+  }
+  if (g_have_gps_epoch && epoch_id <= g_last_gps_epoch) {
+    return g_gps_last_result = UG_EKF_GPS_INVALID;
+  }
+  g_last_gps_epoch = epoch_id;
+  g_have_gps_epoch = true;
+  Mat2 R;
+  R << Scalar(var_n), Scalar(cov_ne), Scalar(cov_ne), Scalar(var_e);
+  g_ekf.updateGps(us_to_s(t_us), Vec2(Scalar(north), Scalar(east)), R);
+  return g_gps_last_result = g_gps_epoch_result = g_ekf.diag().gps_last_result;
+}
+
+int UgEkf_ResetHorizontalPosition(float north, float east, float var_n, float cov_ne,
+                                 float var_e, uint64_t epoch_id, uint64_t t_us) {
+  (void)t_us;  // 此操作不推进IMU时间，也不借接收时刻代替测量身份。
+  UgEkfOutput current;
+  UgEkf_GetOutput(&current);
+  if (!g_initialized || !g_aligned || !current.valid_for_control) {
+    return g_gps_last_result = UG_EKF_GPS_NOT_READY;
+  }
+  // 本次正常更新被 NIS 拒绝时，可用同一历元进入调用方明确选择的重锚定。
+  if (g_have_gps_epoch && (epoch_id < g_last_gps_epoch ||
+      (epoch_id == g_last_gps_epoch && g_gps_epoch_result != UG_EKF_GPS_REJECTED))) {
+    return g_gps_last_result = UG_EKF_GPS_INVALID;
+  }
+  g_last_gps_epoch = epoch_id;
+  g_have_gps_epoch = true;
+  Mat2 R;
+  R << Scalar(var_n), Scalar(cov_ne), Scalar(cov_ne), Scalar(var_e);
+  g_ekf.resetHorizontalPosition(Vec2(Scalar(north), Scalar(east)), R);
+  return g_gps_last_result = g_gps_epoch_result = g_ekf.diag().gps_last_result;
+}
+
+int UgEkf_PushGpsVelocity(float vn, float ve, float var_n, float cov_ne,
+                         float var_e, uint64_t epoch_id, uint64_t t_us) {
+  UgEkfOutput current;
+  UgEkf_GetOutput(&current);
+  if (!g_initialized || !g_aligned || !current.valid_for_control || !recentGyroForVelocity(t_us)) {
+    return g_gps_velocity_last_result = UG_EKF_GPS_NOT_READY;
+  }
+  if (g_have_gps_velocity_epoch && epoch_id <= g_last_gps_velocity_epoch) {
+    return g_gps_velocity_last_result = UG_EKF_GPS_INVALID;
+  }
+  g_last_gps_velocity_epoch = epoch_id;
+  g_have_gps_velocity_epoch = true;
+  Mat2 R;
+  R << Scalar(var_n), Scalar(cov_ne), Scalar(cov_ne), Scalar(var_e);
+  g_ekf.updateGpsVelocity(us_to_s(t_us), Vec2(Scalar(vn), Scalar(ve)), R, g_last_gyro_frd);
+  return g_gps_velocity_last_result = g_gps_velocity_epoch_result = g_ekf.diag().gps_velocity_last_result;
+}
+
+int UgEkf_ReanchorHorizontal(float n, float e, float var_n, float cov_ne, float var_e,
+                            float vn, float ve, float vvar_n, float vcov_ne, float vvar_e,
+                            uint32_t velocity_measured, uint64_t epoch_id, uint64_t t_us) {
+  UgEkfOutput current;
+  UgEkf_GetOutput(&current);
+  if (!current.horizontal_recovery_ready ||
+      (velocity_measured != 0 && !recentGyroForVelocity(t_us))) {
+    return g_gps_last_result = UG_EKF_GPS_NOT_READY;
+  }
+  if (velocity_measured > 1u ||
+      !canResetEpoch(g_have_gps_epoch, g_last_gps_epoch, g_gps_epoch_result, epoch_id) ||
+      !canResetEpoch(g_have_gps_velocity_epoch, g_last_gps_velocity_epoch,
+                      g_gps_velocity_epoch_result, epoch_id)) {
+    return g_gps_last_result = UG_EKF_GPS_INVALID;
+  }
+  Mat2 positionR, velocityR;
+  positionR << Scalar(var_n), Scalar(cov_ne), Scalar(cov_ne), Scalar(var_e);
+  velocityR << Scalar(vvar_n), Scalar(vcov_ne), Scalar(vcov_ne), Scalar(vvar_e);
+  const bool accepted = g_ekf.reanchorHorizontal(Vec2(Scalar(n), Scalar(e)), positionR,
+      Vec2(Scalar(vn), Scalar(ve)), velocityR, velocity_measured != 0, g_last_gyro_frd);
+  g_gps_last_result = g_ekf.diag().gps_last_result;
+  if (accepted) {
+    g_last_gps_epoch = g_last_gps_velocity_epoch = epoch_id;
+    g_have_gps_epoch = g_have_gps_velocity_epoch = true;
+    g_gps_velocity_last_result = g_ekf.diag().gps_velocity_last_result;
+    g_gps_epoch_result = g_gps_last_result;
+    g_gps_velocity_epoch_result = g_gps_velocity_last_result;
+  }
+  return g_gps_last_result;
+}
+
 void UgEkf_GetOutput(UgEkfOutput* out) {
   if (!out) return;
   std::memset(out, 0, sizeof(*out));
+  out->gps_last_result = g_gps_last_result;
+  out->gps_velocity_last_result = g_gps_velocity_last_result;
   if (!g_initialized) { out->status = uint8_t(UG_EKF_UNINIT); return; }
 
   const State& x = g_ekf.state();
@@ -275,6 +408,22 @@ void UgEkf_GetOutput(UgEkfOutput* out) {
   out->nis_depth = float(d.last_nis_depth);
   out->nis_tilt  = float(d.last_nis_tilt);
   out->nis_mag   = float(d.last_nis_mag);
+  out->nis_gps = float(d.last_nis_gps);
+  out->accept_gps = d.accept_gps;
+  out->reject_gps = d.reject_gps;
+  out->gps_reset_count = d.gps_reset_count;
+  out->gps_innov_n = float(d.gps_innov_n);
+  out->gps_innov_e = float(d.gps_innov_e);
+  out->Pnn = float(P(0, 0)); out->Pne = float(P(0, 1)); out->Pee = float(P(1, 1));
+  out->Pvn = float(P(3, 3)); out->Pvne = float(P(3, 4)); out->Pve = float(P(4, 4));
+  out->nis_gps_velocity = float(d.last_nis_gps_velocity);
+  out->accept_gps_velocity = d.accept_gps_velocity;
+  out->reject_gps_velocity = d.reject_gps_velocity;
+  out->gps_velocity_innov_n = float(d.gps_velocity_innov_n);
+  out->gps_velocity_innov_e = float(d.gps_velocity_innov_e);
+  out->horizontal_velocity_reset_count = d.horizontal_velocity_reset_count;
+  out->horizontal_velocity_source = d.horizontal_velocity_source;
+  out->gps_last_result = g_gps_last_result;
   out->accept_depth = d.accept_depth; out->reject_depth = d.reject_depth;
   out->accept_tilt  = d.accept_tilt;  out->reject_tilt  = d.reject_tilt;
   out->accept_mag   = d.accept_mag;   out->reject_mag   = d.reject_mag;
@@ -306,9 +455,9 @@ void UgEkf_GetOutput(UgEkfOutput* out) {
   bool healthy = false;
   if (st == UG_EKF_RUNNING) {
     // 仅以"数值失效"判 FAULT：NaN/Inf，或 roll/pitch 协方差爆掉。
-    // 水平位置/yaw 协方差无观测会合法增长，不计入 FAULT，是要观察的发散量
+    // 缺少水平位置或航向观测时相应协方差会增长；水平可用性由外层独立判定。
     const float tilt_var_sum = float(P(6, 6) + P(7, 7));
-    if (!finite || tilt_var_sum > kFaultTiltVarSum) {
+    if (!finite || !P.allFinite() || tilt_var_sum > kFaultTiltVarSum) {
       st = UG_EKF_FAULT;
     } else {
       // dt 正常 = 最近 predict 步长在 (0, dt_max]。注：数据中断时 dt_last 不更新，
@@ -319,6 +468,12 @@ void UgEkf_GetOutput(UgEkfOutput* out) {
   out->status            = uint8_t(st);
   out->healthy           = healthy ? 1 : 0;
   out->valid_for_control = (st == UG_EKF_RUNNING && healthy) ? 1 : 0;
+  // 整体FAULT可能仅来自水平NaN；仅保留块健康时放行水平恢复，外层另查实时年龄。
+  const float tilt_var_sum = float(P(6, 6) + P(7, 7));
+  out->horizontal_recovery_ready = (g_aligned && g_status == UG_EKF_RUNNING &&
+      out->dt_last > 0.0f && out->dt_last <= kDtMaxS &&
+      std::isfinite(tilt_var_sum) && tilt_var_sum <= kFaultTiltVarSum &&
+      g_ekf.horizontalRecoveryReady()) ? 1 : 0;
 }
 
 }  // extern "C"

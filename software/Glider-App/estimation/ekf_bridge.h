@@ -14,6 +14,7 @@
 #define EKF_BRIDGE_H
 
 #include "state_estimate.h"
+#include "gnss_sample.h"
 #include <stdint.h>
 
 /* 磁标定参数表固定为 64 字节：
@@ -27,6 +28,9 @@ extern "C" {
 
 /* 初始化滤波器（EKF task 启动时调一次）。 */
 void EkfBridge_Init(void);
+
+/* 串口任务只发布新自机定位；算法更新仍由 EKF task 独占。 */
+void EkfBridge_SubmitGnss(const GnssSample *sample);
 
 /* IMU 侧投喂一帧（线程上下文，非 ISR）：拷进受保护输入缓存并打 seq。
  * gyro rad/s, accel m/s^2, mag 模块帧 raw(uT，与 IMU 同帧；硬/软铁校正与 mount_R

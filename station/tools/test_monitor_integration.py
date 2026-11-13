@@ -21,6 +21,7 @@ if str(STATION_DIR) not in sys.path:
     sys.path.insert(0, str(STATION_DIR))
 
 import battery_telemetry as battery
+import gps_telemetry as gps
 import contcp_t
 import monitor
 from monitor_bridge import MonitorBridge
@@ -36,7 +37,7 @@ def telemetry(topic, seq=1, **changes):
                   else contcp_t.UGWRM_FIELDS_V3),
         "ugbat": battery.UGBAT_FIELDS,
         "ugrds": contcp_t.UGRDS_FIELDS,
-        "ugps": contcp_t.UGPS_FIELDS,
+        "ugps": gps.UGPS_FIELDS_BY_SCHEMA[changes.get("schema", 1)],
     }[topic]
     defaults = {
         "ugekf": dict(status=4, fl=3, roll_deg=3.5, pitch_deg=-2.25,
@@ -182,6 +183,26 @@ class MonitorIntegrationTests(unittest.TestCase):
         self.board_socket.sendall(bad + telemetry("ugctl", seq=20))
         self.wait_seq("ugctl", 20)
         self.assertEqual(monitor.fetch_snapshot(self.url)["telemetry"]["ugps"]["data"]["seq"], 1)
+        self.assert_no_board_commands()
+
+    def test_schema2_fragmented_receive_exposes_velocity_and_recovery_without_commands(self):
+        self.start_receiver()
+        wire = telemetry("ugps", schema=2, flags=8191, velocity_source=1,
+                         est_vn_mmps=1250, est_ve_mmps=-500, vel_fuse_age_ms=75,
+                         recovery_reason=2, reset_before_n_mm=500000,
+                         reset_after_n_mm=1000, reset_age_ms=250, reset_valid_mask=255)
+        for offset in range(0, len(wire), 13):
+            self.board_socket.sendall(wire[offset:offset + 13])
+        self.wait_seq("ugps", 1)
+        snapshot = monitor.fetch_snapshot(self.url)
+        row = snapshot["telemetry"]["ugps"]["data"]
+        self.assertEqual((row["schema"], row["reset_before_n_mm"]), (2, 500000))
+        panel = monitor.render_panel(snapshot, width=220)
+        self.assertIn("状态：连续跟踪", panel)
+        self.assertIn("速度来源：RMC", panel)
+        self.assertIn("NE速度估计(m/s)：+1.250, -0.500", panel)
+        self.assertIn("恢复前 NE(m)：+500.000", panel)
+        self.assertIn("恢复后锚点 NE(m)：+1.000", panel)
         self.assert_no_board_commands()
 
     def test_each_bad_checksum_is_dropped_before_snapshot_publication(self):

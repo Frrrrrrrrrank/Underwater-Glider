@@ -57,13 +57,15 @@
 /* bit4：电池总压与采样质量 $UGBAT，不影响板端独立采样。 */
 #define ETHERNET_UART_STREAM_BAT 0x10U
 #define ETHERNET_UART_STREAM_RDSS 0x20U
+#define ETHERNET_UART_STREAM_RAW 0x40U /* 可选UART7原始采集，15秒续租；默认关闭 */
 #define ETHERNET_UART_STREAM_ALL \
-  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM | ETHERNET_UART_STREAM_BAT | ETHERNET_UART_STREAM_RDSS)
+  (ETHERNET_UART_STREAM_EKF | ETHERNET_UART_STREAM_MAG | ETHERNET_UART_STREAM_CTL | ETHERNET_UART_STREAM_WRM | ETHERNET_UART_STREAM_BAT | ETHERNET_UART_STREAM_RDSS | ETHERNET_UART_STREAM_RAW)
 
 /* EKF 遥测定义，单行 ASCII 帧上限（NMEA 风格 $UGEKF,...*HH），以及周期(ms)。
  * 行内全部字段定点格式化，正常约 200B，留足余量到 512；100ms=10Hz。 */
-#define ETHERNET_UART_EKF_LINE_MAX 512U
+#define ETHERNET_UART_EKF_LINE_MAX 1024U
 #define ETHERNET_UART_EKF_PERIOD_MS 100U//遥测频率定义
+#define ETHERNET_UART_GPS_PERIOD_MS 1000U /* GNSS 融合诊断，跟随 EKF 订阅 */
 #define ETHERNET_UART_MAG_PERIOD_MS 100U
 #define ETHERNET_UART_CTL_PERIOD_MS 100U
 #define ETHERNET_UART_WRM_PERIOD_MS 200U /* 双轴合并帧先用 5Hz，保留 BAT 优先调度。 */
@@ -233,6 +235,7 @@ void EthernetUartDriver_SendSystemSnapshot(void);
 void EthernetUartDriver_UpdateSystemSnapshot(void);
 /* 拼一行 $UGEKF,...*HH 的 EKF 状态估计遥测并发送（线程上下文，由以太网任务周期调用）。 */
 void EthernetUartDriver_SendEkfTelemetry(void);
+HAL_StatusTypeDef EthernetUartDriver_SendGpsTelemetry(void);
 /* 拼一行 $UGMAG,seq,t_ms,mx,my,mz*HH 的原始磁力计遥测并发送（磁标定采集用；
  * 线程上下文，由独立 MAG 遥测开关和周期调度，~10Hz）。 */
 HAL_StatusTypeDef EthernetUartDriver_SendMagTelemetry(void);
@@ -244,6 +247,7 @@ HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void);
 /* 电池状态独立低频上报，使用整数毫伏，保留现有快照布局。 */
 HAL_StatusTypeDef EthernetUartDriver_SendBatteryTelemetry(void);
 HAL_StatusTypeDef EthernetUartDriver_SendRdssTelemetry(void);
+void EthernetUartDriver_SendRawCapture(void);
 /* 控制/泵任务每周期先整体复制一次，避免逐字段散读时跨越一次新包发布。 */
 bool EthernetUartDriver_CopyControlPack(
     EthernetUartReadoutPack *out_pack,

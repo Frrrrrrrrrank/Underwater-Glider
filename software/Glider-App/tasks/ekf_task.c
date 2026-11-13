@@ -48,6 +48,14 @@ void EkfTask_PublishImuRaw(const IMU_RawData *raw, uint64_t t_us)
   }
 }
 
+/* 串口接收任务调用：只投递有界样本并唤醒，不在这里运行滤波。 */
+void EkfTask_PublishGnss(const GnssSample *sample)
+{
+  if (sample == NULL) return;
+  EkfBridge_SubmitGnss(sample);
+  if (ekfTaskHandle != NULL) (void)osThreadFlagsSet(ekfTaskHandle, EKF_FLAG_GNSS);
+}
+
 void StartEkfTask(void *argument)
 {
   (void)argument;
@@ -58,7 +66,7 @@ void StartEkfTask(void *argument)
 
   for (;;) {
     /* 事件触发，以及心跳包兜底，即使无 IMU 帧也周期性输入压力 / 刷新快照 / 更新栈水位 */
-    (void)osThreadFlagsWait(EKF_FLAG_IMU, osFlagsWaitAny, EKF_TASK_FALLBACK_MS);
+    (void)osThreadFlagsWait(EKF_FLAG_IMU | EKF_FLAG_GNSS, osFlagsWaitAny, EKF_TASK_FALLBACK_MS);
 
     g_ekf_task_loop_count++;
     EkfBridge_Step();

@@ -8,11 +8,13 @@
 
 #include "imu_core.h"     /* IMU_RawData */
 #include <stdint.h>
+#include "gnss_sample.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#define EKF_FLAG_GNSS        (0x02U)   /* 新自机定位样本 */
 #define EKF_FLAG_IMU         (0x01U)   /* osThreadFlags 位，新 IMU 帧就绪 */
 #define EKF_TASK_FALLBACK_MS (20U)     /* 无 IMU 帧时的心跳兜底周期 (ms) */
 
@@ -23,6 +25,7 @@ void StartEkfTask(void *argument);
  *   先把 gyro/accel 投喂给 bridge; 之后记录 raw mag 调试值，第一阶段不入 EKF，需标定软磁硬磁参数；
  *   然后调用 osThreadFlagsSet 唤醒 EKF task。t_us 用 GliderTime_NowUs() */
 void EkfTask_PublishImuRaw(const IMU_RawData *raw, uint64_t t_us);
+void EkfTask_PublishGnss(const GnssSample *sample);
 
 /* Ozone 观察量 */
 extern volatile uint32_t g_ekf_task_loop_count;

@@ -41,6 +41,7 @@ Core/Src/stm32h7xx_it.c \
 Core/Src/stm32h7xx_hal_msp.c \
 Glider-Core/glider_core.c \
 Glider-Core/glider_rdss_codec.c \
+Glider-Core/raw_capture.c \
 Glider-Core/imu_core.c \
 Glider-Core/rudder_driver.c \
 Glider-Core/battery_monitor.c \
@@ -53,6 +54,7 @@ Glider-Core/pressure_sensor_driver.c \
 Glider-Core/sbus_driver.c \
 Glider-Core/buzzer_driver.c \
 Glider-App/estimation/ekf_bridge.c \
+Glider-App/estimation/gnss_navigation.c \
 Glider-App/estimation/control/zigzag_control.c \
 Glider-App/estimation/control/pid_control_service.c \
 Glider-App/tasks/ekf_task.c \

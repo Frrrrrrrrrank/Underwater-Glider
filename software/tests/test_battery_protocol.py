@@ -21,7 +21,7 @@ def extract_function(source, name):
         lambda match: " " * len(match.group()), source, flags=re.S,
     )
     match = re.search(
-        r"^(?:static\s+)?(?:HAL_StatusTypeDef|void)\s+"
+        r"^(?:static\s+)?(?:HAL_StatusTypeDef|void|int)\s+"
         + re.escape(name) + r"\s*\([^;{}]*\)\s*\{", masked, re.M,
     )
     if not match:
@@ -41,7 +41,9 @@ class BatteryFirmwareProtocolTests(unittest.TestCase):
         compiler = shutil.which("gcc")
         if compiler is None:
             raise AssertionError("电池协议测试需要主机 GCC，不能使用 ARM 交叉编译器")
-        cls._tmp = tempfile.TemporaryDirectory(prefix="battery_protocol_", dir=Path(__file__).parent)
+        tmp_root = SOFTWARE_DIR.parent.parent / ".buildtmp"
+        tmp_root.mkdir(exist_ok=True)
+        cls._tmp = tempfile.TemporaryDirectory(prefix="battery_protocol_", dir=tmp_root)
         cls.addClassCleanup(cls._tmp.cleanup)
         tmp = Path(cls._tmp.name)
         cls.exe = tmp / ("battery_protocol.exe" if os.name == "nt" else "battery_protocol")
@@ -135,6 +137,19 @@ class BatteryFirmwareProtocolTests(unittest.TestCase):
         rows = self.run_scenario("schedule_wrap")
         self.assertEqual([r["t_ms"] for r in rows], [0xFFFFFFFF - 499, 500])
 
+    def test_real_task_prioritizes_battery_rdss_gps_then_snapshot(self):
+        rows = self.run_scenario("gps_priority")
+        self.assertEqual([r["t_ms"] for r in rows], [5000, 7000])
+
+    def test_real_task_retries_gps_busy_and_error_without_advancing_period(self):
+        self.assertEqual(self.run_scenario("gps_retry"), [])
+
+    def test_gps_follows_ekf_subscription_and_waits_for_uart(self):
+        self.assertEqual(self.run_scenario("gps_subscription"), [])
+
+    def test_real_task_gps_period_survives_tick_wrap(self):
+        self.assertEqual(self.run_scenario("gps_wrap"), [])
+
 
 C_HAL_HEADER = r"""
 #ifndef TEST_HAL_H
@@ -176,6 +191,7 @@ static uint32_t fake_tick = 10000U, copy_delay;
 static unsigned copies, tx_attempts, setup_calls, critical_depth;
 static bool copy_ok = true;
 static HAL_StatusTypeDef fake_tx_status = HAL_OK;
+static HAL_StatusTypeDef fake_gps_status = HAL_OK;
 static const uint8_t *inflight;
 static uint16_t inflight_len;
 static char attempted[160];
@@ -229,6 +245,8 @@ void EthernetUartDriver_SendText(const char *text)
   s_tx_busy = 1U;
 }
 void EthernetUartDriver_SendSystemSnapshot(void) { event('S'); s_tx_busy = 1U; }
+void EthernetUartDriver_SendRawCapture(void) { }
+void RawCapture_Poll(uint32_t now) { (void)now; }
 void EthernetUartDriver_SendEkfTelemetry(void) { event('E'); s_tx_busy = 1U; }
 HAL_StatusTypeDef EthernetUartDriver_SendMagTelemetry(void)
 { event('M'); s_tx_busy = 1U; return HAL_OK; }
@@ -238,6 +256,12 @@ HAL_StatusTypeDef EthernetUartDriver_SendWormTelemetry(void)
 { event('W'); s_tx_busy = 1U; return HAL_OK; }
 HAL_StatusTypeDef EthernetUartDriver_SendRdssTelemetry(void)
 { event('R'); s_tx_busy = 1U; return HAL_OK; }
+HAL_StatusTypeDef EthernetUartDriver_SendGpsTelemetry(void)
+{
+  event('G');
+  if (fake_gps_status == HAL_OK) s_tx_busy = 1U;
+  return fake_gps_status;
+}
 static void osDelay(uint32_t delay)
 {
   assert(delay == ETHERNET_UART_TASK_PERIOD_MS && critical_depth == 0U);
@@ -266,7 +290,8 @@ static void scheduler_init(void)
   }
   assert(setup_calls == 4U && event_count == 0U);
   s_tx_busy = 0U;
-  s_bat_telem_enabled = s_ekf_telem_enabled = s_mag_telem_enabled = 1U;
+  /* 旧电池/快照场景保持原订阅；EKF 附带 GPS 的新行为在独立场景验证。 */
+  s_bat_telem_enabled = s_mag_telem_enabled = 1U;
   s_ctl_telem_enabled = s_wrm_telem_enabled = 1U;
 }
 static void at(uint32_t now, bool snapshot)
@@ -429,12 +454,16 @@ int main(int argc, char **argv)
     assert(events[0] == 'B');
     s_tx_busy = 0U;
     s_bat_telem_enabled = 0U;
+    s_ekf_telem_enabled = 1U;
+    at(7999U, false);
+    assert(events[1] == 'G');
+    s_tx_busy = 0U;
     at(8000U, false);
-    assert(events[1] == 'E' && tx_attempts == 1U);
+    assert(events[2] == 'E' && tx_attempts == 1U);
     s_tx_busy = 0U;
     s_bat_telem_enabled = 1U;
     at(8001U, false);
-    assert(events[2] == 'B' && event_count == 3U);
+    assert(events[3] == 'B' && event_count == 4U);
   }
   else if (strcmp(argv[1], "schedule_wrap") == 0)
   {
@@ -447,6 +476,94 @@ int main(int argc, char **argv)
     s_tx_busy = 0U;
     at(500U, true);
     assert(events[2] == 'B' && event_count == 3U);
+  }
+  else if (strcmp(argv[1], "gps_priority") == 0)
+  {
+    scheduler_init();
+    s_rdss_telem_enabled = s_ekf_telem_enabled = 1U;
+    at(5000U, true);
+    assert(event_count == 1U && events[0] == 'B');
+    at(5001U, true);
+    assert(event_count == 1U && s_snapshot_pending == 1U);
+    s_tx_busy = 0U;
+    at(5020U, true);
+    assert(event_count == 2U && events[1] == 'R');
+    s_tx_busy = 0U;
+    at(5040U, true);
+    assert(event_count == 3U && events[2] == 'G' && s_snapshot_pending == 1U);
+    s_tx_busy = 0U;
+    at(5060U, true);
+    assert(event_count == 4U && events[3] == 'S' && s_snapshot_pending == 0U);
+    s_tx_busy = 0U;
+    at(5080U, false);
+    assert(event_count == 5U && events[4] == 'E');
+    s_tx_busy = 0U;
+    at(7000U, true);
+    s_tx_busy = 0U;
+    at(7020U, true);
+    s_tx_busy = 0U;
+    at(7040U, true);
+    assert(event_count == 8U && memcmp(events + 5U, "BRG", 3U) == 0);
+  }
+  else if (strcmp(argv[1], "gps_retry") == 0)
+  {
+    scheduler_init();
+    s_bat_telem_enabled = 0U;
+    s_ekf_telem_enabled = 1U;
+    fake_gps_status = HAL_BUSY;
+    at(5000U, true);
+    assert(event_count == 1U && events[0] == 'G' && s_tx_busy == 0U);
+    fake_gps_status = HAL_ERROR;
+    at(5001U, true);
+    assert(event_count == 2U && events[1] == 'G' && s_tx_busy == 0U);
+    fake_gps_status = HAL_OK;
+    at(5002U, true);
+    assert(event_count == 3U && events[2] == 'G' && s_tx_busy == 1U);
+    s_tx_busy = 0U;
+    at(6001U, true);
+    assert(event_count == 4U && events[3] == 'S');
+    s_tx_busy = 0U;
+    at(6002U, true);
+    assert(event_count == 5U && events[4] == 'G' && s_snapshot_pending == 1U);
+  }
+  else if (strcmp(argv[1], "gps_subscription") == 0)
+  {
+    scheduler_init();
+    s_bat_telem_enabled = s_mag_telem_enabled = 0U;
+    s_ctl_telem_enabled = s_wrm_telem_enabled = 0U;
+    at(5000U, false);
+    assert(event_count == 0U);
+    s_ekf_telem_enabled = 1U;
+    s_tx_busy = 1U;
+    at(5001U, false);
+    assert(event_count == 0U);
+    s_tx_busy = 0U;
+    at(5002U, false);
+    assert(event_count == 1U && events[0] == 'G');
+    s_tx_busy = 0U;
+    at(5003U, false);
+    assert(event_count == 2U && events[1] == 'E');
+    s_tx_busy = 0U;
+    s_ekf_telem_enabled = 0U;
+    at(9000U, false);
+    assert(event_count == 2U);
+    s_ekf_telem_enabled = 1U;
+    at(9001U, false);
+    assert(event_count == 3U && events[2] == 'G');
+  }
+  else if (strcmp(argv[1], "gps_wrap") == 0)
+  {
+    scheduler_init();
+    s_bat_telem_enabled = 0U;
+    s_ekf_telem_enabled = 1U;
+    at(UINT32_MAX - 499U, false);
+    assert(event_count == 1U && events[0] == 'G');
+    s_tx_busy = 0U;
+    at(499U, true);
+    assert(event_count == 2U && events[1] == 'S');
+    s_tx_busy = 0U;
+    at(500U, true);
+    assert(event_count == 3U && events[2] == 'G' && s_snapshot_pending == 1U);
   }
   else assert(false);
   return 0;

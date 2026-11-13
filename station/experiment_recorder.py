@@ -19,6 +19,11 @@ try:
 except ImportError:
     from gps_telemetry import UGPS_FIELDS
 
+try:
+    from .raw_telemetry import UGRAW_FIELDS
+except ImportError:
+    from raw_telemetry import UGRAW_FIELDS
+
 
 CONTROL_FIELDS = (
     "pitchmotor_enable", "pitchmotor_speed_rpm", "rollmotor_enable",
@@ -43,9 +48,11 @@ TELEMETRY_FIELDS = (
 )
 # 新列放到原 CSV 尾部，旧主题的原有列名/顺序不变。
 GPS_TELEMETRY_FIELDS = tuple(name for name in UGPS_FIELDS if name not in TELEMETRY_FIELDS)
+RAW_TELEMETRY_FIELDS = tuple(name for name in UGRAW_FIELDS
+                             if name not in TELEMETRY_FIELDS + GPS_TELEMETRY_FIELDS)
 TELEMETRY_COLUMNS = COMMON_COLUMNS + ("batch_id", "line_index", "topic") + TELEMETRY_FIELDS + (
     "row_json", "raw", "nonfinite_fields_json",
-) + GPS_TELEMETRY_FIELDS
+) + GPS_TELEMETRY_FIELDS + RAW_TELEMETRY_FIELDS
 
 
 def _host_iso():
@@ -120,6 +127,7 @@ class ExperimentRecorder:
         self._written = 0
         self._dropped = 0
         self._rejected = 0
+        self._invalid_ugraw_count = 0
         self._handles = []
         self._telemetry_writers = {}
 
@@ -210,6 +218,7 @@ class ExperimentRecorder:
                 "written_records": self._written,
                 "dropped_records": self._dropped,
                 "rejected_records": self._rejected,
+                "invalid_ugraw_count": self._invalid_ugraw_count,
                 "pending_records": self._accepted - self._written,
                 "last_event_id": self._event_id,
                 "last_error": self._last_error,
@@ -296,7 +305,10 @@ class ExperimentRecorder:
         elif kind == "rx":
             row = {key: event.get(key, "") for key in TELEMETRY_COLUMNS}
             parsed = event.get("row")
-            for key in TELEMETRY_FIELDS + GPS_TELEMETRY_FIELDS:
+            if event.get("topic") == "ugraw" and not isinstance(parsed, dict):
+                with self._lock:
+                    self._invalid_ugraw_count += 1
+            for key in TELEMETRY_FIELDS + GPS_TELEMETRY_FIELDS + RAW_TELEMETRY_FIELDS:
                 row[key] = parsed.get(key, "") if isinstance(parsed, dict) else ""
             # 全部字段存 JSON 列，避免老协议首帧决定表头后丢失新版字段。
             row["row_json"] = _json(parsed)

@@ -220,14 +220,16 @@ class MonitorBridge:
         key = (row.get("seq"), row.get("t_ms"))
         if any(type(value) is not int or not 0 <= value <= 0xFFFFFFFF for value in key):
             return False
+        # 协议升级后的同序号快照仍须发布，不能把 schema1 缺项当作 schema2 数据。
+        identity = (row.get("schema"),) + key if topic == "ugps" else key
         with self._lock:
-            if self._status is not LinkStatus.CONNECTED or self._last_keys.get(topic) == key:
+            if self._status is not LinkStatus.CONNECTED or self._last_keys.get(topic) == identity:
                 return False
             self._store.publish_telemetry(
                 topic, row, source="cli_ethernet_tcp", device_tick_ms=key[1],
                 session_id=self._session_id, stale_after_ms=TOPIC_STALE_MS[topic],
             )
-            self._last_keys[topic] = key
+            self._last_keys[topic] = identity
             return True
 
     def set_experiment_provider(

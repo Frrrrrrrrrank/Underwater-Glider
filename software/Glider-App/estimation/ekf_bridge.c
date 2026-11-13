@@ -1,8 +1,10 @@
 /* ekf_bridge.c 定义见头文件 ekf_bridge.h */
 #include "ekf_bridge.h"
 #include "glider_time.h"
+#include "gnss_navigation.h"
 #include "ug_estimation/embedded/ug_ekf_glider.h"
 #include "pressure_sensor_driver.h"
+#include "glider_core.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -64,6 +66,13 @@ typedef struct {
 static EkfImuInput s_imu_in;             /* 临界区保护 */
 static uint32_t    s_imu_in_seq = 0;     /* 最新投喂序号 */
 static uint32_t    s_imu_last_seq = 0;   /* EKF 已处理序号 */
+/* 保留短时间串口突发的独立历元；满队列丢最旧项，消费预算有界。 */
+#define GNSS_QUEUE_CAPACITY 8U
+#define GNSS_STEP_BUDGET 4U
+static GnssSample s_gnss_queue[GNSS_QUEUE_CAPACITY];
+static uint32_t s_gnss_head, s_gnss_count, s_gnss_drop_count;
+static uint64_t s_last_imu_used_us;
+static GnssNavigation s_gnss_nav;
 static uint32_t    s_pressure_last_seq = 0;
 static uint32_t    s_depth_measurement_tick_ms = 0;
 static float       s_pressure_zero_sum_bar = 0.0f;
@@ -274,6 +283,7 @@ static void applyPendingMagCalibration(void)
    * 这里只重启算法 wrapper，不清参数邮箱/诊断；随后本 Step 的最新 IMU
    * 会成为新一轮静止对齐的第一帧。 */
   UgEkf_Init(&s_ekf_config);
+  GnssNavigation_OnFilterReset(&s_gnss_nav, GliderTime_NowUs());
   g_ekf_mag_cal_crc = pending.expected_crc;
   /* 最后发布 valid，观察侧和下一帧 mag 不会看到半成品。 */
   g_ekf_mag_cal_valid = 1U;
@@ -306,6 +316,13 @@ void EkfBridge_Init(void)
   cfg.r_pressure_frd[1] =  0.01950f;  /* 右：压力计在 IMU 右侧 19.5mm */
   cfg.r_pressure_frd[2] =  0.02500f;  /* 下：压力计在 IMU 下方 25mm */
 
+  /* 自机 GNSS 天线相位中心相对 IMU 的 FRD 杆臂，单位 m。
+   * 尚无实测安装数据，当前零值仅为带明确标记的近似；测量后在此填写。
+   * GnssNavigation 默认 reference_verified=0，不能将融合成功当作导航参考验收。 */
+  cfg.r_gps_frd[0] = 0.0f;
+  cfg.r_gps_frd[1] = 0.0f;
+  cfg.r_gps_frd[2] = 0.0f;
+
   /* 磁力计 yaw 融合配置（硬/软铁标定值由参数事务写入 active b/A，Step 里应用）。
    * declination(磁偏角=磁北→真北)与硬/软铁标定无关，是地理量：
    *   - 台架验证阶段填 0：yaw 参考的是"磁北"，验证"yaw 是否跟随转动、可复现"足够；
@@ -317,6 +334,11 @@ void EkfBridge_Init(void)
   s_ekf_config = cfg;
   UgEkf_Init(&s_ekf_config);
 
+  /* GNSS 杆臂默认 0 是待实测近似；导航参考 verified 默认为 0，不冒充安装标定。 */
+  GnssNavigation_Init(&s_gnss_nav, NULL);
+  memset(s_gnss_queue, 0, sizeof(s_gnss_queue));
+  s_gnss_head = s_gnss_count = s_gnss_drop_count = 0U;
+  s_last_imu_used_us = 0U;
   memset(&s_imu_in, 0, sizeof(s_imu_in));
   s_imu_in_seq = 0;
   s_imu_last_seq = 0;
@@ -354,6 +376,38 @@ void EkfBridge_SubmitImu(float gx, float gy, float gz,
   s_imu_in.t_us = t_us;
   s_imu_in.seq = ++s_imu_in_seq;
   taskEXIT_CRITICAL();
+}
+
+void EkfBridge_SubmitGnss(const GnssSample *sample)
+{
+  if (sample == NULL) return;
+  taskENTER_CRITICAL();
+  if (s_ekf_bridge_ready != 0U) {
+    if (s_gnss_count == GNSS_QUEUE_CAPACITY) {
+      s_gnss_head = (s_gnss_head + 1U) % GNSS_QUEUE_CAPACITY;
+      s_gnss_count--;
+      s_gnss_drop_count++;
+    }
+    s_gnss_queue[(s_gnss_head + s_gnss_count) % GNSS_QUEUE_CAPACITY] = *sample;
+    s_gnss_count++;
+  }
+  taskEXIT_CRITICAL();
+}
+
+/* 只复制结构和序号；投影及矩阵运算在临界区外执行。 */
+static int takeGnssInput(GnssSample *dst)
+{
+  int got = 0;
+  taskENTER_CRITICAL();
+  if (s_gnss_count) {
+    *dst = s_gnss_queue[s_gnss_head];
+    s_gnss_head = (s_gnss_head + 1U) % GNSS_QUEUE_CAPACITY;
+    s_gnss_count--;
+    got = 1;
+  }
+  s_gnss_nav.diag.drop_count = s_gnss_drop_count;
+  taskEXIT_CRITICAL();
+  return got;
 }
 
 uint8_t EkfBridge_SubmitMagCalibration(
@@ -410,6 +464,7 @@ void EkfBridge_Step(void)//在EKF的task里调用
   if (takeImuInput(&in)) {
     //EKF的Task，算法层
     UgEkf_PushImu(in.gx, in.gy, in.gz, in.ax, in.ay, in.az, in.t_us);
+    s_last_imu_used_us = in.t_us;
     g_ekf_imu_push_count++;
 
     /* 1b) 磁力计 yaw 融合：先在【模块系】做硬/软铁校正 m_cal = A*(m_raw - b)，
@@ -481,13 +536,23 @@ void EkfBridge_Step(void)//在EKF的task里调用
 
   /* 3) mag 已在 1b 随 IMU 帧 push（校正+yaw更新）。 */
 
-  /* 4) 拉输出，然后发布受保护快照 */
+  /* 4) 新自机 GNSS 只消费一次；即使停流，20ms 兜底仍刷新年龄/失锁状态。 */
+  GnssSample gnss;
+  const uint64_t now_us = GliderTime_NowUs();
   UgEkf_GetOutput(&out);
+  s_gnss_nav.diag.input_reject_count = GliderCore_GetGnssRejectedCount();
+  GnssNavigation_Step(&s_gnss_nav, NULL, now_us, s_last_imu_used_us, &out);
+  for (uint32_t i = 0; i < GNSS_STEP_BUDGET && takeGnssInput(&gnss); ++i) {
+    GnssNavigation_Step(&s_gnss_nav, &gnss, now_us, s_last_imu_used_us, &out);
+    UgEkf_GetOutput(&out);
+  }
   taskENTER_CRITICAL();//嵌入式的保护读写
   g_state_estimate.out = out;
   g_state_estimate.update_seq = ++s_snap_seq;
   g_state_estimate.depth_measurement_seq = g_ekf_pressure_push_count;
   g_state_estimate.depth_measurement_tick_ms = s_depth_measurement_tick_ms;
+  g_state_estimate.update_tick_ms = (uint32_t)(now_us / 1000ULL);
+  g_state_estimate.gnss = s_gnss_nav.diag;
   taskEXIT_CRITICAL();
 }
 

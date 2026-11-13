@@ -1,9 +1,11 @@
 #include "glider_core.h"
+#include "raw_capture.h"
 
 #include "cmsis_os.h"
 #include "displacement_sensor.h"
 #include "ethernet_uart_driver.h"
 #include "glider_rdss_codec.h"
+#include "glider_time.h"
 #include "imu_core.h"
 #include "pressure_sensor_driver.h"
 #include "sbus_driver.h"
@@ -46,6 +48,9 @@ static volatile uint8_t s_rx_byte = 0;
 
 static volatile uint32_t s_rx_overflow_count = 0;
 static volatile uint32_t s_rx_line_count = 0;
+static volatile uint32_t s_rx_line_drop_count = 0;
+static volatile uint32_t s_gnss_rejected_count = 0U;
+static uint32_t s_gnss_sample_seq = 0U;
 static volatile uint32_t s_tx_attempt_count = 0;
 static volatile uint32_t s_tx_ok_count = 0;
 static volatile uint32_t s_tx_fail_count = 0;
@@ -155,6 +160,10 @@ static volatile uint32_t s_last_rd_request_tick = 0U;
 static char s_line_buffer[GLIDER_RX_LINE_SIZE];
 static size_t s_line_len = 0;
 static bool s_line_overflowed = false;
+/* 原始行独立组装，不改变既有decoder去CR/字符串/超长丢行行为。 */
+static uint8_t s_raw_line[RAW_CAPTURE_KEEP_MAX];
+static uint32_t s_raw_src_len;
+static uint16_t s_raw_kept_len;
 static GliderRdssDecodedFrame s_decoded_frame;
 
 static const char *s_boot_test_cmds[] = {
@@ -820,9 +829,10 @@ static void ring_push(const uint8_t data)
   s_rx_head = next;
 }
 
-static void process_line(const char *line)
+static void process_line(const char *line, uint64_t t_rx_us)
 {
   uint32_t new_signal_good = 0U;
+  GnssSample gnss_sample;
 
   if (line == NULL)
   {
@@ -835,6 +845,23 @@ static void process_line(const char *line)
   }
 
   s_rx_line_count++;
+  /* 发布本次定位或显式无定位事件，不能把 180 秒短信缓存重新当成新观测。
+   * 前缀也覆盖因校验文本畸形而退化成普通文本的 RMC。 */
+  if (strncmp(s_decoded_frame.text, "$GNRMC", 6U) == 0 &&
+      (s_decoded_frame.text[6] == ',' || s_decoded_frame.text[6] == '*' ||
+       s_decoded_frame.text[6] == '\0'))
+  {
+    if (GliderRdssCodec_TryMakeGnssSample(&s_decoded_frame, t_rx_us,
+                                         s_gnss_sample_seq + 1U, &gnss_sample))
+    {
+      s_gnss_sample_seq = gnss_sample.seq;
+      GliderCore_OnGnssSample(&gnss_sample);
+    }
+    else
+    {
+      s_gnss_rejected_count++;
+    }
+  }
   cache_target_coordinate(&s_decoded_frame);
   if (s_mode_switch_cooldown > 0U)
   {
@@ -1002,6 +1029,20 @@ static void process_line(const char *line)
 
 static void process_rx_byte(const uint8_t byte)
 {
+  uint64_t t_rx_us = 0U;
+  if (byte == '\n')
+  {
+    /* 同一个处理时刻供原始采集和GNSS样本使用，不混入下游回调耗时。 */
+    t_rx_us = GliderTime_NowUs();
+    GliderCore_OnRawLine(s_raw_line, s_raw_src_len, s_raw_kept_len, t_rx_us);
+    s_raw_src_len = 0U;
+    s_raw_kept_len = 0U;
+  }
+  else
+  {
+    if (s_raw_kept_len < RAW_CAPTURE_KEEP_MAX) s_raw_line[s_raw_kept_len++] = byte;
+    if (s_raw_src_len != UINT32_MAX) ++s_raw_src_len;
+  }
   if (s_line_overflowed)
   {
     if (byte == '\n')
@@ -1022,7 +1063,7 @@ static void process_rx_byte(const uint8_t byte)
     if (s_line_len > 0)
     {
       s_line_buffer[s_line_len] = '\0';
-      process_line(s_line_buffer);
+      process_line(s_line_buffer, t_rx_us);
       s_line_len = 0;
     }
     return;
@@ -1032,6 +1073,7 @@ static void process_rx_byte(const uint8_t byte)
   {
     s_line_len = 0U;
     s_line_overflowed = true;
+    ++s_rx_line_drop_count;
     return;
   }
 
@@ -1045,8 +1087,13 @@ void GliderCore_Init(UART_HandleTypeDef *uart_handle)
   s_rx_tail = 0;
   s_line_len = 0;
   s_line_overflowed = false;
+  s_raw_src_len = 0U;
+  s_raw_kept_len = 0U;
+  s_rx_line_drop_count = 0U;
   s_rx_overflow_count = 0;
   s_rx_line_count = 0;
+  s_gnss_rejected_count = 0U;
+  s_gnss_sample_seq = 0U;
   s_tx_attempt_count = 0;
   s_tx_ok_count = 0;
   s_tx_fail_count = 0;
@@ -1248,6 +1295,11 @@ uint32_t GliderCore_GetRxOverflowCount(void)
   return s_rx_overflow_count;
 }
 
+uint32_t GliderCore_GetRxLineDropCount(void)
+{
+  return s_rx_line_drop_count;
+}
+
 uint32_t GliderCore_GetTxAttemptCount(void)
 {
   return s_tx_attempt_count;
@@ -1379,6 +1431,25 @@ __weak void GliderCore_OnBinaryFrame(const uint8_t *payload, size_t payload_len)
 __weak void GliderCore_OnDecodedFrame(const GliderRdssDecodedFrame *frame)
 {
   (void)frame;
+}
+
+uint32_t GliderCore_GetGnssRejectedCount(void)
+{
+  return s_gnss_rejected_count;
+}
+
+__weak void GliderCore_OnGnssSample(const GnssSample *sample)
+{
+  (void)sample;
+}
+
+__weak void GliderCore_OnRawLine(const uint8_t *data, uint32_t src_len,
+                                uint16_t kept_len, uint64_t t_rx_us)
+{
+  (void)data;
+  (void)src_len;
+  (void)kept_len;
+  (void)t_rx_us;
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)

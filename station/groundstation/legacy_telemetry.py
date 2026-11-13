@@ -15,6 +15,11 @@ except ImportError:
     from gps_telemetry import UGPS_CSV_HEADER, UGPS_STALE_MS, ugps_csv_row, ugps_parse
 
 try:
+    from ..raw_telemetry import UGRAW_CSV_HEADER, ugraw_csv_row, ugraw_parse
+except ImportError:
+    from raw_telemetry import UGRAW_CSV_HEADER, ugraw_csv_row, ugraw_parse
+
+try:
     from ..contcp_t import (
         EKF_CSV_HEADER,
         EKF_FIELDS,
@@ -86,7 +91,10 @@ def decode_telemetry_line(line: str) -> Optional[DecodedTelemetry]:
     if not line or not ekf_checksum_ok(line):
         return None
 
-    if line.startswith("$UGEKF"):
+    if line.startswith("$UGRAW"):
+        row = ugraw_parse(raw_line)
+        topic = "ugraw"
+    elif line.startswith("$UGEKF"):
         row = ekf_parse(line)
         topic = "ugekf"
     elif line.startswith("$UGCTL"):

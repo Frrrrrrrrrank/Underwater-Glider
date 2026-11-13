@@ -67,8 +67,13 @@ struct InitParams {
   Scalar g;                       // 重力加速度模 (m/s^2)，NED 下 g_NED=[0,0,+g]
   Scalar mag_declination_rad;     // 磁偏角 (rad)，对齐 mag yaw 时使用
   Vec3   r_pressure_FRD;          // 压力计在 FRD body 坐标 (m)，含杠杆臂
+  Vec3   r_gps_FRD = Vec3::Zero(); // 状态参考点到 GNSS 天线相位中心，FRD，m
+  Scalar nis_gate_gps = Scalar(9.21034); // 二维位置 NIS 门限
+  Scalar gps_reset_velocity_var = Scalar(4); // 水平重置追加速度方差，(m/s)^2
+  Scalar nis_gate_gps_velocity = Scalar(9.21034);
+  Scalar gps_velocity_gyro_var = Scalar(1e-4); // 最近角速样本方差，(rad/s)^2；不是噪声密度
 
-  // 初始 NED yaw (rad)；Phase 1 无 mag/航向观测，由 wrapper 显式给定。
+  // 初始 NED yaw (rad)；对齐时缺少有效磁场观测则使用该先验。
   // 严禁直接把 Gazebo ENU yaw 写入此处，必须先做 ENU→NED 转换。
   Scalar init_yaw_ned_rad;
 
@@ -109,6 +114,15 @@ struct Diagnostics {
   uint32_t accept_tilt  = 0, reject_tilt  = 0;
   uint32_t accept_mag   = 0, reject_mag   = 0;
   uint32_t accept_gps   = 0, reject_gps   = 0;
+  uint32_t gps_reset_count = 0;
+  Scalar gps_innov_n = 0, gps_innov_e = 0;
+  int32_t gps_last_result = -2; // 1=接受，0=NIS拒绝，-1=无效，-2=未就绪
+  Scalar last_nis_gps_velocity = 0;
+  Scalar gps_velocity_innov_n = 0, gps_velocity_innov_e = 0;
+  uint32_t accept_gps_velocity = 0, reject_gps_velocity = 0;
+  uint32_t horizontal_velocity_reset_count = 0;
+  uint32_t horizontal_velocity_source = 0; // 0无，1未知速度先验，2天线速度测量；不是外层有效位
+  int32_t gps_velocity_last_result = -2;
   uint32_t accept_dvl   = 0, reject_dvl   = 0;
 
   uint32_t reset_count = 0;
